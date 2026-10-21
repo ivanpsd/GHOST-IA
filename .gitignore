@@ -1,0 +1,18 @@
+# Arquivos de chave e configurações sensíveis
+.env
+*.json
+!memoria_ghost.json
+
+# Arquivos temporários de áudio gerados pelo GHOST
+*.mp3
+*.wav
+print_ghost.png
+
+# Cache do Python
+__pycache__/
+*.pyc
+.vscode/
+
+# Log do GHOST rodando oculto e prints de tela
+ghost.log
+prints/
