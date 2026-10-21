@@ -11,7 +11,8 @@ Assistente pessoal para Windows, em Python: você fala segurando **F9**, ele res
 | Fala | Voz neural `pt-BR-AntonioNeural` (edge-tts), gerada e tocada em paralelo |
 | Automações | Programas, sites, pesquisa no Google/YouTube, volume, mídia, print, desligar, ditado ("digite ...") e teclas ("aperte enter") |
 | WhatsApp | "mande uma mensagem para Fulano dizendo ..." (Desktop ou Web) |
-| Gestos | Mouse e atalhos pela mão (MediaPipe), cadastro editável de gestos, suporte a dois monitores |
+| Gestos | Mouse e atalhos pela mão (MediaPipe), suporte a dois monitores |
+| Cadastro | Tela com abas **Ações** (teclas, comandos de voz, **macros gravadas** do teclado/mouse) e **Gestos** (nativos ou gravados), cada gesto ligado a uma ação |
 | Rosto | Leitura de expressão (estimativa) e check-in periódico ("como o senhor está?") |
 | Memória | Aprende fatos e padrões de comportamento automaticamente (`memoria_aprendizado.json`) |
 | Sistema | Inicia com o Windows, roda oculto com log (`ghost.log`), impede duas cópias abertas |
@@ -43,7 +44,8 @@ Assistente pessoal para Windows, em Python: você fala segurando **F9**, ele res
 | "mande uma mensagem para Deborah dizendo bom dia" | WhatsApp |
 | "digite bom dia equipe" / "aperte enter" | Ditado e teclas |
 | "ativar gestos" / "desativar gestos" | Controle por gestos |
-| "abrir cadastro de gestos" | Tela de cadastro |
+| "abrir cadastro de gestos" | Tela de cadastro de gestos e ações |
+| "executar ação <nome>" | Roda uma ação cadastrada (ex.: uma macro) |
 | "ativar / desativar leitura facial" | Leitura de expressão |
 | "como eu estou?" | Estado estimado pela expressão |
 | "não me pergunte por 30 minutos" / "pausar check-in" | Controla os check-ins |
@@ -71,7 +73,8 @@ Assistente pessoal para Windows, em Python: você fala segurando **F9**, ele res
 | `memoria.py` | Aprendizado automático de fatos |
 | `camera.py` | Câmera compartilhada entre gestos e rosto |
 | `gestos_lib.py` / `gestos.py` | Detecção da mão e controle de mouse/teclado |
-| `cadastro_gestos.py` | Tela (Tkinter) de cadastro de gestos |
+| `cadastro_gestos.py` | Tela (Tkinter) de cadastro de gestos e ações |
+| `macros.py` | Gravação (F10 encerra) e execução de macros |
 | `rosto.py` | Leitura de expressão, check-in e padrões de comportamento |
 
 ## Privacidade
