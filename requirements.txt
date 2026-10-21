@@ -1,0 +1,15 @@
+edge-tts==7.3.1
+google-genai==2.32.0
+groq==1.7.0
+keyboard==0.13.5
+mediapipe==1.1.1
+numpy==2.5.4
+opencv-python==5.0.0.93
+pillow==13.0.0
+PyAutoGUI==0.9.54
+PyGetWindow==0.0.9
+pyperclip==1.11.0
+requests==2.34.2
+sounddevice==0.5.6
+soundfile==0.14.0
+SpeechRecognition==3.17.0

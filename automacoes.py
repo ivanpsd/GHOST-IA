@@ -8,6 +8,7 @@ a pergunta para a IA.
 """
 import os
 import re
+import sys
 import time
 import threading
 import subprocess
@@ -24,6 +25,9 @@ try:
 except ImportError:
     pyperclip = None
 
+import camera
+import gestos
+import rosto
 from gestos import alternar_camera
 
 PASTA_GHOST = os.path.dirname(os.path.abspath(__file__))
@@ -225,6 +229,47 @@ def _tratar_whatsapp(texto, n, falar):
     return False
 
 # -------------------------------------------------------------
+# DITADO POR VOZ E TECLAS
+# -------------------------------------------------------------
+# "digite bom dia equipe" / "escreva o texto reunião às 14h" -> escreve onde o cursor estiver
+REGEX_DITADO = re.compile(
+    r"^(?:(?:por\s+favor|voc[eê]|pode|ghost)[\s,]+)*(?:digit\w*|escrev\w*)[\s,:]+"
+    r"(?:(?:a\s+frase|o\s+texto|isso|isto)[\s,:]+)?(?P<t>.+)$",
+    re.IGNORECASE,
+)
+# "aperte enter", "pressione tab", "tecla esc"
+TECLAS_FALADAS = {
+    "enter": "enter", "entra": "enter", "tab": "tab", "esc": "esc", "escape": "esc",
+    "apagar": "backspace", "backspace": "backspace", "delete": "delete", "deletar": "delete",
+    "espaco": "space", "seta para cima": "up", "seta para baixo": "down",
+    "seta para esquerda": "left", "seta para direita": "right",
+    "copiar": ("ctrl", "c"), "colar": ("ctrl", "v"), "desfazer": ("ctrl", "z"),
+    "selecionar tudo": ("ctrl", "a"), "salvar": ("ctrl", "s"),
+}
+REGEX_TECLA = re.compile(r"^(?:aperte|aperta|pressione|pressiona|tecla|clique em)\s+(?:o\s+|a\s+)?(?P<k>.+)$")
+
+def _tratar_ditado_e_teclas(texto, n, falar):
+    m = REGEX_DITADO.search(texto.strip())
+    if m:
+        conteudo = m.group("t").strip()
+        if conteudo.endswith(".") and conteudo.count(".") == 1:  # ponto final que o Whisper põe sozinho
+            conteudo = conteudo[:-1]
+        time.sleep(0.3)  # dá tempo de soltar o F9
+        _colar(conteudo)
+        print(f"\n[AUTOMAÇÃO]: digitado -> {conteudo}")
+        return True
+    m = REGEX_TECLA.search(n)
+    if m and m.group("k") in TECLAS_FALADAS:
+        tecla = TECLAS_FALADAS[m.group("k")]
+        if isinstance(tecla, tuple):
+            pyautogui.hotkey(*tecla)
+        else:
+            pyautogui.press(tecla)
+        print(f"\n[AUTOMAÇÃO]: tecla -> {m.group('k')}")
+        return True
+    return False
+
+# -------------------------------------------------------------
 # PROGRAMAS E SITES
 # -------------------------------------------------------------
 PROGRAMAS = {
@@ -302,10 +347,10 @@ def _tratar_sistema(n, falar):
 
     if tem(n, "camera", "gestos"):
         if re.search(r"\b(fech\w*|deslig\w*|desativ\w*|par\w*)\b", n):
-            alternar_camera(False, falar_callback=falar)
+            alternar_camera(False, falar_callback=falar, executar_comando=lambda f: executar(f, falar))
             return True
         if re.search(r"\b(ativ\w*|abr\w*|abra|lig\w*|inici\w*)\b", n):
-            alternar_camera(True, falar_callback=falar)
+            alternar_camera(True, falar_callback=falar, executar_comando=lambda f: executar(f, falar))
             return True
 
     if tem(n, "aumentar volume", "aumenta o volume", "aumentar o volume", "sobe o volume"):
@@ -359,6 +404,79 @@ def _tratar_sistema(n, falar):
     return False
 
 # -------------------------------------------------------------
+# GHOST: CADASTRO DE GESTOS, LEITURA FACIAL, CHECK-IN, MONITORES
+# -------------------------------------------------------------
+def abrir_cadastro(falar):
+    """Libera a câmera, abre a tela de cadastro e devolve a câmera quando ela fechar."""
+    pyw = os.path.join(os.path.dirname(sys.executable), "pythonw.exe")
+    if not os.path.exists(pyw):
+        pyw = sys.executable
+    suspensos = camera.suspender_todos()
+    proc = subprocess.Popen([pyw, os.path.join(PASTA_GHOST, "cadastro_gestos.py")], cwd=PASTA_GHOST)
+    falar("Abrindo o cadastro de gestos, senhor.")
+    def _esperar():
+        proc.wait()
+        camera.retomar_todos()
+        if suspensos:
+            print("\n[AUTOMAÇÃO]: cadastro fechado, câmera devolvida ao Ghost.")
+    threading.Thread(target=_esperar, daemon=True).start()
+
+def _minutos_falados(n):
+    if tem(n, "meia hora"):
+        return 30
+    m = re.search(r"\b(\d+)\s*(minuto|hora)", n)
+    if m:
+        return int(m.group(1)) * (60 if m.group(2) == "hora" else 1)
+    if tem(n, "uma hora", "1 hora"):
+        return 60
+    if tem(n, "duas horas"):
+        return 120
+    return 60
+
+VERBO_DESLIGAR = r"\b(desativ\w*|deslig\w*|pare|parar|pausa\w*|encerr\w*)\b"
+VERBO_LIGAR = r"\b(ativ\w*|lig\w*|retom\w*|volt\w*|inici\w*)\b"
+
+def _tratar_ghost(n, falar):
+    if tem(n, "cadastro de gestos", "cadastro dos gestos", "cadastrar gesto", "cadastrar gestos",
+           "cadastrar um gesto", "novo gesto"):
+        abrir_cadastro(falar)
+        return True
+
+    if tem(n, "leitura facial", "leitura do rosto", "leitura de expressao", "leitura da expressao",
+           "reconhecimento facial", "leitura de rosto"):
+        if re.search(VERBO_DESLIGAR, n):
+            rosto.ativar_leitura(False, falar); return True
+        if re.search(VERBO_LIGAR, n):
+            rosto.ativar_leitura(True, falar); return True
+
+    if tem(n, "nao me pergunte", "nao pergunte", "me deixe em paz", "sem perguntas"):
+        rosto.adiar(_minutos_falados(n), falar)
+        return True
+    if tem(n, "check in", "checkin", "perguntar como estou", "perguntas de como estou"):
+        if re.search(VERBO_DESLIGAR, n):
+            rosto.ligar_checkin(False, falar); return True
+        if re.search(VERBO_LIGAR, n):
+            rosto.ligar_checkin(True, falar); return True
+    if tem(n, "como eu estou", "como estou", "qual meu estado", "como esta minha expressao",
+           "minha expressao") and len(n.split()) <= 7:
+        falar(rosto.descrever_agora())
+        return True
+
+    if tem(n, "outro monitor", "proximo monitor", "trocar de monitor", "trocar monitor",
+           "mudar de monitor", "monitor seguinte", "outra tela", "proxima tela"):
+        gestos.trocar_monitor(falar)
+        return True
+    if tem(n, "os dois monitores", "ambos os monitores", "duas telas"):
+        gestos.MODO_MONITORES = "todos"
+        falar("Gestos cobrindo os dois monitores, senhor.")
+        return True
+    if tem(n, "um monitor por vez", "uma tela por vez", "um monitor de cada vez"):
+        gestos.MODO_MONITORES = "um_por_vez"
+        falar("Gestos em um monitor por vez. Diga outro monitor para trocar, senhor.")
+        return True
+    return False
+
+# -------------------------------------------------------------
 # PONTO DE ENTRADA
 # -------------------------------------------------------------
 def executar(texto, falar):
@@ -368,7 +486,9 @@ def executar(texto, falar):
     Retorna True se executou algo; False para mandar à IA."""
     n = normalizar(texto)
     return (
-        _tratar_whatsapp(texto, n, falar)
+        _tratar_ghost(n, falar)
+        or _tratar_whatsapp(texto, n, falar)
+        or _tratar_ditado_e_teclas(texto, n, falar)
         or _tratar_programas_e_sites(texto, n, falar)
         or _tratar_sistema(n, falar)
     )

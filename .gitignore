@@ -16,3 +16,8 @@ __pycache__/
 # Log do GHOST rodando oculto e prints de tela
 ghost.log
 prints/
+# Modelo do MediaPipe (baixado automaticamente)
+modelos/
+
+# Diário de humor dos check-ins (pessoal)
+humor_log.jsonl

@@ -38,6 +38,8 @@ from google import genai
 from groq import Groq
 
 import automacoes
+import memoria
+import rosto
 
 
 # -------------------------------------------------------------
@@ -184,6 +186,10 @@ SYSTEM_INSTRUCTION = (
     "se a pergunta depender disso, diga que não tem essa informação atualizada."
 )
 
+def instrucao_completa():
+    """Instrução fixa + fatos aprendidos (relidos a cada pergunta)."""
+    return SYSTEM_INSTRUCTION + memoria.texto_para_prompt()
+
 FIM_DE_FRASE = re.compile(r'[.!?…](?=\s)')
 
 def _separar_frases(buffer):
@@ -206,7 +212,7 @@ def consultar_ia_streaming(prompt_usuario, ao_receber_frase):
         print("\n[SISTEMA]: Alerta de cota - 90% do limite diário atingido.")
 
     mensagens = [
-        {"role": "system", "content": SYSTEM_INSTRUCTION},
+        {"role": "system", "content": instrucao_completa()},
         {"role": "user", "content": prompt_usuario},
     ]
     ultimo_erro = None
@@ -258,7 +264,7 @@ def consultar_ia_streaming(prompt_usuario, ao_receber_frase):
         response = client_gemini.models.generate_content(
             model=MODELO_GEMINI,
             contents=prompt_usuario,
-            config={"system_instruction": SYSTEM_INSTRUCTION, "temperature": 0.1, "max_output_tokens": 1024}
+            config={"system_instruction": instrucao_completa(), "temperature": 0.1, "max_output_tokens": 1024}
         )
         texto = (response.text or "").strip()
         if texto:
@@ -273,7 +279,7 @@ def consultar_ia_streaming(prompt_usuario, ao_receber_frase):
         aviso = "Desculpe, senhor. Ambas as conexões de inteligência falharam no momento."
         print(f"\n[GHOST]: {aviso}")
         ao_receber_frase(aviso)
-        return aviso
+        return None  # sem resposta real: nada para aprender
 
 
 def processar_resposta_em_tempo_real(comando, t_inicio=None):
@@ -290,9 +296,13 @@ def processar_resposta_em_tempo_real(comando, t_inicio=None):
         falar_frase_assincrona(frase)
 
     try:
-        consultar_ia_streaming(comando, ao_receber_frase)
+        # Se o Ghost acabou de perguntar "como você está?", a fala vira resposta ao check-in
+        prompt = rosto.contexto_para_resposta(comando) or comando
+        resposta = consultar_ia_streaming(prompt, ao_receber_frase)
         if MOSTRAR_TEMPOS and primeira:
             print(f"  [tempo] 1ª frase da IA pronta em {primeira[0]:.2f}s")
+        if resposta:
+            memoria.aprender_em_segundo_plano(client_groq, comando, resposta)
     except Exception as e:
         print(f"\nErro no processamento: {e}")
         print("\n[GHOST]: Desculpe, senhor. Tive uma falha geral de conexão com os servidores.")
@@ -360,11 +370,20 @@ def transcrever(wav_bytes):
 # -------------------------------------------------------------
 # 8. LOOP PRINCIPAL
 # -------------------------------------------------------------
+_ocupado = threading.Event()
+
+def ghost_ocupado():
+    """True enquanto você fala com o Ghost ou ele ainda está falando (o check-in espera)."""
+    return (_ocupado.is_set() or keyboard.is_pressed('f9')
+            or not texto_queue.empty() or not audio_queue.empty())
+
 def iniciar_ghost():
     falar_imediato("GHOST.")
+    rosto.iniciar(falar_local, ghost_ocupado, client_groq)  # leitura facial + check-in periódico
 
     while True:
         keyboard.wait('f9')
+        _ocupado.set()
 
         try:
             wav = gravar_enquanto_segurar()
@@ -390,6 +409,8 @@ def iniciar_ghost():
             falar_imediato("Desculpe, senhor. Não entendi.")
         except Exception as e:
             print(f"Erro: {e}")
+        finally:
+            _ocupado.clear()
 
 if __name__ == "__main__":
     iniciar_ghost()
