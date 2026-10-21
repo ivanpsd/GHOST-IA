@@ -436,7 +436,35 @@ def _minutos_falados(n):
 VERBO_DESLIGAR = r"\b(desativ\w*|deslig\w*|pare|parar|pausa\w*|encerr\w*)\b"
 VERBO_LIGAR = r"\b(ativ\w*|lig\w*|retom\w*|volt\w*|inici\w*)\b"
 
+def _executar_acao_cadastrada(n, falar):
+    """'executar ação abrir relatório' -> roda a ação de mesmo nome do cadastro (macro, tecla ou comando)."""
+    m = re.search(r"\b(?:execut\w*|rod\w*|fac[ae])\s+(?:a\s+)?(?:acao|macro)\s+(?P<nome>.+)$", n)
+    if not m:
+        return False
+    import gestos_lib as gl
+    import macros
+    alvo = m.group("nome").strip()
+    acoes = [a for a in gl.carregar_cadastro()["acoes"] if a["tipo"] in ("macro", "tecla", "comando")]
+    achada = next((a for a in acoes if normalizar(a["nome"]) == alvo), None) or \
+             next((a for a in acoes if alvo in normalizar(a["nome"]) or normalizar(a["nome"]) in alvo), None)
+    if not achada:
+        falar(f"Senhor, não encontrei a ação {alvo} no cadastro.")
+        return True
+    falar(f"Executando {achada['nome']}, senhor.")
+    if achada["tipo"] == "macro":
+        def _rodar():
+            time.sleep(1.5)  # tempo da fala e de soltar o F9
+            macros.executar(achada.get("passos", []), achada.get("ritmo", "original"))
+        em_segundo_plano(_rodar)
+    elif achada["tipo"] == "tecla":
+        pyautogui.hotkey(*achada["valor"].split("+"))
+    else:
+        executar(achada["valor"], falar)
+    return True
+
 def _tratar_ghost(n, falar):
+    if _executar_acao_cadastrada(n, falar):
+        return True
     if tem(n, "cadastro de gestos", "cadastro dos gestos", "cadastrar gesto", "cadastrar gestos",
            "cadastrar um gesto", "novo gesto"):
         abrir_cadastro(falar)

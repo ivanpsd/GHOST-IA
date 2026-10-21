@@ -148,86 +148,143 @@ def reconhecer_gravado(v, gravados):
     return melhor, melhor_d
 
 # -------------------------------------------------------------
-# AÇÕES DISPONÍVEIS
+# AÇÕES (catálogo próprio, ligado aos gestos pelo id)
 # -------------------------------------------------------------
-# chave: (rótulo na tela de cadastro, precisa de complemento?)
-ACOES = {
-    "mouse_mover": ("Mover o mouse (contínuo)", False),
-    "clique_arrastar": ("Clique / segurar para arrastar (pinça)", False),
-    "clique": ("Clique esquerdo", False),
-    "clique_direito": ("Clique direito", False),
-    "duplo_clique": ("Duplo clique", False),
-    "rolar": ("Rolar a página (suba/desça a mão)", False),
-    "pausar": ("Pausar / retomar os gestos", False),
-    "trocar_monitor": ("Levar o mouse para o outro monitor", False),
-    "tecla": ("Tecla ou atalho (ex.: ctrl+c, enter, alt+tab)", True),
-    "comando": ("Comando de voz do Ghost (ex.: abrir calculadora)", True),
-    "nada": ("Nada (gesto desligado)", False),
+# Tipos de ação:
+#   sistema -> comportamento interno (mover mouse, clique, rolar...)
+#   tecla   -> tecla ou atalho (valor: "ctrl+c")
+#   comando -> frase executada como comando de voz do Ghost (valor: "abrir calculadora")
+#   macro   -> sequência gravada de teclas e cliques (passos)
+TIPOS_ACAO = {"sistema": "Sistema", "tecla": "Tecla/atalho", "comando": "Comando de voz", "macro": "Macro gravada"}
+
+ACOES_SISTEMA = {
+    "mouse_mover": "Mover o mouse (contínuo)",
+    "clique_arrastar": "Clique / segurar para arrastar (pinça)",
+    "clique": "Clique esquerdo",
+    "clique_direito": "Clique direito",
+    "duplo_clique": "Duplo clique",
+    "rolar": "Rolar a página (suba/desça a mão)",
+    "pausar": "Pausar / retomar os gestos",
+    "trocar_monitor": "Levar o mouse para o outro monitor",
+    "nada": "Nada",
 }
 
-def separar_acao(acao):
-    """'tecla:ctrl+c' -> ('tecla', 'ctrl+c')"""
-    tipo, _, comp = (acao or "nada").partition(":")
-    return tipo, comp
+def _acoes_padrao():
+    acoes = [{"id": k, "nome": v, "tipo": "sistema", "valor": k} for k, v in ACOES_SISTEMA.items()]
+    acoes += [
+        {"id": "a_enter", "nome": "Enter", "tipo": "tecla", "valor": "enter"},
+        {"id": "a_esc", "nome": "Esc", "tipo": "tecla", "valor": "esc"},
+        {"id": "a_alt_tab", "nome": "Próxima janela (Alt+Tab)", "tipo": "tecla", "valor": "alt+tab"},
+        {"id": "a_voltar", "nome": "Voltar (Alt+←)", "tipo": "tecla", "valor": "alt+left"},
+    ]
+    return acoes
 
-def descrever_acao(acao):
-    tipo, comp = separar_acao(acao)
-    rotulo = ACOES.get(tipo, (tipo, False))[0]
-    if tipo == "tecla":
-        return f"Tecla: {comp}"
-    if tipo == "comando":
-        return f"Comando: {comp}"
-    return rotulo
+def nova_acao(nome, tipo, valor="", passos=None, ritmo="original"):
+    a = {"id": "a_" + uuid.uuid4().hex[:8], "nome": nome, "tipo": tipo, "valor": valor}
+    if tipo == "macro":
+        a["passos"], a["ritmo"] = passos or [], ritmo
+    return a
+
+def descrever_acao(a):
+    if not a:
+        return "(nenhuma)"
+    if a["tipo"] == "tecla":
+        return f"Tecla: {a['valor']}"
+    if a["tipo"] == "comando":
+        return f"Comando: {a['valor']}"
+    if a["tipo"] == "macro":
+        import macros
+        return f"Macro ({macros.resumo(a.get('passos', []))})"
+    return ACOES_SISTEMA.get(a["valor"], a["valor"])
+
+def acao_por_id(cad, acao_id):
+    for a in cad["acoes"]:
+        if a["id"] == acao_id:
+            return a
+    return None
+
+def tipo_efetivo(a):
+    """'mouse_mover', 'clique', ... para ações de sistema; senão o próprio tipo (tecla/comando/macro)."""
+    if not a:
+        return "nada"
+    return a["valor"] if a["tipo"] == "sistema" else a["tipo"]
 
 # -------------------------------------------------------------
-# CADASTRO (gestos_cadastro.json)
+# CADASTRO (gestos_cadastro.json) = {"acoes": [...], "gestos": [...]}
+# Cada gesto aponta para uma ação pelo campo "acao_id".
 # -------------------------------------------------------------
 PADRAO = [
-    {"id": "mover", "pose": "mover", "acao": "mouse_mover", "segurar": 0},
-    {"id": "pinca", "pose": "pinca", "acao": "clique_arrastar", "segurar": 0},
-    {"id": "pinca_medio", "pose": "pinca_medio", "acao": "clique_direito", "segurar": 0},
-    {"id": "rolar", "pose": "rolar", "acao": "rolar", "segurar": 0},
-    {"id": "punho", "pose": "punho", "acao": "pausar", "segurar": 1.0},
-    {"id": "joinha", "pose": "joinha", "acao": "tecla:enter", "segurar": 0.8},
-    {"id": "hang_loose", "pose": "hang_loose", "acao": "tecla:esc", "segurar": 0.8},
-    {"id": "aberta", "pose": "aberta", "acao": "nada", "segurar": 0.8},
-    {"id": "swipe_direita", "pose": "swipe_direita", "acao": "tecla:alt+tab", "segurar": 0},
-    {"id": "swipe_esquerda", "pose": "swipe_esquerda", "acao": "tecla:alt+left", "segurar": 0},
+    {"id": "mover", "pose": "mover", "acao_id": "mouse_mover", "segurar": 0},
+    {"id": "pinca", "pose": "pinca", "acao_id": "clique_arrastar", "segurar": 0},
+    {"id": "pinca_medio", "pose": "pinca_medio", "acao_id": "clique_direito", "segurar": 0},
+    {"id": "rolar", "pose": "rolar", "acao_id": "rolar", "segurar": 0},
+    {"id": "punho", "pose": "punho", "acao_id": "pausar", "segurar": 1.0},
+    {"id": "joinha", "pose": "joinha", "acao_id": "a_enter", "segurar": 0.8},
+    {"id": "hang_loose", "pose": "hang_loose", "acao_id": "a_esc", "segurar": 0.8},
+    {"id": "aberta", "pose": "aberta", "acao_id": "nada", "segurar": 0.8},
+    {"id": "swipe_direita", "pose": "swipe_direita", "acao_id": "a_alt_tab", "segurar": 0},
+    {"id": "swipe_esquerda", "pose": "swipe_esquerda", "acao_id": "a_voltar", "segurar": 0},
 ]
 
 def _nativos_padrao():
     return [dict(g, nome=POSES_NATIVAS[g["pose"]], tipo="nativo", ativo=True) for g in PADRAO]
 
+def _migrar_acao_antiga(cad, texto):
+    """Formato antigo: o gesto tinha 'acao': 'tecla:ctrl+c'. Converte para uma ação do catálogo."""
+    tipo, _, valor = (texto or "nada").partition(":")
+    if tipo in ACOES_SISTEMA:
+        return tipo
+    for a in cad["acoes"]:
+        if a["tipo"] == tipo and a.get("valor") == valor:
+            return a["id"]
+    a = nova_acao(f"{TIPOS_ACAO.get(tipo, tipo)}: {valor}", tipo, valor)
+    cad["acoes"].append(a)
+    return a["id"]
+
 def carregar_cadastro():
-    """Lê o cadastro; cria com os padrões se não existir; inclui nativos que faltarem."""
+    """Lê o cadastro, cria com os padrões se não existir, completa itens faltantes e migra o formato antigo."""
     try:
         with open(ARQUIVO_CADASTRO, "r", encoding="utf-8") as f:
-            gestos = json.load(f).get("gestos", [])
+            dados = json.load(f)
     except Exception:
-        gestos = []
-    ids = {g.get("id") for g in gestos}
-    faltando = [g for g in _nativos_padrao() if g["id"] not in ids]
-    if faltando or not os.path.exists(ARQUIVO_CADASTRO):
-        gestos = faltando + gestos if not gestos else gestos + faltando
-        salvar_cadastro(gestos)
-    return gestos
+        dados = {}
+    cad = {"acoes": dados.get("acoes", []), "gestos": dados.get("gestos", [])}
+    mudou = not os.path.exists(ARQUIVO_CADASTRO) or "acoes" not in dados
 
-def salvar_cadastro(gestos):
+    ids_acoes = {a["id"] for a in cad["acoes"]}
+    for a in _acoes_padrao():
+        if a["id"] not in ids_acoes:
+            cad["acoes"].append(a); mudou = True
+    for g in cad["gestos"]:
+        if "acao_id" not in g:
+            g["acao_id"] = _migrar_acao_antiga(cad, g.pop("acao", "nada")); mudou = True
+    ids_gestos = {g["id"] for g in cad["gestos"]}
+    for g in _nativos_padrao():
+        if g["id"] not in ids_gestos:
+            cad["gestos"].append(g); mudou = True
+    if mudou:
+        salvar_cadastro(cad)
+    return cad
+
+def salvar_cadastro(cad):
     tmp = ARQUIVO_CADASTRO + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
-        json.dump({"gestos": gestos}, f, ensure_ascii=False, indent=1)
+        json.dump(cad, f, ensure_ascii=False, indent=1)
     os.replace(tmp, ARQUIVO_CADASTRO)
 
-def restaurar_nativos(gestos):
-    """Volta os nativos ao padrão, mantendo os gravados."""
-    return _nativos_padrao() + [g for g in gestos if g.get("tipo") == "gravado"]
+def restaurar_nativos(cad):
+    """Volta os gestos nativos ao padrão, mantendo gravados e ações."""
+    ids_acoes = {a["id"] for a in cad["acoes"]}
+    cad["acoes"] += [a for a in _acoes_padrao() if a["id"] not in ids_acoes]
+    cad["gestos"] = _nativos_padrao() + [g for g in cad["gestos"] if g.get("tipo") == "gravado"]
+    return cad
 
-def novo_gravado(nome, acao, segurar, amostras):
+def novo_gravado(nome, acao_id, segurar, amostras):
     return {
         "id": "g_" + uuid.uuid4().hex[:8],
         "nome": nome,
         "tipo": "gravado",
-        "acao": acao,
+        "acao_id": acao_id,
         "segurar": segurar,
         "ativo": True,
         "limiar": calcular_limiar(amostras),

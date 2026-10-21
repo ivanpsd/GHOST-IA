@@ -120,7 +120,9 @@ class Cadastro:
         self.recarregar()
 
     def recarregar(self):
-        self.gestos = gl.carregar_cadastro()
+        cad = gl.carregar_cadastro()
+        self.gestos = cad["gestos"]
+        self.acoes = {a["id"]: a for a in cad["acoes"]}
         self.mtime = os.path.getmtime(gl.ARQUIVO_CADASTRO)
         self.gravados = [g for g in self.gestos if g.get("tipo") == "gravado" and g.get("ativo", True)]
         self.por_pose = {g["pose"]: g for g in self.gestos if g.get("tipo") == "nativo" and g.get("ativo", True)}
@@ -135,8 +137,14 @@ class Cadastro:
 
 def _executar_acao_unica(acao):
     """Ações disparadas uma vez (ao segurar o gesto pelo tempo definido)."""
-    tipo, comp = gl.separar_acao(acao)
-    if tipo in ("clique", "clique_arrastar"):
+    if not acao:
+        return
+    tipo, comp = gl.tipo_efetivo(acao), acao.get("valor", "")
+    if tipo == "macro":
+        import macros
+        threading.Thread(target=macros.executar, args=(acao.get("passos", []), acao.get("ritmo", "original")),
+                         daemon=True).start()
+    elif tipo in ("clique", "clique_arrastar"):
         _clique()
     elif tipo == "clique_direito":
         _mouse(DIR_DOWN); _mouse(DIR_UP)
@@ -150,7 +158,7 @@ def _executar_acao_unica(acao):
         threading.Thread(target=_executar_comando, args=(comp,), daemon=True).start()
     else:
         return
-    print(f"\n[GESTOS]: {gl.descrever_acao(acao)}")
+    print(f"\n[GESTOS]: {acao['nome']}")
 
 # -------------------------------------------------------------
 # LOOP PRINCIPAL
@@ -194,8 +202,8 @@ def loop_gestos():
                 if g is None:
                     g = cad.por_pose.get(pose)
                 gid = g["id"] if g else None
-                acao = g["acao"] if g else "nada"
-                tipo, _ = gl.separar_acao(acao)
+                acao = cad.acoes.get(g.get("acao_id")) if g else None
+                tipo = gl.tipo_efetivo(acao)
                 rotulo = g["nome"] if g else pose
 
                 if gid != gesto_atual:
@@ -264,7 +272,7 @@ def loop_gestos():
                             chave = "swipe_direita" if desloc > 0 else "swipe_esquerda"
                             gs = cad.por_pose.get(chave)
                             if gs:
-                                _executar_acao_unica(gs["acao"])
+                                _executar_acao_unica(cad.acoes.get(gs.get("acao_id")))
                             ult_swipe, hist_pulso = agora, []
                     else:
                         hist_pulso = []
