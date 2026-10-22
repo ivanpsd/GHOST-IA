@@ -216,6 +216,8 @@ def _tratar_whatsapp(texto, n, falar):
     m = REGEX_MENSAGEM.search(texto)
     if m:
         contato = re.sub(r"\s+(?:no|pelo)\s+whats\s?app(?:\s+web)?$", "", m.group("contato").strip(" ,.:"), flags=re.I)
+        import pessoas
+        contato = pessoas.resolver_contato(contato)  # "minha líder" -> "Deborah"
         mensagem = m.group("msg").strip(" .…")
         preferir_web = tem(n, "whatsapp web", "whats app web")
         falar("Enviando, senhor." if normalizar(contato) in PARA_MIM else f"Enviando para {contato}.")
@@ -462,6 +464,116 @@ def _executar_acao_cadastrada(n, falar):
         executar(achada["valor"], falar)
     return True
 
+# -------------------------------------------------------------
+# SKILLS ENSINADAS POR VOZ E OBSERVAÇÃO DA ROTINA
+# -------------------------------------------------------------
+_aguardando_descricao = 0.0   # momento em que o Ghost pediu a descrição de uma skill
+
+def _montar_skill(descricao, falar):
+    import skills
+    def _trabalho():
+        try:
+            r = skills.criar_por_descricao(descricao)
+        except Exception as e:
+            falar(f"Senhor, não consegui montar essa skill: {e}.")
+            return
+        extra = (" Não consigo fazer: " + "; ".join(r["nao_suportado"]) + ".") if r.get("nao_suportado") else ""
+        pedir_confirmacao(f"Entendi a skill {r['nome']}: {r['resumo']}. Para usar, diga {r['gatilhos'][0]}.{extra} "
+                          "Posso salvar?", lambda: (skills.salvar(r), falar("Skill salva, senhor.")), falar)
+    falar("Montando a skill, um instante.")
+    em_segundo_plano(_trabalho)
+
+def _tratar_skills(texto, n, falar):
+    global _aguardando_descricao
+    import skills, rotina
+    # resposta ao "descreva a skill"
+    if _aguardando_descricao and time.time() - _aguardando_descricao < 120:
+        _aguardando_descricao = 0.0
+        _montar_skill(texto, falar)
+        return True
+    m = re.search(r"^(?:ghost\s+)?(?:aprend\w*|cri\w*|ensin\w*|cadastr\w*)\s+(?:uma\s+)?(?:nova\s+)?"
+                  r"(?:skill|habilidade|rotina automatica)\b[\s,:]*(?P<desc>.*)$", n)
+    if m:
+        desc_original = re.split(r"(?i)\b(?:skill|habilidade|rotina autom[aá]tica)\b[\s,:]*", texto, maxsplit=1)
+        desc = desc_original[1].strip() if len(desc_original) > 1 else ""
+        if len(desc.split()) < 4:
+            _aguardando_descricao = time.time()
+            falar("Pode descrever, senhor: o nome, a frase que vai disparar e os passos.")
+        else:
+            _montar_skill(desc, falar)
+        return True
+    if tem(n, "quais skills", "que skills", "lista de skills", "minhas skills", "quais habilidades"):
+        lista = skills.carregar()
+        falar(("Skills salvas: " + "; ".join(f"{s['nome']}, dita como {s['gatilhos'][0]}" for s in lista) + ".")
+              if lista else "Ainda não há skills salvas, senhor.")
+        return True
+    m = re.search(r"\b(?:esquec\w*|apag\w*|exclu\w*|remov\w*)\s+(?:a\s+)?(?:skill|habilidade)\s+(?P<nome>.+)$", n)
+    if m:
+        qtd = skills.excluir(m.group("nome"))
+        falar("Skill excluída, senhor." if qtd else "Senhor, não encontrei essa skill.")
+        return True
+    s = skills.encontrar(n)
+    if s:
+        falar(f"Executando {s['nome']}, senhor.")
+        em_segundo_plano(lambda: skills.executar(s, falar, pedir_confirmacao))
+        return True
+
+    # observação da rotina
+    if tem(n, "observacao da rotina", "observar a rotina", "observar minha rotina", "aprender minha rotina",
+           "monitorar minha rotina"):
+        if re.search(VERBO_DESLIGAR, n):
+            rotina.ativar(False, falar); return True
+        if re.search(VERBO_LIGAR, n) or tem(n, "observar", "aprender", "monitorar"):
+            rotina.ativar(True, falar); return True
+    if tem(n, "o que eu fiz hoje", "o que fiz hoje", "como foi meu dia", "resumo do meu dia"):
+        falar(rotina.resumo_de_hoje())
+        return True
+    return False
+
+# -------------------------------------------------------------
+# FICHAS DE PESSOAS (sem biometria: só o que for dito)
+# -------------------------------------------------------------
+REGEX_APRESENTAR = re.compile(r"^(?:ghost\s+)?(?:(?:este|esta|esse|essa)\s+(?:e|eh)\s+(?:o|a)\s+|"
+                              r"(?:te\s+)?apresent\w*\s+(?:o|a)\s+|conhec\w*\s+(?:o|a)\s+|"
+                              r"anot\w*\s+(?:sobre|que)\s+(?:o|a)\s+)")
+REGEX_FALANTE = re.compile(r"^(?:ghost\s+)?(?:aqui\s+(?:e|eh)|sou|quem\s+esta\s+falando\s+(?:e|eh)|"
+                           r"agora\s+(?:e|eh|quem\s+fala\s+e))\s+(?:o\s+|a\s+)?(?P<nome>[a-z]+(?:\s+[a-z]+)?)$")
+REGEX_CONSULTA = re.compile(r"(?:o\s+que\s+(?:voce\s+)?sabe\s+(?:sobre|d[oa])|ficha\s+d[oa]|quem\s+(?:e|eh))\s+"
+                            r"(?:o\s+|a\s+)?(?P<nome>.+)$")
+REGEX_ESQUECER = re.compile(r"(?:esquec\w*|apag\w*|exclu\w*)\s+(?:a\s+)?ficha\s+d[oa]\s+(?P<nome>.+)$")
+
+def _tratar_pessoas(texto, n, falar):
+    import pessoas
+    m = REGEX_FALANTE.search(n)
+    if m and len(n.split()) <= 6 and m.group("nome").split()[0] not in ("eu", "ele", "ela", "voce", "o", "a", "dono"):
+        p = pessoas.definir_falante(m.group("nome"))
+        if p is None:
+            falar(f"Bem-vindo de volta, {pessoas.DONO}.")
+        else:
+            falar(f"Olá, {p['nome']}." + ("" if p.get("funcao") or p.get("notas") else
+                                           " Ainda não tenho uma ficha sua. Quer se apresentar?"))
+        return True
+    if REGEX_APRESENTAR.search(n):
+        def _salvar():
+            try:
+                p = pessoas.registrar(texto)
+                falar(f"Ficha de {p['nome']} salva" + (f": {p['funcao']}." if p.get("funcao") else "."))
+            except Exception as e:
+                falar(f"Não consegui registrar: {e}.")
+        em_segundo_plano(_salvar)
+        return True
+    m = REGEX_ESQUECER.search(n)
+    if m:
+        falar("Ficha excluída." if pessoas.excluir(m.group("nome")) else "Não encontrei essa ficha.")
+        return True
+    m = REGEX_CONSULTA.search(n)
+    if m and m.group("nome") not in ("mim", "voce", "eu"):
+        p = pessoas.buscar(m.group("nome")) or pessoas.buscar(pessoas.resolver_contato(m.group("nome")))
+        if p:
+            falar(pessoas.descrever(p))
+            return True
+    return False
+
 def _tratar_ghost(n, falar):
     if _executar_acao_cadastrada(n, falar):
         return True
@@ -577,6 +689,8 @@ def executar(texto, falar):
     n = normalizar(texto)
     return (
         _tratar_confirmacao(n, falar)
+        or _tratar_skills(texto, n, falar)
+        or _tratar_pessoas(texto, n, falar)
         or _tratar_ghost(n, falar)
         or _tratar_whatsapp(texto, n, falar)
         or _tratar_ditado_e_teclas(texto, n, falar)

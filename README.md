@@ -17,6 +17,10 @@ Assistente pessoal para Windows, em Python: você fala segurando **F9**, ele res
 | Cadastro | Tela com abas **Ações** (teclas, comandos de voz, **macros gravadas** do teclado/mouse) e **Gestos** (nativos ou gravados), cada gesto ligado a uma ação |
 | Rosto | Leitura de expressão (estimativa) e check-in periódico ("como o senhor está?") |
 | Memória | Aprende fatos e padrões de comportamento automaticamente (`memoria_aprendizado.json`) |
+| Conversa contínua | Lembra as últimas 12 trocas (inclusive comandos executados); recomeça após 45 min parado |
+| Skills por voz | "aprenda uma nova skill": a IA monta os passos com as ferramentas existentes e só salva com o seu "sim" |
+| Rotina | Observa só o programa/janela em foco (sem captura de tela), resume padrões e sugere skills |
+| Pessoas | Fichas ditas por voz (nome, função, telefone, notas), sem biometria; "aqui é Fulano" muda quem está falando |
 | Sistema | Inicia com o Windows, roda oculto com log (`ghost.log`), impede duas cópias abertas |
 
 ## Instalação
@@ -54,6 +58,10 @@ Assistente pessoal para Windows, em Python: você fala segurando **F9**, ele res
 | "como eu estou?" | Estado estimado pela expressão |
 | "não me pergunte por 30 minutos" / "pausar check-in" | Controla os check-ins |
 | "outro monitor" / "um monitor por vez" | Mouse em dois monitores |
+| "aprenda uma nova skill" / "quais skills você sabe?" / "esqueça a skill X" | Skills ensinadas por voz |
+| "o que eu fiz hoje?" / "ativar/desativar observação da rotina" | Rotina de uso do PC |
+| "esta é a Deborah, minha líder..." / "o que você sabe sobre a Deborah?" | Fichas de pessoas |
+| "aqui é o Gustavo" / "aqui é o Ivan" | Quem está falando (por declaração) |
 
 ## Gestos padrão (editáveis no cadastro)
 
@@ -85,10 +93,16 @@ Assistente pessoal para Windows, em Python: você fala segurando **F9**, ele res
 | `apps.py` | Lista, abre e fecha aplicativos instalados |
 | `ferramentas.py` | Ferramentas que a IA pode chamar (conjunto fechado, sem comando livre) |
 | `rosto.py` | Leitura de expressão, check-in e padrões de comportamento |
+| `conversa.py` | Contexto da conversa (memória de curto prazo) |
+| `skills.py` | Skills ensinadas por voz |
+| `rotina.py` | Observação da rotina (programa/janela em foco) e sugestões |
+| `pessoas.py` | Fichas de pessoas e falante atual |
 
 ## Privacidade
 
 - As chaves ficam só no `.env`, que não vai para o Git.
 - Nenhuma imagem da câmera é gravada; só números de expressão, mantidos em memória.
-- `memoria_aprendizado.json`, `humor_log.jsonl`, `gestos_cadastro.json` e `ghost.log` ficam fora do Git.
+- Ficam fora do Git: `memoria_aprendizado.json`, `conversa_recente.json`, `humor_log.jsonl`, `rotina_log.jsonl`, `skills.json`, `pessoas.json`, `gestos_cadastro.json` e `ghost.log`.
+- A rotina registra apenas o nome do programa e o título da janela (`GUARDAR_TITULOS = False` em `rotina.py` guarda só o programa).
+- Fichas de pessoas não usam rosto nem voz: só o que é dito ao Ghost.
 - Expressão facial é uma **estimativa**, não um diagnóstico de sentimento.

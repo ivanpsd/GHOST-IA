@@ -38,9 +38,12 @@ from google import genai
 from groq import Groq
 
 import automacoes
+import conversa
 import ferramentas
 import memoria
 import rosto
+import pessoas
+import rotina
 
 
 # -------------------------------------------------------------
@@ -183,6 +186,8 @@ SYSTEM_INSTRUCTION = (
     "Responda SEMPRE em português do Brasil com no máximo 2 frases diretas. "
     "Seja extremamente objetivo, preciso e sem enrolação. "
     "Trate o usuário como 'senhor'. "
+    "Use o histórico da conversa: não pergunte de novo o que o usuário já disse e entenda referências "
+    "como 'ele', 'isso', 'o anterior'. "
     "Responda normalmente perguntas de conhecimento geral com o que você sabe (história, geografia, ciência, "
     "explicações). Nunca invente fatos específicos que não conhece (números, nomes, dados recentes): "
     "nesses casos diga que não sabe. "
@@ -198,7 +203,7 @@ SYSTEM_INSTRUCTION = (
 
 def instrucao_completa():
     """Instrução fixa + fatos aprendidos (relidos a cada pergunta)."""
-    return SYSTEM_INSTRUCTION + memoria.texto_para_prompt()
+    return SYSTEM_INSTRUCTION + memoria.texto_para_prompt() + pessoas.texto_para_prompt()
 
 FIM_DE_FRASE = re.compile(r'[.!?…](?=\s)')
 
@@ -280,10 +285,11 @@ def consultar_ia_streaming(prompt_usuario, ao_receber_frase):
     if REQUISICOES_HOJE == LIMITE_ALERTA:
         print("\n[SISTEMA]: Alerta de cota - 90% do limite diário atingido.")
 
-    mensagens = [
-        {"role": "system", "content": instrucao_completa()},
-        {"role": "user", "content": prompt_usuario},
-    ]
+    mensagens = (
+        [{"role": "system", "content": instrucao_completa()}]
+        + conversa.como_mensagens()          # o que já foi dito: evita perguntar de novo
+        + [{"role": "user", "content": prompt_usuario}]
+    )
     ultimo_erro = None
 
     # 1. GROQ (streaming, com ferramentas para agir no PC)
@@ -310,7 +316,7 @@ def consultar_ia_streaming(prompt_usuario, ao_receber_frase):
     try:
         response = client_gemini.models.generate_content(
             model=MODELO_GEMINI,
-            contents=prompt_usuario,
+            contents=conversa.como_texto() + prompt_usuario,
             config={"system_instruction": instrucao_completa(), "temperature": 0.1, "max_output_tokens": 1024}
         )
         texto = (response.text or "").strip()
@@ -349,7 +355,9 @@ def processar_resposta_em_tempo_real(comando, t_inicio=None):
         if MOSTRAR_TEMPOS and primeira:
             print(f"  [tempo] 1ª frase da IA pronta em {primeira[0]:.2f}s")
         if resposta:
-            memoria.aprender_em_segundo_plano(client_groq, comando, resposta)
+            conversa.registrar(comando, resposta)
+            if not pessoas.falante_atual():  # só aprende sobre o dono quando é ele falando
+                memoria.aprender_em_segundo_plano(client_groq, comando, resposta)
     except Exception as e:
         print(f"\nErro no processamento: {e}")
         print("\n[GHOST]: Desculpe, senhor. Tive uma falha geral de conexão com os servidores.")
@@ -427,6 +435,7 @@ def ghost_ocupado():
 def iniciar_ghost():
     falar_imediato("GHOST.")
     rosto.iniciar(falar_local, ghost_ocupado, client_groq)  # leitura facial + check-in periódico
+    rotina.iniciar(falar_local, ghost_ocupado, client_groq, automacoes.pedir_confirmacao)  # aprende a rotina
 
     while True:
         keyboard.wait('f9')
@@ -449,7 +458,10 @@ def iniciar_ghost():
                     continue
 
                 # 1º ações locais (instantâneas, sem gastar cota); 2º IA
-                if not automacoes.executar(comando, falar_local):
+                pessoas.renovar_falante()
+                if automacoes.executar(comando, falar_local):
+                    conversa.registrar(comando, "[comando executado localmente pelo Ghost]")
+                else:
                     processar_resposta_em_tempo_real(comando, t0)
 
         except sr.UnknownValueError:

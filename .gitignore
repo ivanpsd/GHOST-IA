@@ -21,3 +21,11 @@ modelos/
 
 # Diário de humor dos check-ins (pessoal)
 humor_log.jsonl
+
+# Contexto da conversa (pessoal)
+conversa_recente.json
+# Skills e rotina (pessoal)
+skills.json
+rotina_log.jsonl
+# Segredos da autenticação (criptografados pelo Windows)
+seguranca.dat
