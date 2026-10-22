@@ -169,7 +169,7 @@ def falante_atual():
 
 def texto_para_prompt():
     fichas = carregar()
-    texto = ""
+    texto = f"\n\nO dono do Ghost (o usuário principal) se chama {DONO}. Nunca use outro nome para ele."
     if fichas:
         linhas = "\n".join(f"- {p['nome']}" + (f" ({p['funcao']})" if p.get("funcao") else "") for p in fichas[:40])
         texto += f"\n\nPESSOAS CONHECIDAS (fichas que o usuário ditou):\n{linhas}"

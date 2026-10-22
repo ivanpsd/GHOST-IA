@@ -2,6 +2,10 @@ import os
 import sys
 from datetime import datetime
 
+# Silencia os avisos internos do MediaPipe/TensorFlow (W0000, INFO...) no terminal
+os.environ.setdefault("GLOG_minloglevel", "2")
+os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "3")
+
 PASTA_GHOST = os.path.dirname(os.path.abspath(__file__))
 os.chdir(PASTA_GHOST)  # garante caminhos relativos certos ao iniciar com o Windows
 
@@ -43,6 +47,7 @@ import ferramentas
 import memoria
 import rosto
 import pessoas
+import preferencias
 import rotina
 
 
@@ -168,10 +173,11 @@ if not GEMINI_KEY or not GROQ_KEY:
 
 # Modelos (troque aqui quando um provedor descontinuar algum)
 MODELOS_GROQ = ["openai/gpt-oss-120b", "openai/gpt-oss-20b"]  # principal: tentados nesta ordem
-MODELO_GEMINI = "gemini-3.8-flash"                             # reserva
+MODELOS_GEMINI = ["gemini-3.8-flash", "gemini-3.5-flash", "gemini-2.5-flash"]  # reserva: tentados em ordem
 MODELO_TRANSCRICAO = "whisper-large-v3-turbo"                  # voz -> texto (Groq)
 ESFORCO_RACIOCINIO = "medium"  # "low" responde mais rápido, mas erra/recusa mais perguntas simples
-MOSTRAR_TEMPOS = True  # imprime quanto tempo cada etapa levou
+MOSTRAR_TEMPOS = True
+SAUDAR_APOS_MINUTOS = 30   # chamado pelo F9 depois desse tempo parado, ele cumprimenta antes de responder  # imprime quanto tempo cada etapa levou
 
 # Contadores e limites locais
 REQUISICOES_HOJE = 0
@@ -196,6 +202,8 @@ SYSTEM_INSTRUCTION = (
     "mandar mensagem, volume, gestos, macros), CHAME A FERRAMENTA em vez de responder com texto; "
     "nunca diga que não é capaz de algo que uma ferramenta faz. "
     "Para informações do computador (disco, memória, IP, programas abertos, data e hora) use consultar_sistema. "
+    "Você ENXERGA pela webcam com a ferramenta olhar_camera: quando o usuário mostrar algo ou perguntar o que "
+    "é/o que você vê, use-a em vez de pedir que ele descreva. "
     "Você não tem acesso a dados em tempo real na internet: para notícias, cotações ou clima, use pesquisar_web. "
     "Se o pedido estiver ambíguo ou você ficar em dúvida sobre o que executar, pergunte ao usuário o propósito "
     "em uma frase curta antes de agir. Se nenhuma ferramenta cobre o pedido, diga isso com clareza."
@@ -314,12 +322,21 @@ def consultar_ia_streaming(prompt_usuario, ao_receber_frase):
 
     # 2. GEMINI (reserva, sem streaming)
     try:
-        response = client_gemini.models.generate_content(
-            model=MODELO_GEMINI,
-            contents=conversa.como_texto() + prompt_usuario,
-            config={"system_instruction": instrucao_completa(), "temperature": 0.1, "max_output_tokens": 1024}
-        )
-        texto = (response.text or "").strip()
+        texto, erro_gemini = "", None
+        for modelo_g in MODELOS_GEMINI:  # se um modelo estiver sobrecarregado (503), tenta o próximo
+            try:
+                response = client_gemini.models.generate_content(
+                    model=modelo_g,
+                    contents=conversa.como_texto() + prompt_usuario,
+                    config={"system_instruction": instrucao_completa(), "temperature": 0.1, "max_output_tokens": 1024}
+                )
+                texto = (response.text or "").strip()
+                if texto:
+                    break
+            except Exception as eg:
+                erro_gemini = eg
+        if not texto and erro_gemini:
+            raise erro_gemini
         if texto:
             print(f"\n[GHOST]: {texto}")
             frases, resto = _separar_frases(texto + " ")
@@ -433,7 +450,8 @@ def ghost_ocupado():
             or not texto_queue.empty() or not audio_queue.empty())
 
 def iniciar_ghost():
-    falar_imediato("GHOST.")
+    falar_imediato(preferencias.carregar()["saudacao"])
+    ultimo_uso = time.time()
     rosto.iniciar(falar_local, ghost_ocupado, client_groq)  # leitura facial + check-in periódico
     rotina.iniciar(falar_local, ghost_ocupado, client_groq, automacoes.pedir_confirmacao)  # aprende a rotina
 
@@ -457,6 +475,11 @@ def iniciar_ghost():
                     falar_imediato("Sim, senhor?")
                     continue
 
+                # Chamado depois de um tempo parado: cumprimenta antes de responder
+                if time.time() - ultimo_uso > SAUDAR_APOS_MINUTOS * 60:
+                    falar_imediato(preferencias.carregar()["saudacao"])
+                ultimo_uso = time.time()
+
                 # 1º ações locais (instantâneas, sem gastar cota); 2º IA
                 pessoas.renovar_falante()
                 if automacoes.executar(comando, falar_local):
@@ -472,4 +495,7 @@ def iniciar_ghost():
             _ocupado.clear()
 
 if __name__ == "__main__":
-    iniciar_ghost()
+    try:
+        iniciar_ghost()
+    except KeyboardInterrupt:
+        print("\n[GHOST]: encerrado pelo usuário (Ctrl+C).")

@@ -133,6 +133,9 @@ def executar(skill, falar, pedir_confirmacao):
         if nome == "esperar":
             time.sleep(min(float(args.get("segundos", 2)), ESPERA_MAXIMA))
         elif nome in PERMITIDAS:
-            ferramentas.executar(nome, args, lambda _t: None, pedir_confirmacao)  # sem falar a cada passo
+            # não narra cada passo, mas fala perguntas ("quis dizer X?") e avisos de falha
+            ferramentas.executar(nome, args,
+                                 lambda t: falar(t) if ("?" in t or "não" in t.lower() or "falha" in t.lower()) else None,
+                                 pedir_confirmacao)
             time.sleep(0.5)
     falar(f"Skill {skill['nome']} concluída, senhor.")

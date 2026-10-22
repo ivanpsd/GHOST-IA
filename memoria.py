@@ -25,11 +25,16 @@ _trava = threading.Lock()
 PROMPT_EXTRACAO = """Você é o módulo de memória de um assistente pessoal.
 Analise a fala do USUÁRIO e decida se ela contém fatos DURADOUROS sobre ele que valem ser lembrados no futuro.
 
-Guarde apenas o que o usuário afirmou sobre si: nome, preferências, gostos, rotina, trabalho, empresa,
+Guarde apenas o que o usuário AFIRMOU CLARAMENTE sobre si: preferências, gostos, rotina, trabalho, empresa,
 cargo, projetos, pessoas próximas e seus papéis, equipamentos, cidade, objetivos, como quer ser atendido.
 
-NÃO guarde: perguntas, curiosidades gerais, o que o ASSISTENTE disse, fatos passageiros (ex.: "estou com fome"),
-nem dados sensíveis (senhas, chaves, documentos, números de cartão ou conta, saúde).
+NÃO guarde:
+- o NOME do usuário (ele se chama Ivan; isso é fixo e não vem da memória) nem nomes que contradigam isso;
+- respostas curtas a perguntas do assistente ("não preciso de nada", "estou bem", "sim", "pode");
+- frases soltas, sem sentido completo ou que pareçam erro de transcrição (na dúvida, NÃO guarde);
+- perguntas, curiosidades gerais, o que o ASSISTENTE disse, fatos passageiros (ex.: "estou com fome");
+- endereço completo (rua e número): no máximo cidade e bairro;
+- dados sensíveis (senhas, chaves, documentos, números de cartão ou conta, saúde).
 
 Se a fala corrigir ou contradizer um fato já salvo, remova o antigo e adicione o novo.
 Se o usuário pedir para esquecer algo, remova o fato correspondente.

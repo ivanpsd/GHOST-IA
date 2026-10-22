@@ -1,7 +1,6 @@
 # Arquivos de chave e configurações sensíveis
 .env
 *.json
-!memoria_ghost.json
 
 # Arquivos temporários de áudio gerados pelo GHOST
 *.mp3
@@ -29,3 +28,7 @@ skills.json
 rotina_log.jsonl
 # Segredos da autenticação (criptografados pelo Windows)
 seguranca.dat
+
+# Arquivos locais sem uso no repositório
+listar_mic.py
+

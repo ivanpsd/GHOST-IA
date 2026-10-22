@@ -20,6 +20,8 @@ Assistente pessoal para Windows, em Python: você fala segurando **F9**, ele res
 | Conversa contínua | Lembra as últimas 12 trocas (inclusive comandos executados); recomeça após 45 min parado |
 | Skills por voz | "aprenda uma nova skill": a IA monta os passos com as ferramentas existentes e só salva com o seu "sim" |
 | Rotina | Observa só o programa/janela em foco (sem captura de tela), resume padrões e sugere skills |
+| Visão | "o que é isso na minha mão?": tira uma foto sob demanda e descreve o objeto (Gemini; detector local de reserva). Não identifica pessoas |
+| Saudação | Frase de cumprimento configurável por voz (`preferencias.json`) |
 | Pessoas | Fichas ditas por voz (nome, função, telefone, notas), sem biometria; "aqui é Fulano" muda quem está falando |
 | Sistema | Inicia com o Windows, roda oculto com log (`ghost.log`), impede duas cópias abertas |
 
@@ -62,6 +64,8 @@ Assistente pessoal para Windows, em Python: você fala segurando **F9**, ele res
 | "o que eu fiz hoje?" / "ativar/desativar observação da rotina" | Rotina de uso do PC |
 | "esta é a Deborah, minha líder..." / "o que você sabe sobre a Deborah?" | Fichas de pessoas |
 | "aqui é o Gustavo" / "aqui é o Ivan" | Quem está falando (por declaração) |
+| "o que é isso na minha mão?" / "o que você está vendo?" | Visão pela câmera, sob demanda |
+| "a partir de agora, me cumprimente dizendo..." | Muda a saudação |
 
 ## Gestos padrão (editáveis no cadastro)
 
@@ -97,6 +101,8 @@ Assistente pessoal para Windows, em Python: você fala segurando **F9**, ele res
 | `skills.py` | Skills ensinadas por voz |
 | `rotina.py` | Observação da rotina (programa/janela em foco) e sugestões |
 | `pessoas.py` | Fichas de pessoas e falante atual |
+| `visao.py` | Foto sob demanda + descrição do objeto |
+| `preferencias.py` | Preferências como a saudação |
 
 ## Privacidade
 
@@ -105,4 +111,5 @@ Assistente pessoal para Windows, em Python: você fala segurando **F9**, ele res
 - Ficam fora do Git: `memoria_aprendizado.json`, `conversa_recente.json`, `humor_log.jsonl`, `rotina_log.jsonl`, `skills.json`, `pessoas.json`, `gestos_cadastro.json` e `ghost.log`.
 - A rotina registra apenas o nome do programa e o título da janela (`GUARDAR_TITULOS = False` em `rotina.py` guarda só o programa).
 - Fichas de pessoas não usam rosto nem voz: só o que é dito ao Ghost.
+- A visão só tira foto quando você pede; a foto vai ao Gemini para ser descrita e não é salva.
 - Expressão facial é uma **estimativa**, não um diagnóstico de sentimento.

@@ -49,6 +49,25 @@ TOOLS = [
                         "leitura facial, check-in, monitores, executar ação/macro cadastrada."),
         "parameters": {"type": "object", "properties": {"frase": {"type": "string"}}, "required": ["frase"]}}},
     {"type": "function", "function": {
+        "name": "olhar_camera",
+        "description": ("Tira uma foto pela webcam e descreve o que aparece. Use SEMPRE que o usuário pedir para "
+                        "você ver, olhar ou identificar algo ('o que é isso?', 'o que tem na minha mão?', "
+                        "'olha isso', 'o que você está vendo?'). Nunca peça para ele descrever o objeto."),
+        "parameters": {"type": "object", "properties": {"pergunta": {"type": "string"}}, "required": ["pergunta"]}}},
+    {"type": "function", "function": {
+        "name": "criar_skill",
+        "description": ("Cria uma skill: uma sequência de ações no PC (abrir programas/sites, digitar, teclas, "
+                        "mensagens, macros) disparada por uma frase. NÃO use para mudar o jeito de o Ghost falar "
+                        "ou cumprimentar (para isso use definir_saudacao)."),
+        "parameters": {"type": "object", "properties": {"descricao": {"type": "string",
+            "description": "a descrição completa do usuário: nome, frase de disparo e passos"}},
+            "required": ["descricao"]}}},
+    {"type": "function", "function": {
+        "name": "definir_saudacao",
+        "description": ("Muda a frase que o Ghost fala ao ser chamado (ao iniciar e ao ser acionado pelo F9 depois "
+                        "de um tempo parado). Use quando o usuário pedir para o Ghost cumprimentá-lo de outro jeito."),
+        "parameters": {"type": "object", "properties": {"frase": {"type": "string"}}, "required": ["frase"]}}},
+    {"type": "function", "function": {
         "name": "consultar_sistema",
         "description": "Consulta informações do computador (somente leitura).",
         "parameters": {"type": "object", "properties": {"item": {"type": "string", "enum": [
@@ -130,6 +149,25 @@ def executar(nome, args, falar, pedir_confirmacao):
             if not ok:
                 falar("Senhor, esse comando não existe nas minhas automações.")
             return "executado" if ok else "comando não reconhecido", False
+
+        if nome == "olhar_camera":
+            import visao
+            falar("Deixe-me ver.")
+            resposta = visao.olhar(args.get("pergunta", "o que é isso?"))
+            falar(resposta)
+            return f"visto pela câmera: {resposta}", False
+
+        if nome == "criar_skill":
+            import automacoes
+            automacoes._montar_skill(args.get("descricao", ""), falar)
+            return "montando a skill; o usuário vai confirmar por voz", False
+
+        if nome == "definir_saudacao":
+            import preferencias
+            frase = args.get("frase", "").strip()
+            preferencias.definir("saudacao", frase)
+            falar(f"Combinado. A partir de agora vou dizer: {frase}")
+            return "saudação alterada", False
 
         if nome == "consultar_sistema":
             item = args.get("item", "")
