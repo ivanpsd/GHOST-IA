@@ -49,6 +49,19 @@ TOOLS = [
                         "leitura facial, check-in, monitores, executar ação/macro cadastrada."),
         "parameters": {"type": "object", "properties": {"frase": {"type": "string"}}, "required": ["frase"]}}},
     {"type": "function", "function": {
+        "name": "criar_lembrete",
+        "description": ("Cria um lembrete/alarme. Converta o horário falado ('às 15h', 'daqui a 20 minutos', "
+                        "'amanhã às 9') para data e hora absolutas usando o horário AGORA informado."),
+        "parameters": {"type": "object", "properties": {
+            "quando": {"type": "string", "description": "AAAA-MM-DD HH:MM"},
+            "texto": {"type": "string", "description": "do que lembrar, curto"}}, "required": ["quando", "texto"]}}},
+    {"type": "function", "function": {
+        "name": "listar_lembretes", "description": "Lista os lembretes marcados.",
+        "parameters": {"type": "object", "properties": {}}}},
+    {"type": "function", "function": {
+        "name": "cancelar_lembrete", "description": "Cancela lembretes que contenham o trecho informado.",
+        "parameters": {"type": "object", "properties": {"trecho": {"type": "string"}}, "required": ["trecho"]}}},
+    {"type": "function", "function": {
         "name": "olhar_camera",
         "description": ("Tira uma foto pela webcam e descreve o que aparece. Use SEMPRE que o usuário pedir para "
                         "você ver, olhar ou identificar algo ('o que é isso?', 'o que tem na minha mão?', "
@@ -149,6 +162,17 @@ def executar(nome, args, falar, pedir_confirmacao):
             if not ok:
                 falar("Senhor, esse comando não existe nas minhas automações.")
             return "executado" if ok else "comando não reconhecido", False
+
+        if nome in ("criar_lembrete", "listar_lembretes", "cancelar_lembrete"):
+            import lembretes
+            if nome == "criar_lembrete":
+                frase = lembretes.criar(args.get("quando", ""), args.get("texto", ""))
+            elif nome == "listar_lembretes":
+                frase = lembretes.listar()
+            else:
+                frase = lembretes.cancelar(args.get("trecho", ""))
+            falar(frase)
+            return frase, False
 
         if nome == "olhar_camera":
             import visao

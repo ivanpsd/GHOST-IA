@@ -32,3 +32,6 @@ seguranca.dat
 # Arquivos locais sem uso no repositório
 listar_mic.py
 
+# Lembretes e preferencias (pessoais)
+lembretes.json
+preferencias.json

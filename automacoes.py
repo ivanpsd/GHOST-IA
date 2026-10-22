@@ -574,8 +574,17 @@ def _tratar_pessoas(texto, n, falar):
             return True
     return False
 
+def _tratar_ativacao(n, falar):
+    if tem(n, "ativacao por voz", "palavra de ativacao", "ouvir meu chamado", "me ouvir sem o f9"):
+        import ativacao
+        if re.search(VERBO_DESLIGAR, n):
+            ativacao.ligar(False, falar); return True
+        if re.search(VERBO_LIGAR, n):
+            ativacao.ligar(True, falar); return True
+    return False
+
 def _tratar_ghost(n, falar):
-    if _executar_acao_cadastrada(n, falar):
+    if _tratar_ativacao(n, falar) or _executar_acao_cadastrada(n, falar):
         return True
     if tem(n, "cadastro de gestos", "cadastro dos gestos", "cadastrar gesto", "cadastrar gestos",
            "cadastrar um gesto", "novo gesto"):

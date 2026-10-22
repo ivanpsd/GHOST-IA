@@ -49,6 +49,8 @@ import rosto
 import pessoas
 import preferencias
 import rotina
+import ativacao
+import lembretes
 
 
 # -------------------------------------------------------------
@@ -81,24 +83,49 @@ def _sintetizar(texto_limpo, rate):
     mp3 = asyncio.run(_gerar())
     return sf.read(io.BytesIO(mp3), dtype='float32')
 
+_falando = threading.Event()   # True enquanto o Ghost está com som saindo
+
 def gerador_de_audio():
     """Thread 1: transforma frases em áudio enquanto a anterior ainda está tocando."""
     while True:
         texto_limpo = texto_queue.get()
         try:
-            audio_queue.put(_sintetizar(texto_limpo, "+5%"))
+            data, fs = _sintetizar(texto_limpo, "+5%")
+            audio_queue.put((data, fs, texto_limpo))
         except Exception as e:
             print(f"\nErro ao gerar voz: {e}")
 
 def reprodutor_de_audio():
     """Thread 2: toca os áudios na ordem em que ficam prontos."""
     while True:
-        data, fs = audio_queue.get()
+        data, fs, texto = audio_queue.get()
         try:
+            _falando.set()
             sd.play(data, fs)
             sd.wait()
         except Exception:
             pass
+        finally:
+            _falando.clear()
+        # terminou de falar uma pergunta: a próxima frase vale como resposta, sem dizer "Ghost"
+        if texto.rstrip().endswith("?") and texto_queue.empty() and audio_queue.empty():
+            ativacao.aguardar_comando()
+
+def ghost_falando():
+    return _falando.is_set() or not texto_queue.empty() or not audio_queue.empty()
+
+def parar_fala():
+    """Interrompe na hora o que o Ghost está falando e descarta o resto da resposta."""
+    for fila in (texto_queue, audio_queue):
+        while not fila.empty():
+            try:
+                fila.get_nowait()
+            except queue.Empty:
+                break
+    try:
+        sd.stop()
+    except Exception:
+        pass
 
 threading.Thread(target=gerador_de_audio, daemon=True).start()
 threading.Thread(target=reprodutor_de_audio, daemon=True).start()
@@ -111,10 +138,13 @@ def falar_imediato(texto):
         return
     try:
         data, fs = _sintetizar(texto_limpo, "+10%")
+        _falando.set()
         sd.play(data, fs)
         sd.wait()
     except Exception as e:
         print(f"\nErro ao gerar voz: {e}")
+    finally:
+        _falando.clear()
 
 def falar_local(texto):
     """Usada pelas automações: mostra no terminal/log e fala sem travar."""
@@ -211,7 +241,10 @@ SYSTEM_INSTRUCTION = (
 
 def instrucao_completa():
     """Instrução fixa + fatos aprendidos (relidos a cada pergunta)."""
-    return SYSTEM_INSTRUCTION + memoria.texto_para_prompt() + pessoas.texto_para_prompt()
+    agora = datetime.now()
+    dias = ["segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta-feira", "sábado", "domingo"]
+    return (SYSTEM_INSTRUCTION + f"\n\nAGORA: {dias[agora.weekday()]}, {agora:%d/%m/%Y %H:%M} (horário de Brasília)."
+            + memoria.texto_para_prompt() + pessoas.texto_para_prompt())
 
 FIM_DE_FRASE = re.compile(r'[.!?…](?=\s)')
 
@@ -426,6 +459,7 @@ def transcrever(wav_bytes):
             model=MODELO_TRANSCRICAO,
             language="pt",
             temperature=0.0,
+            prompt="Ghost,",   # ajuda o Whisper a escrever o nome do assistente corretamente
         )
         texto = (resultado.text or "").strip()
         if not texto or any(a in texto.lower() for a in ALUCINACOES_WHISPER):
@@ -449,46 +483,75 @@ def ghost_ocupado():
     return (_ocupado.is_set() or keyboard.is_pressed('f9')
             or not texto_queue.empty() or not audio_queue.empty())
 
+NOME_NO_INICIO = re.compile(r"^\W*(?:ei|hey|oi|ô|o)?\W*(?:ghost|gost|ghosts|gosti|góst)\b", re.IGNORECASE)
+fila_comandos = queue.Queue()   # comandos de voz vindos do F9 ou da ativação por voz
+
+def _escutar_f9():
+    """Thread: segurar F9 continua funcionando como antes (e interrompe a fala)."""
+    while True:
+        keyboard.wait('f9')
+        parar_fala()
+        ativacao.pausar()
+        try:
+            wav = gravar_enquanto_segurar()
+        finally:
+            ativacao.retomar()
+        if wav:
+            fila_comandos.put({"wav": wav, "verificar_nome": False, "so_nome": False})
+
 def iniciar_ghost():
     falar_imediato(preferencias.carregar()["saudacao"])
     ultimo_uso = time.time()
     rosto.iniciar(falar_local, ghost_ocupado, client_groq)  # leitura facial + check-in periódico
     rotina.iniciar(falar_local, ghost_ocupado, client_groq, automacoes.pedir_confirmacao)  # aprende a rotina
+    lembretes.iniciar(falar_local)                          # lembretes e alarmes
+    threading.Thread(target=_escutar_f9, daemon=True).start()
+    ativacao.iniciar(fila_comandos.put, ghost_falando, parar_fala)  # "Ghost, ..." sem F9
 
     while True:
-        keyboard.wait('f9')
+        item = fila_comandos.get()
         _ocupado.set()
-
         try:
-            wav = gravar_enquanto_segurar()
-            if wav:
-                t0 = time.perf_counter()
-                texto = transcrever(wav)
-                if MOSTRAR_TEMPOS:
-                    print(f"  [tempo] voz -> texto em {time.perf_counter() - t0:.2f}s")
-                print(f"[Você]: {texto}")
+            if item["so_nome"]:  # disse só "Ghost"
+                falar_imediato("Sim, senhor?")
+                ativacao.aguardar_comando()
+                continue
 
-                # Remove o nome "Ghost" da frase, mantendo maiúsculas/acentos (usados no WhatsApp)
-                comando = re.sub(r'\b(ghost|gost)\b[,.!?]?', '', texto, flags=re.IGNORECASE).strip(" ,.!?")
+            t0 = time.perf_counter()
+            texto = transcrever(item["wav"])
+            if MOSTRAR_TEMPOS:
+                print(f"  [tempo] voz -> texto em {time.perf_counter() - t0:.2f}s")
 
-                if not comando:
-                    falar_imediato("Sim, senhor?")
-                    continue
+            # 2ª conferência da ativação por voz: a frase precisa começar com "Ghost"
+            if item["verificar_nome"] and not NOME_NO_INICIO.search(texto):
+                print(f"\n[ATIVAÇÃO]: alarme falso ignorado ({texto[:40]!r})")
+                continue
+            print(f"[Você]: {texto}")
+            parar_fala()
 
-                # Chamado depois de um tempo parado: cumprimenta antes de responder
-                if time.time() - ultimo_uso > SAUDAR_APOS_MINUTOS * 60:
-                    falar_imediato(preferencias.carregar()["saudacao"])
-                ultimo_uso = time.time()
+            # Remove o nome "Ghost" da frase, mantendo maiúsculas/acentos (usados no WhatsApp)
+            comando = re.sub(r'\b(ghost|gost)\b[,.!?]?', '', texto, flags=re.IGNORECASE).strip(" ,.!?")
 
-                # 1º ações locais (instantâneas, sem gastar cota); 2º IA
-                pessoas.renovar_falante()
-                if automacoes.executar(comando, falar_local):
-                    conversa.registrar(comando, "[comando executado localmente pelo Ghost]")
-                else:
-                    processar_resposta_em_tempo_real(comando, t0)
+            if not comando:
+                falar_imediato("Sim, senhor?")
+                ativacao.aguardar_comando()
+                continue
+
+            # Chamado depois de um tempo parado: cumprimenta antes de responder
+            if time.time() - ultimo_uso > SAUDAR_APOS_MINUTOS * 60:
+                falar_imediato(preferencias.carregar()["saudacao"])
+            ultimo_uso = time.time()
+
+            # 1º ações locais (instantâneas, sem gastar cota); 2º IA
+            pessoas.renovar_falante()
+            if automacoes.executar(comando, falar_local):
+                conversa.registrar(comando, "[comando executado localmente pelo Ghost]")
+            else:
+                processar_resposta_em_tempo_real(comando, t0)
 
         except sr.UnknownValueError:
-            falar_imediato("Desculpe, senhor. Não entendi.")
+            if not item.get("verificar_nome"):
+                falar_imediato("Desculpe, senhor. Não entendi.")
         except Exception as e:
             print(f"Erro: {e}")
         finally:

@@ -6,7 +6,9 @@ Assistente pessoal para Windows, em Python: você fala segurando **F9**, ele res
 
 | Área | O que faz |
 |---|---|
-| Voz | Push-to-talk (F9) → transcrição com Whisper (Groq), com o Google como reserva |
+| Voz | "Ghost, …" sem tecla (palavra de ativação **offline** com Vosk) ou segurando F9 → transcrição com Whisper (Groq), com o Google como reserva |
+| Interrupção | Dizer "Ghost" ou apertar F9 enquanto ele fala faz ele parar e ouvir |
+| Lembretes | "me lembra às 15h de…", "quais são meus lembretes?"; fala na hora e mostra aviso na tela |
 | IA | Groq (`openai/gpt-oss-120b`), com resposta em streaming falada frase a frase; Gemini como reserva |
 | Fala | Voz neural `pt-BR-AntonioNeural` (edge-tts), gerada e tocada em paralelo |
 | Aplicativos | Abre/fecha **qualquer app instalado** (lista do Menu Iniciar), com "quis dizer X?" quando o nome não é exato |
@@ -40,6 +42,8 @@ Assistente pessoal para Windows, em Python: você fala segurando **F9**, ele res
    python ghost.py
    ```
    Os modelos de mão e rosto do MediaPipe são baixados sozinhos na primeira vez, para a pasta `modelos/`.
+   Para a palavra de ativação, baixe e extraia em `modelos/` o modelo offline
+   [vosk-model-small-en-us-0.15](https://alphacephei.com/vosk/models) (sem ele, use o F9).
 
 **Iniciar com o Windows:** crie um atalho para `pythonw.exe ghost.py` (pasta de trabalho = pasta do projeto) em `shell:startup`. Rodando oculto, a saída vai para `ghost.log`.
 
@@ -65,6 +69,8 @@ Assistente pessoal para Windows, em Python: você fala segurando **F9**, ele res
 | "esta é a Deborah, minha líder..." / "o que você sabe sobre a Deborah?" | Fichas de pessoas |
 | "aqui é o Gustavo" / "aqui é o Ivan" | Quem está falando (por declaração) |
 | "o que é isso na minha mão?" / "o que você está vendo?" | Visão pela câmera, sob demanda |
+| "me lembra daqui a 20 minutos de…" / "cancela o lembrete do…" | Lembretes |
+| "ativar / desativar ativação por voz" | Liga/desliga a escuta da palavra "Ghost" |
 | "a partir de agora, me cumprimente dizendo..." | Muda a saudação |
 
 ## Gestos padrão (editáveis no cadastro)
@@ -103,6 +109,8 @@ Assistente pessoal para Windows, em Python: você fala segurando **F9**, ele res
 | `pessoas.py` | Fichas de pessoas e falante atual |
 | `visao.py` | Foto sob demanda + descrição do objeto |
 | `preferencias.py` | Preferências como a saudação |
+| `ativacao.py` | Palavra de ativação offline e interrupção |
+| `lembretes.py` | Lembretes e alarmes |
 
 ## Privacidade
 
@@ -111,5 +119,6 @@ Assistente pessoal para Windows, em Python: você fala segurando **F9**, ele res
 - Ficam fora do Git: `memoria_aprendizado.json`, `conversa_recente.json`, `humor_log.jsonl`, `rotina_log.jsonl`, `skills.json`, `pessoas.json`, `gestos_cadastro.json` e `ghost.log`.
 - A rotina registra apenas o nome do programa e o título da janela (`GUARDAR_TITULOS = False` em `rotina.py` guarda só o programa).
 - Fichas de pessoas não usam rosto nem voz: só o que é dito ao Ghost.
+- A palavra de ativação é reconhecida no próprio PC; só a frase que começa com "Ghost" vai para a transcrição.
 - A visão só tira foto quando você pede; a foto vai ao Gemini para ser descrita e não é salva.
 - Expressão facial é uma **estimativa**, não um diagnóstico de sentimento.
