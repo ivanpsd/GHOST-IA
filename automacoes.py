@@ -507,16 +507,80 @@ def _tratar_ghost(n, falar):
 # -------------------------------------------------------------
 # PONTO DE ENTRADA
 # -------------------------------------------------------------
+# -------------------------------------------------------------
+# CONFIRMAÇÃO POR VOZ ("sim" / "não") quando o Ghost fica em dúvida
+# -------------------------------------------------------------
+_confirmacao = None  # {"t", "funcao"}
+TEMPO_CONFIRMACAO = 60
+SIM = ("sim", "pode", "confirmo", "confirma", "isso", "claro", "ok", "abre", "positivo")
+NAO = ("nao", "cancela", "cancelar", "deixa", "esquece", "negativo")
+
+def pedir_confirmacao(pergunta, funcao, falar=None):
+    global _confirmacao
+    _confirmacao = {"t": time.time(), "funcao": funcao}
+    if falar:
+        falar(pergunta)
+
+def _tratar_confirmacao(n, falar):
+    global _confirmacao
+    c, _confirmacao = _confirmacao, None
+    if not c or time.time() - c["t"] > TEMPO_CONFIRMACAO or not n:
+        return False
+    primeira = n.split()[0]
+    if (n in SIM or primeira in SIM) and not tem(n, "nao"):
+        em_segundo_plano(c["funcao"])
+        return True
+    if n in NAO or primeira in NAO:
+        falar("Cancelado, senhor.")
+        return True
+    return False  # falou outra coisa: descarta a pergunta e segue normalmente
+
+# -------------------------------------------------------------
+# QUALQUER APLICATIVO INSTALADO (lista do Menu Iniciar)
+# -------------------------------------------------------------
+REGEX_ABRIR_APP = re.compile(
+    r"^(?:(?:por favor|voce|vc|pode|consegue|poderia|me|ghost)\s+)*"
+    r"(?:abr\w*|abra|inici\w*|execut\w*|carreg\w*)\s+"
+    r"(?:(?:o|a|os|as)\s+)?(?:(?:aplicativo|programa|app|sistema)\s+(?:do\s+|da\s+|de\s+)?)?"
+    r"(?P<nome>.+?)(?:\s+(?:pra mim|para mim|por favor))?$")
+REGEX_FECHAR_APP = re.compile(r"^(?:(?:por favor|ghost)\s+)*(?:fech\w*|encerr\w*)\s+(?:o\s+|a\s+)?"
+                              r"(?:(?:aplicativo|programa|app)\s+)?(?P<nome>.+)$")
+
+def _tratar_apps(n, falar):
+    import apps
+    m = REGEX_FECHAR_APP.search(n)
+    if m and m.group("nome") not in ("janela", "a janela"):
+        alvo = m.group("nome")
+        qtd = apps.fechar(alvo)
+        falar(f"{alvo.capitalize()} fechado, senhor." if qtd else f"Senhor, não encontrei {alvo} aberto.")
+        return True
+    m = REGEX_ABRIR_APP.search(n)
+    if not m:
+        return False
+    alvo = m.group("nome").strip()
+    app, conf = apps.encontrar(alvo)
+    if app and conf >= apps.CONFIANCA_DIRETA:
+        apps.abrir(app)
+        falar(f"Abrindo {app['nome']}, senhor.")
+        return True
+    if app and conf >= apps.CONFIANCA_MINIMA:
+        pedir_confirmacao(f"Senhor, não achei {alvo} exatamente. Quer que eu abra {app['nome']}?",
+                          lambda: (apps.abrir(app), falar(f"Abrindo {app['nome']}, senhor.")), falar)
+        return True
+    return False
+
+# -------------------------------------------------------------
+# PONTO DE ENTRADA
+# -------------------------------------------------------------
 def executar(texto, falar):
-    """Tenta resolver o comando localmente.
-    texto: frase transcrita (com maiúsculas e acentos originais).
-    falar: função que coloca uma frase na fila de voz.
-    Retorna True se executou algo; False para mandar à IA."""
+    """Tenta resolver o comando localmente. Retorna True se executou algo; False para mandar à IA."""
     n = normalizar(texto)
     return (
-        _tratar_ghost(n, falar)
+        _tratar_confirmacao(n, falar)
+        or _tratar_ghost(n, falar)
         or _tratar_whatsapp(texto, n, falar)
         or _tratar_ditado_e_teclas(texto, n, falar)
         or _tratar_programas_e_sites(texto, n, falar)
         or _tratar_sistema(n, falar)
+        or _tratar_apps(n, falar)
     )

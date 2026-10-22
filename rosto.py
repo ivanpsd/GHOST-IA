@@ -265,9 +265,13 @@ def contexto_para_resposta(texto_usuario):
         return None
     _pendente = None
     _registrar_log(_montar_registro(p, texto_usuario))
-    _respostas_desde_padrao += 1
-    if _respostas_desde_padrao >= CHECKINS_PARA_PADRAO and _cliente:
-        _respostas_desde_padrao = 0
+    # conta pelo arquivo (não pela memória do programa), para não zerar ao reiniciar o Ghost
+    try:
+        with open(ARQUIVO_LOG, "r", encoding="utf-8") as f:
+            respondidos = sum(1 for l in f if '"resposta": null' not in l)
+    except Exception:
+        respondidos = 0
+    if respondidos and respondidos % CHECKINS_PARA_PADRAO == 0 and _cliente:
         threading.Thread(target=resumir_padroes, daemon=True).start()
     obs = p["descricao"] or "sem leitura facial disponível"
     return (f"[CHECK-IN] Você perguntou ao usuário: \"{p['pergunta']}\". "

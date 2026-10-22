@@ -30,6 +30,11 @@ CONGELA_CLIQUE = 0.25      # cursor parado no início da pinça (evita o clique 
 SWIPE_DIST = 0.22          # deslocamento horizontal (fração da imagem) para o deslizar
 SWIPE_JANELA = 0.45        # em quantos segundos
 SENS_ROLAGEM = 2500
+MAO_PRINCIPAL = "direita"  # mão que move o mouse quando as duas estão na câmera
+DUAS_DIST = 0.20           # quanto as mãos precisam afastar/aproximar (fração da imagem)
+DUAS_SWIPE = 0.25          # deslocamento das duas mãos juntas para o lado
+DUAS_JANELA = 0.5          # em quantos segundos
+PASSO_ZOOM = 0.04          # variação da distância entre as pinças para 1 passo de zoom
 MOSTRAR_JANELA = True
 TAMANHO_JANELA = (320, 240)
 
@@ -89,6 +94,59 @@ ESQ_DOWN, ESQ_UP, DIR_DOWN, DIR_UP, RODA = 0x0002, 0x0004, 0x0008, 0x0010, 0x080
 
 def _mouse(flag, dados=0):
     user32.mouse_event(flag, 0, 0, dados, 0)
+
+def _zoom(passos):
+    """Ctrl + roda do mouse: funciona em navegador, Office, imagens, mapas..."""
+    user32.keybd_event(0x11, 0, 0, 0)
+    _mouse(RODA, 120 * passos)
+    user32.keybd_event(0x11, 0, 2, 0)
+
+def _centro_pinca(p):
+    return ((p[4].x + p[8].x) / 2, (p[4].y + p[8].y) / 2)
+
+def _processar_duas_maos(maos, cad, agora, e):
+    """Gestos com as duas mãos. Retorna True se um gesto de duas mãos está em andamento
+    (aí o mouse de uma mão fica parado nesse quadro)."""
+    pe, pd = maos
+    pose_e, pose_d = gl.classificar_nativa(pe), gl.classificar_nativa(pd)
+
+    # ZOOM: pinça nas duas mãos
+    gz = cad.por_pose.get("duas_pinca_zoom")
+    if pose_e == "pinca" and pose_d == "pinca" and gz:
+        (ax, ay), (bx, by) = _centro_pinca(pe), _centro_pinca(pd)
+        dist = ((ax - bx) ** 2 + (ay - by) ** 2) ** 0.5
+        if e["zoom_ref"] is None:
+            e["zoom_ref"] = dist
+        passos = int((dist - e["zoom_ref"]) / PASSO_ZOOM)
+        if passos and gl.tipo_efetivo(cad.acoes.get(gz["acao_id"])) == "zoom":
+            _zoom(passos)
+            e["zoom_ref"] += passos * PASSO_ZOOM
+        e["rotulo"] = "ZOOM"
+        return True
+    e["zoom_ref"] = None
+
+    # AFASTAR / APROXIMAR / DESLIZAR com as duas mãos abertas
+    if pose_e == "aberta" and pose_d == "aberta":
+        dist = abs(pd[0].x - pe[0].x)
+        centro = (pd[0].x + pe[0].x) / 2
+        e["hist"].append((agora, dist, centro))
+        e["hist"] = [h for h in e["hist"] if agora - h[0] <= DUAS_JANELA]
+        dd = e["hist"][-1][1] - e["hist"][0][1]
+        dx = e["hist"][-1][2] - e["hist"][0][2]
+        chave = None
+        if abs(dd) >= DUAS_DIST and abs(dd) > abs(dx):
+            chave = "duas_afastar" if dd > 0 else "duas_aproximar"
+        elif abs(dx) >= DUAS_SWIPE:
+            chave = "duas_swipe_direita" if dx > 0 else "duas_swipe_esquerda"
+        if chave and agora - e["ult"] > 1.2:
+            g = cad.por_pose.get(chave)
+            if g:
+                _executar_acao_unica(cad.acoes.get(g["acao_id"]))
+            e["ult"], e["hist"] = agora, []
+        e["rotulo"] = "DUAS MAOS"
+        return True
+    e["hist"] = []
+    return False
 
 def _clique():
     _mouse(ESQ_DOWN); _mouse(ESQ_UP)
@@ -168,7 +226,8 @@ def loop_gestos():
     nome_janela = "GHOST - Gestos"
     janela_aberta = False
     try:
-        detector = gl.criar_detector_maos()
+        detector = gl.criar_detector_maos(num_maos=2)
+        duas = {"zoom_ref": None, "hist": [], "ult": 0.0, "rotulo": ""}
         cad = Cadastro()
         camera.iniciar("gestos")
 
@@ -192,8 +251,15 @@ def loop_gestos():
             if agora - ult_verif > 2:
                 cad.verificar(); ult_verif = agora
 
-            p = gl.detectar(detector, frame, (agora - t0) * 1000)
-            rotulo = "sem mão"
+            maos = gl.detectar_maos(detector, frame, (agora - t0) * 1000)
+            em_duas = len(maos) == 2 and not pausado and _processar_duas_maos(maos, cad, agora, duas)
+            if em_duas or not maos:
+                p = None
+            elif len(maos) == 2:
+                p = maos[1] if MAO_PRINCIPAL == "direita" else maos[0]
+            else:
+                p = maos[0]
+            rotulo = duas["rotulo"] if em_duas else "sem mão"
             if p is not None:
                 tam = gl.tamanho_mao(p)
                 # 1º gestos gravados por você; 2º poses nativas
@@ -277,8 +343,6 @@ def loop_gestos():
                     else:
                         hist_pulso = []
 
-                if MOSTRAR_JANELA:
-                    gl.desenhar_mao(frame, p)
             else:
                 gesto_atual = None
                 if arrastando:
@@ -286,6 +350,8 @@ def loop_gestos():
                 pinca_ini, rolagem_y, hist_pulso = None, None, []
 
             if MOSTRAR_JANELA:
+                for m in maos:
+                    gl.desenhar_mao(frame, m)
                 if not janela_aberta:
                     cv2.namedWindow(nome_janela, cv2.WINDOW_NORMAL)
                     cv2.resizeWindow(nome_janela, *TAMANHO_JANELA)

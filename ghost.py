@@ -38,6 +38,7 @@ from google import genai
 from groq import Groq
 
 import automacoes
+import ferramentas
 import memoria
 import rosto
 
@@ -166,6 +167,7 @@ if not GEMINI_KEY or not GROQ_KEY:
 MODELOS_GROQ = ["openai/gpt-oss-120b", "openai/gpt-oss-20b"]  # principal: tentados nesta ordem
 MODELO_GEMINI = "gemini-3.8-flash"                             # reserva
 MODELO_TRANSCRICAO = "whisper-large-v3-turbo"                  # voz -> texto (Groq)
+ESFORCO_RACIOCINIO = "medium"  # "low" responde mais rápido, mas erra/recusa mais perguntas simples
 MOSTRAR_TEMPOS = True  # imprime quanto tempo cada etapa levou
 
 # Contadores e limites locais
@@ -181,9 +183,17 @@ SYSTEM_INSTRUCTION = (
     "Responda SEMPRE em português do Brasil com no máximo 2 frases diretas. "
     "Seja extremamente objetivo, preciso e sem enrolação. "
     "Trate o usuário como 'senhor'. "
-    "Nunca invente fatos. Se não souber, diga que não sabe. "
-    "Você não tem acesso à internet nem a dados em tempo real (notícias, cotações, clima, horários): "
-    "se a pergunta depender disso, diga que não tem essa informação atualizada."
+    "Responda normalmente perguntas de conhecimento geral com o que você sabe (história, geografia, ciência, "
+    "explicações). Nunca invente fatos específicos que não conhece (números, nomes, dados recentes): "
+    "nesses casos diga que não sabe. "
+    "Você CONTROLA o computador Windows do usuário por meio das ferramentas disponíveis. "
+    "Quando ele pedir uma ação (abrir ou fechar aplicativo, abrir site, pesquisar, digitar, apertar teclas, "
+    "mandar mensagem, volume, gestos, macros), CHAME A FERRAMENTA em vez de responder com texto; "
+    "nunca diga que não é capaz de algo que uma ferramenta faz. "
+    "Para informações do computador (disco, memória, IP, programas abertos, data e hora) use consultar_sistema. "
+    "Você não tem acesso a dados em tempo real na internet: para notícias, cotações ou clima, use pesquisar_web. "
+    "Se o pedido estiver ambíguo ou você ficar em dúvida sobre o que executar, pergunte ao usuário o propósito "
+    "em uma frase curta antes de agir. Se nenhuma ferramenta cobre o pedido, diga isso com clareza."
 )
 
 def instrucao_completa():
@@ -202,6 +212,65 @@ def _separar_frases(buffer):
         frases.append(buffer[:m.end()].strip())
         buffer = buffer[m.end():]
 
+def _stream_groq(modelo, mensagens, ao_receber_frase, estado, usar_ferramentas):
+    """Uma chamada em streaming. Fala o texto frase a frase e junta as chamadas de ferramenta.
+    Retorna (texto, chamadas)."""
+    extra = {"tools": ferramentas.TOOLS, "tool_choice": "auto"} if usar_ferramentas else {}
+    stream = client_groq.chat.completions.create(
+        model=modelo, messages=mensagens, temperature=0.1, max_tokens=1024,
+        reasoning_effort=ESFORCO_RACIOCINIO, stream=True, **extra)
+    chamadas = {}
+    for chunk in stream:
+        if not chunk.choices:
+            continue
+        delta = chunk.choices[0].delta
+        for tc in (getattr(delta, "tool_calls", None) or []):
+            c = chamadas.setdefault(tc.index, {"id": None, "nome": "", "args": ""})
+            if tc.id:
+                c["id"] = tc.id
+            if tc.function and tc.function.name:
+                c["nome"] += tc.function.name
+            if tc.function and tc.function.arguments:
+                c["args"] += tc.function.arguments
+        pedaco = delta.content
+        if not pedaco:
+            continue
+        if not estado["completo"]:
+            print("\n[GHOST]: ", end="", flush=True)
+        print(pedaco, end="", flush=True)
+        estado["completo"] += pedaco
+        estado["buffer"] += pedaco
+        frases, estado["buffer"] = _separar_frases(estado["buffer"])
+        for frase in frases:
+            ao_receber_frase(frase)
+    if estado["buffer"].strip():
+        ao_receber_frase(estado["buffer"].strip())
+        estado["buffer"] = ""
+    if estado["completo"]:
+        print()
+    return estado["completo"].strip(), [chamadas[k] for k in sorted(chamadas)]
+
+def _executar_ferramentas(modelo, mensagens, chamadas, ao_receber_frase):
+    """Executa as ferramentas pedidas pela IA. Se alguma devolver dados (ex.: espaço em disco),
+    faz uma 2ª chamada para a IA explicar o resultado em voz."""
+    resultados, precisa_ia = [], False
+    for c in chamadas:
+        args = ferramentas.args_json(c["args"])
+        print(f"\n[FERRAMENTA]: {c['nome']} {args}")
+        resultado, volta = ferramentas.executar(c["nome"], args, falar_local, automacoes.pedir_confirmacao)
+        resultados.append((c, resultado))
+        precisa_ia = precisa_ia or volta
+    resumo = "; ".join(f"{c['nome']}({c['args']}) -> {r[:200]}" for c, r in resultados)
+    if not precisa_ia:
+        return f"[ações executadas] {resumo}"
+    msgs = mensagens + [{"role": "assistant", "content": "", "tool_calls": [
+        {"id": c["id"] or f"call_{i}", "type": "function", "function": {"name": c["nome"], "arguments": c["args"] or "{}"}}
+        for i, (c, _) in enumerate(resultados)]}]
+    msgs += [{"role": "tool", "tool_call_id": c["id"] or f"call_{i}", "content": r}
+             for i, (c, r) in enumerate(resultados)]
+    texto, _ = _stream_groq(modelo, msgs, ao_receber_frase, {"completo": "", "buffer": ""}, usar_ferramentas=False)
+    return texto or f"[ações executadas] {resumo}"
+
 def consultar_ia_streaming(prompt_usuario, ao_receber_frase):
     """Groq em streaming (principal) -> Gemini (reserva).
     Cada frase completa é entregue a ao_receber_frase assim que chega,
@@ -217,44 +286,22 @@ def consultar_ia_streaming(prompt_usuario, ao_receber_frase):
     ]
     ultimo_erro = None
 
-    # 1. GROQ (streaming)
+    # 1. GROQ (streaming, com ferramentas para agir no PC)
     for modelo in MODELOS_GROQ:
-        completo, buffer = "", ""
+        estado = {"completo": "", "buffer": ""}
         try:
-            stream = client_groq.chat.completions.create(
-                model=modelo,
-                messages=mensagens,
-                temperature=0.1,
-                max_tokens=1024,          # folga para o raciocínio interno do gpt-oss
-                reasoning_effort="low",   # resposta rápida, adequada para voz
-                stream=True,
-            )
-            for chunk in stream:
-                if not chunk.choices:
-                    continue
-                pedaco = chunk.choices[0].delta.content
-                if not pedaco:
-                    continue
-                if not completo:
-                    print("\n[GHOST]: ", end="", flush=True)
-                print(pedaco, end="", flush=True)
-                completo += pedaco
-                buffer += pedaco
-                frases, buffer = _separar_frases(buffer)
-                for frase in frases:
-                    ao_receber_frase(frase)
-            if buffer.strip():
-                ao_receber_frase(buffer.strip())
-            if completo.strip():
-                print()
-                return completo.strip()
+            texto, chamadas = _stream_groq(modelo, mensagens, ao_receber_frase, estado, usar_ferramentas=True)
+            if chamadas:
+                return _executar_ferramentas(modelo, mensagens, chamadas, ao_receber_frase)
+            if texto:
+                return texto
             ultimo_erro = RuntimeError(f"resposta vazia do modelo {modelo}")
         except Exception as e:
-            if completo.strip():          # já falou parte: não troca de modelo no meio
-                if buffer.strip():
-                    ao_receber_frase(buffer.strip())
+            if estado["completo"].strip():   # já falou parte: não troca de modelo no meio
+                if estado["buffer"].strip():
+                    ao_receber_frase(estado["buffer"].strip())
                 print()
-                return completo.strip()
+                return estado["completo"].strip()
             ultimo_erro = e
 
     print(f"\n[SISTEMA]: Groq indisponível ({ultimo_erro}). Alternando para Gemini...")

@@ -38,11 +38,11 @@ def garantir_modelo(nome_arquivo, url):
         os.replace(caminho + ".tmp", caminho)
     return caminho
 
-def criar_detector_maos():
+def criar_detector_maos(num_maos=1):
     opcoes = vision.HandLandmarkerOptions(
         base_options=mp_python.BaseOptions(model_asset_path=garantir_modelo("hand_landmarker.task", URL_MAO)),
         running_mode=vision.RunningMode.VIDEO,
-        num_hands=1,
+        num_hands=num_maos,
         min_hand_detection_confidence=0.6,
         min_hand_presence_confidence=0.6,
         min_tracking_confidence=0.5,
@@ -54,6 +54,13 @@ def detectar(detector, frame_bgr, ts_ms):
     rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
     res = detector.detect_for_video(mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb), int(ts_ms))
     return res.hand_landmarks[0] if res.hand_landmarks else None
+
+def detectar_maos(detector, frame_bgr, ts_ms):
+    """Todas as mãos vistas (até 2), da esquerda para a direita da imagem espelhada
+    (ou seja: [sua mão esquerda, sua mão direita])."""
+    rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+    res = detector.detect_for_video(mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb), int(ts_ms))
+    return sorted(res.hand_landmarks or [], key=lambda p: p[0].x)
 
 # -------------------------------------------------------------
 # GEOMETRIA E POSES NATIVAS
@@ -87,6 +94,11 @@ POSES_NATIVAS = {
     "aberta": "Mão aberta parada",
     "swipe_direita": "Mão aberta deslizando para a direita",
     "swipe_esquerda": "Mão aberta deslizando para a esquerda",
+    "duas_afastar": "Duas mãos abertas se afastando",
+    "duas_aproximar": "Duas mãos abertas se aproximando",
+    "duas_swipe_direita": "Duas mãos abertas deslizando para a direita",
+    "duas_swipe_esquerda": "Duas mãos abertas deslizando para a esquerda",
+    "duas_pinca_zoom": "Pinça nas duas mãos, afastando/aproximando",
 }
 
 def classificar_nativa(p):
@@ -166,6 +178,7 @@ ACOES_SISTEMA = {
     "rolar": "Rolar a página (suba/desça a mão)",
     "pausar": "Pausar / retomar os gestos",
     "trocar_monitor": "Levar o mouse para o outro monitor",
+    "zoom": "Zoom (afaste = aumenta, aproxime = diminui)",
     "nada": "Nada",
 }
 
@@ -176,6 +189,10 @@ def _acoes_padrao():
         {"id": "a_esc", "nome": "Esc", "tipo": "tecla", "valor": "esc"},
         {"id": "a_alt_tab", "nome": "Próxima janela (Alt+Tab)", "tipo": "tecla", "valor": "alt+tab"},
         {"id": "a_voltar", "nome": "Voltar (Alt+←)", "tipo": "tecla", "valor": "alt+left"},
+        {"id": "a_task_view", "nome": "Visão de tarefas (Win+Tab)", "tipo": "tecla", "valor": "win+tab"},
+        {"id": "a_area_trabalho", "nome": "Mostrar área de trabalho (Win+D)", "tipo": "tecla", "valor": "win+d"},
+        {"id": "a_desktop_dir", "nome": "Próxima área de trabalho virtual", "tipo": "tecla", "valor": "ctrl+win+right"},
+        {"id": "a_desktop_esq", "nome": "Área de trabalho virtual anterior", "tipo": "tecla", "valor": "ctrl+win+left"},
     ]
     return acoes
 
@@ -224,6 +241,11 @@ PADRAO = [
     {"id": "aberta", "pose": "aberta", "acao_id": "nada", "segurar": 0.8},
     {"id": "swipe_direita", "pose": "swipe_direita", "acao_id": "a_alt_tab", "segurar": 0},
     {"id": "swipe_esquerda", "pose": "swipe_esquerda", "acao_id": "a_voltar", "segurar": 0},
+    {"id": "duas_afastar", "pose": "duas_afastar", "acao_id": "a_task_view", "segurar": 0},
+    {"id": "duas_aproximar", "pose": "duas_aproximar", "acao_id": "a_area_trabalho", "segurar": 0},
+    {"id": "duas_swipe_direita", "pose": "duas_swipe_direita", "acao_id": "a_desktop_dir", "segurar": 0},
+    {"id": "duas_swipe_esquerda", "pose": "duas_swipe_esquerda", "acao_id": "a_desktop_esq", "segurar": 0},
+    {"id": "duas_pinca_zoom", "pose": "duas_pinca_zoom", "acao_id": "zoom", "segurar": 0},
 ]
 
 def _nativos_padrao():

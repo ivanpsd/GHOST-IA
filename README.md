@@ -9,9 +9,11 @@ Assistente pessoal para Windows, em Python: você fala segurando **F9**, ele res
 | Voz | Push-to-talk (F9) → transcrição com Whisper (Groq), com o Google como reserva |
 | IA | Groq (`openai/gpt-oss-120b`), com resposta em streaming falada frase a frase; Gemini como reserva |
 | Fala | Voz neural `pt-BR-AntonioNeural` (edge-tts), gerada e tocada em paralelo |
+| Aplicativos | Abre/fecha **qualquer app instalado** (lista do Menu Iniciar), com "quis dizer X?" quando o nome não é exato |
+| Ferramentas da IA | A IA age no PC por ferramentas (abrir apps, sites, pesquisar, digitar, teclas, comandos do Ghost, consultas de leitura do sistema) e pergunta o propósito quando fica em dúvida |
 | Automações | Programas, sites, pesquisa no Google/YouTube, volume, mídia, print, desligar, ditado ("digite ...") e teclas ("aperte enter") |
 | WhatsApp | "mande uma mensagem para Fulano dizendo ..." (Desktop ou Web) |
-| Gestos | Mouse e atalhos pela mão (MediaPipe), suporte a dois monitores |
+| Gestos | Mouse e atalhos pela mão (MediaPipe), **gestos com as duas mãos** (zoom, visão de tarefas, áreas de trabalho), suporte a dois monitores |
 | Cadastro | Tela com abas **Ações** (teclas, comandos de voz, **macros gravadas** do teclado/mouse) e **Gestos** (nativos ou gravados), cada gesto ligado a uma ação |
 | Rosto | Leitura de expressão (estimativa) e check-in periódico ("como o senhor está?") |
 | Memória | Aprende fatos e padrões de comportamento automaticamente (`memoria_aprendizado.json`) |
@@ -40,6 +42,8 @@ Assistente pessoal para Windows, em Python: você fala segurando **F9**, ele res
 | Fala | Ação |
 |---|---|
 | "abra a calculadora" / "abra o YouTube" | Abre programa ou site |
+| "abre o AnyDesk" / "fecha o Excel" | Abre/fecha qualquer aplicativo instalado |
+| "quanto espaço livre tenho no disco?" | Consulta do sistema pela IA |
 | "pesquise receita de bolo no YouTube" | Pesquisa |
 | "mande uma mensagem para Deborah dizendo bom dia" | WhatsApp |
 | "digite bom dia equipe" / "aperte enter" | Ditado e teclas |
@@ -63,6 +67,9 @@ Assistente pessoal para Windows, em Python: você fala segurando **F9**, ele res
 | Joinha | Enter |
 | Hang loose | Esc |
 | Mão aberta deslizando → / ← | Alt+Tab / Voltar |
+| Pinça nas duas mãos, afastando/aproximando | Zoom |
+| Duas mãos abertas se afastando / aproximando | Visão de tarefas / Área de trabalho |
+| Duas mãos abertas deslizando → / ← | Área de trabalho virtual seguinte / anterior |
 
 ## Estrutura
 
@@ -75,6 +82,8 @@ Assistente pessoal para Windows, em Python: você fala segurando **F9**, ele res
 | `gestos_lib.py` / `gestos.py` | Detecção da mão e controle de mouse/teclado |
 | `cadastro_gestos.py` | Tela (Tkinter) de cadastro de gestos e ações |
 | `macros.py` | Gravação (F10 encerra) e execução de macros |
+| `apps.py` | Lista, abre e fecha aplicativos instalados |
+| `ferramentas.py` | Ferramentas que a IA pode chamar (conjunto fechado, sem comando livre) |
 | `rosto.py` | Leitura de expressão, check-in e padrões de comportamento |
 
 ## Privacidade
