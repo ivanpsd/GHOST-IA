@@ -19,6 +19,7 @@ google-api-python-client
 google-auth-oauthlib
 pandas
 openpyxl
+xlrd
 tinytuya
 icalendar
 recurring-ical-events

@@ -1,0 +1,21 @@
+[project]
+name = "ghost"
+version = "8.0.0"
+description = "GHOST - assistente pessoal por voz para Windows"
+requires-python = ">=3.11"
+
+[tool.ruff]
+line-length = 130
+target-version = "py311"
+extend-exclude = [".venv", "modelos", "dados", "logs"]
+
+[tool.ruff.lint]
+select = ["F", "B", "E9", "PLE", "I"]
+ignore = ["E402"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["ghost"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

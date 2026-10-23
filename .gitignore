@@ -1,58 +1,35 @@
-# Arquivos de chave e configurações sensíveis
+# ---- Segredos (NUNCA no Git) ----
 .env
-*.json
-
-# Arquivos temporários de áudio gerados pelo GHOST
-*.mp3
-*.wav
-print_ghost.png
-
-# Cache do Python
-__pycache__/
-*.pyc
-.vscode/
-
-# Log do GHOST rodando oculto e prints de tela
-ghost.log
-prints/
-# Modelo do MediaPipe (baixado automaticamente)
-modelos/
-
-# Diário de humor dos check-ins (pessoal)
-humor_log.jsonl
-
-# Contexto da conversa (pessoal)
-conversa_recente.json
-# Skills e rotina (pessoal)
-skills.json
-rotina_log.jsonl
-# Segredos da autenticação (criptografados pelo Windows)
-seguranca.dat
-
-# Arquivos locais sem uso no repositório
-listar_mic.py
-
-# Lembretes e preferencias (pessoais)
-lembretes.json
-preferencias.json
-# Google (credenciais e acesso)
 credentials.json
 token_google.json
+seguranca.dat
 
-# Cópias geradas pelo app do Claude
-Claude outputs/
+# ---- Seus dados, logs e arquivos baixados (ficam só no PC) ----
+dados/
+logs/
+modelos/
+prints/
 
-
-# Logs de quedas/rotação e arquivos temporários de gravação segura
-ghost.log.1
-travamentos.log
-travamentos.log.1
-*.tmp
-
-# Ambiente Python do Ghost (recriado com: py -V:3.13 -m venv .venv e pip install -r requirements.txt)
+# ---- Ambiente Python e caches ----
 .venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.vscode/
+.idea/
 
-# Memória de longo prazo (pessoal)
-historico_completo.jsonl
-historico_vetores.npy
-*.npy
+# ---- Temporários ----
+*.tmp
+*.mp3
+*.wav
+*.corrompido
+
+# ---- Arquivos da versão antiga (antes da pasta dados/), caso ainda estejam na raiz ----
+/*.json
+/*.jsonl
+/*.npy
+/*.log
+/*.log.1
+print_ghost.png
+Claude outputs/

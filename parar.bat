@@ -1,4 +1,4 @@
 @echo off
 cd /d "%~dp0"
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0parar.ps1"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\parar.ps1"
 pause

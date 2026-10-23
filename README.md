@@ -32,30 +32,31 @@ Assistente pessoal para Windows, em Python: você diz **"Ghost, …"** (ou segur
 | Gestos | Mouse e atalhos pela mão (MediaPipe), **gestos com as duas mãos** (zoom, visão de tarefas, áreas de trabalho), suporte a dois monitores |
 | Cadastro | Tela com abas **Ações** (teclas, comandos de voz, **macros gravadas** do teclado/mouse) e **Gestos** (nativos ou gravados), cada gesto ligado a uma ação |
 | Rosto | Leitura de expressão (estimativa) e check-in periódico ("como o senhor está?") |
-| Memória | Aprende fatos e padrões de comportamento automaticamente (`memoria_aprendizado.json`) |
+| Memória | Aprende fatos e padrões de comportamento automaticamente (`dados\memoria_aprendizado.json`) |
 | Conversa contínua | Lembra as últimas 12 trocas (inclusive comandos executados); recomeça após 45 min parado |
 | Skills por voz | "aprenda uma nova skill": a IA monta os passos com as ferramentas existentes e só salva com o seu "sim" |
 | Rotina | Observa só o programa/janela em foco (sem captura de tela), resume padrões e sugere skills |
 | Visão | "o que é isso na minha mão?": tira uma foto sob demanda e descreve o objeto (Gemini; detector local de reserva). Não identifica pessoas |
-| Saudação | Frase de cumprimento configurável por voz (`preferencias.json`) |
+| Saudação | Frase de cumprimento configurável por voz (`dados\preferencias.json`) |
 | Pessoas | Fichas ditas por voz (nome, função, telefone, notas), sem biometria; "aqui é Fulano" muda quem está falando |
-| Sistema | Inicia com o Windows, roda oculto com log (`ghost.log`), impede duas cópias abertas |
+| Sistema | Inicia com o Windows, roda oculto com log (`logs\ghost.log`), impede duas cópias abertas, reinicia sozinho se cair |
 
 ## Instalação
 
-**Guia completo e prático: [INSTALACAO.md](INSTALACAO.md).** Em resumo:
+**Guia completo e prático: [docs/INSTALACAO.md](docs/INSTALACAO.md).** Em resumo:
 
 | Situação | O que fazer |
 |---|---|
 | Primeira vez | `git clone https://github.com/ivanpsd/GHOST-IA.git C:\GHOST` e dois cliques em **`instalar.bat`** |
 | Já instalado, versão nova | Dois cliques em **`atualizar.bat`** (mantém chaves, memória, fichas e skills) |
 | Parar / ligar | **`parar.bat`** / **`iniciar.bat`** (ele também liga sozinho com o Windows) |
+| Conferir se está tudo certo | **`testar.bat`** (testes automáticos + checagem do código) |
 
 O **vigia** roda o Ghost oculto e o reinicia sozinho se ele cair (para depois de 5 quedas em 10 minutos e mostra um aviso).
 
-**Arquivos de diagnóstico:**
-- `ghost.log`: tudo o que o Ghost escreveu (limite de 2 MB; o anterior fica em `ghost.log.1`) e as quedas anotadas pelo vigia.
-- `travamentos.log`: onde o programa estava quando caiu por erro dentro de uma biblioteca (som, câmera, Vosk).
+**Arquivos de diagnóstico (pasta `logs\`):**
+- `logs\ghost.log`: tudo o que o Ghost escreveu (limite de 2 MB; o anterior fica em `ghost.log.1`) e as quedas anotadas pelo vigia.
+- `logs\travamentos.log`: onde o programa estava quando caiu por erro dentro de uma biblioteca (som, câmera, Vosk).
 
 **Segurança:** depois que a IA lê algo de fora (e-mail, agenda, planilha, câmera, tela, notificações), qualquer ação no PC pedida
 na mesma resposta (digitar, apertar teclas, WhatsApp, abrir sites...) só acontece se você confirmar por voz.
@@ -64,6 +65,8 @@ na mesma resposta (digitar, apertar teclas, WhatsApp, abrir sites...) só aconte
 
 | Fala | Ação |
 |---|---|
+| "oi Ghost" / "olá Ghost" | **Conversa contínua**: depois disso fale sem dizer "Ghost" (encerra sozinha após 5 min sem falar) |
+| "tchau Ghost" / "boa noite Ghost" | **Dormir**: ignora tudo e não fala sozinho (alertas, notificações, check-in) até ser chamado; lembretes continuam |
 | "treinar ativação" / "esquecer treino da ativação" | Treina (ou apaga) a palavra "Ghost" na sua voz |
 | "o que é esse erro na tela?" / "resume esse documento aberto" | Analisa a tela (só quando pedido) |
 | "o que eu te falei semana passada sobre o fornecedor?" | Busca na memória longa |
@@ -95,7 +98,7 @@ na mesma resposta (digitar, apertar teclas, WhatsApp, abrir sites...) só aconte
 | "modo sério" / "modo Jarvis" | Personalidade |
 | "como está o computador?" / "silenciar alertas por 1 hora" / "pausar alertas" | Alertas proativos |
 | "como está minha agenda hoje?" / "tenho e-mail novo da minha líder?" / "meus e-mails pessoais" | Agenda e e-mail (leitura) |
-| "conectar minha conta Google" | Autoriza a conta do Google Workspace (precisa do `credentials.json`) |
+| "conectar minha conta Google" | Autoriza a conta do Google Workspace (precisa do `dados\credentials.json`) |
 | "quanto produzimos ontem pela planilha de produção?" | Planilhas |
 | "conectar casa inteligente" / "liga a luz da sala" / "quais aparelhos você controla?" | Casa inteligente |
 
@@ -117,53 +120,40 @@ na mesma resposta (digitar, apertar teclas, WhatsApp, abrir sites...) só aconte
 
 ## Estrutura
 
-| Arquivo | Papel |
-|---|---|
-| `ghost.py` | Loop principal: voz, IA, fala |
-| `automacoes.py` | Comandos locais (executados antes da IA) |
-| `memoria.py` | Aprendizado automático de fatos |
-| `camera.py` | Câmera compartilhada entre gestos e rosto |
-| `gestos_lib.py` / `gestos.py` | Detecção da mão e controle de mouse/teclado |
-| `cadastro_gestos.py` | Tela (Tkinter) de cadastro de gestos e ações |
-| `macros.py` | Gravação (F10 encerra) e execução de macros |
-| `apps.py` | Lista, abre e fecha aplicativos instalados |
-| `ferramentas.py` | Ferramentas que a IA pode chamar (conjunto fechado, sem comando livre) |
-| `rosto.py` | Leitura de expressão, check-in e padrões de comportamento |
-| `conversa.py` | Contexto da conversa (memória de curto prazo) |
-| `skills.py` | Skills ensinadas por voz |
-| `rotina.py` | Observação da rotina (programa/janela em foco) e sugestões |
-| `pessoas.py` | Fichas de pessoas e falante atual |
-| `visao.py` | Foto sob demanda + descrição do objeto |
-| `preferencias.py` | Preferências como a saudação |
-| `ativacao.py` | Palavra de ativação offline e interrupção |
-| `lembretes.py` | Lembretes e alarmes |
-| `hud.py` | Painel visual no topo da tela |
-| `resumo.py` | Resumo da manhã e clima |
-| `alertas.py` | Alertas proativos |
-| `google_conta.py` | Agenda e Gmail do Google Workspace (API, leitura) |
-| `contas_pessoais.py` | E-mail (IMAP) e agenda (iCal) de contas pessoais, leitura |
-| `planilhas.py` | Consultas em Excel/CSV, cálculo local |
-| `casa.py` | Casa inteligente (Home Assistant / Tuya) |
-| `som.py` | Único acesso ao alto-falante e ao microfone (evita travamentos) |
-| `eco.py` | Cancelamento de eco (WebRTC) |
-| `palavra.py` | Detector de "Ghost" treinado na sua voz |
-| `offline.py` | Modo sem internet (Whisper local, Ollama, Piper) |
-| `memoria_longa.py` | Histórico completo pesquisável pelo sentido |
-| `tela.py` | Captura da tela sob demanda |
-| `notificacoes.py` | Avisos das notificações do Windows |
-| `telegram_bot.py` | Pedidos pelo celular |
-| `tarefas.py` | Tarefas longas em segundo plano |
-| `arquivo.py` | Gravação segura de arquivos |
-| `vigia.pyw` | Inicia o Ghost e o reinicia se cair |
-| `instalar_modelos.py` | Baixa os modelos locais |
-| `instalar.bat` / `atualizar.bat` / `parar.bat` / `iniciar.bat` | Instalação, atualização, parar e ligar (ver INSTALACAO.md) |
+```
+C:\GHOST
+├── ghost\                  o programa (pacote Python)
+│   ├── app.py              laço principal: voz -> comandos locais ou IA -> fala
+│   ├── vigia.py            inicia o Ghost e o reinicia se cair (é o que liga com o Windows)
+│   ├── instalar_modelos.py baixa os modelos locais
+│   ├── nucleo\             caminhos, gravação segura, preferências, Windows, painel (HUD)
+│   ├── voz\                microfone/alto-falante, palavra "Ghost", eco, modo sem internet
+│   ├── ia\                 ferramentas da IA, conversa, memórias, tarefas, skills, pessoas
+│   ├── automacao\          comandos locais, aplicativos, macros, casa inteligente, planilhas
+│   ├── visao\              câmera, gestos, cadastro, rosto, foto, tela
+│   └── servicos\           alertas, lembretes, resumo do dia, rotina, notificações, Telegram, Google, e-mail/agenda pessoais
+├── tests\                  testes automáticos (testar.bat)
+├── scripts\                instalação, atualização, parada e testes (chamados pelos .bat)
+├── docs\                   INSTALACAO.md e ARQUITETURA.md
+├── dados\                  SEUS dados: memória, fichas, skills, lembretes, treino da voz... (fora do Git)
+├── logs\                   ghost.log e travamentos.log (fora do Git)
+├── modelos\                modelos baixados (fora do Git)
+├── *.bat                   instalar, atualizar, iniciar, parar, testar
+├── .env                    suas chaves (fora do Git; modelo em .env.example)
+└── requirements.txt        bibliotecas
+```
+
+Como as partes se conversam (fluxo de um pedido, threads, proteções e onde mexer em cada coisa):
+**[docs/ARQUITETURA.md](docs/ARQUITETURA.md)**.
+
+Rodar vendo o terminal (para diagnóstico): `parar.bat` e depois `.\.venv\Scripts\python.exe -m ghost`.
 
 ## Privacidade
 
 - As chaves ficam só no `.env`, que não vai para o Git.
 - Nenhuma imagem da câmera é gravada; só números de expressão, mantidos em memória.
-- Ficam fora do Git: `.env`, `credentials.json`, `token_google.json`, todos os `.json` pessoais (memória, conversa, skills, pessoas, lembretes, preferências, gestos, aparelhos), `humor_log.jsonl`, `rotina_log.jsonl`, `ghost.log` e `modelos/`.
-- A rotina registra apenas o nome do programa e o título da janela (`GUARDAR_TITULOS = False` em `rotina.py` guarda só o programa).
+- Ficam fora do Git: `.env` e as pastas `dados\` (memória, conversa, skills, pessoas, lembretes, preferências, gestos, aparelhos, humor, rotina, histórico, treino da voz, `credentials.json`, `token_google.json`), `logs\`, `modelos\` e `prints\`.
+- A rotina registra apenas o nome do programa e o título da janela (`GUARDAR_TITULOS = False` em `ghost\servicos\rotina.py` guarda só o programa).
 - Fichas de pessoas não usam rosto nem voz: só o que é dito ao Ghost.
 - A palavra de ativação é reconhecida no próprio PC; só a frase que começa com "Ghost" vai para a transcrição.
 - A visão só tira foto quando você pede; a foto vai ao Gemini para ser descrita e não é salva.
@@ -172,5 +162,5 @@ na mesma resposta (digitar, apertar teclas, WhatsApp, abrir sites...) só aconte
 - Expressão facial é uma **estimativa**, não um diagnóstico de sentimento.
 - A tela só é capturada quando você pede; a imagem vai ao Gemini e não é salva.
 - Notificações: lidas do próprio Windows; em voz alta só o app e o remetente, salvo se você pedir o texto.
-- Memória longa (`historico_completo.jsonl`) e o treino da palavra (`modelos/palavra/`) ficam só no PC, fora do Git.
+- Memória longa (`dados\historico_completo.jsonl`) e o treino da palavra (`dados\palavra\`) ficam só no PC, fora do Git.
 - Telegram: só o código do dono (`TELEGRAM_DONO`) é atendido; a tela nunca é enviada.
