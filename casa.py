@@ -12,6 +12,7 @@ salva a lista em casa_dispositivos.json (fora do Git). Aí:
 import os
 import re
 import json
+import arquivo
 import difflib
 import unicodedata
 
@@ -153,8 +154,7 @@ def descobrir():
         except Exception as e:
             erros.append(f"{c}: {e}")
     if achados:
-        with open(ARQUIVO, "w", encoding="utf-8") as f:
-            json.dump(achados, f, ensure_ascii=False, indent=1)
+        arquivo.salvar_json(ARQUIVO, achados)
     msg = f"Encontrei {len(achados)} aparelho{'s' if len(achados) != 1 else ''}, senhor."
     if erros:
         print("\n[CASA]: " + " | ".join(erros))

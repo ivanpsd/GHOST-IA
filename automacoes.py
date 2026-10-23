@@ -649,6 +649,16 @@ def _tratar_google(n, falar):
     return False
 
 def _tratar_ativacao(n, falar):
+    if tem(n, "treinar ativacao", "treinar a ativacao", "treinar palavra de ativacao", "treinar a palavra de ativacao",
+           "aprender minha voz", "treinar meu chamado", "treinar o chamado"):
+        import palavra
+        threading.Thread(target=palavra.treinar_interativo, args=(falar,), daemon=True).start()
+        return True
+    if tem(n, "esquecer treino da ativacao", "apagar treino da ativacao", "esquecer o treino da ativacao"):
+        import palavra
+        palavra.esquecer()
+        falar("Treino da ativação apagado, senhor. Voltei a usar o reconhecedor padrão.")
+        return True
     if tem(n, "ativacao por voz", "palavra de ativacao", "ouvir meu chamado", "me ouvir sem o f9"):
         import ativacao
         if re.search(VERBO_DESLIGAR, n):

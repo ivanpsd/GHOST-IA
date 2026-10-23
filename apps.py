@@ -9,6 +9,7 @@ um nome não é encontrado.
 import os
 import re
 import json
+import arquivo
 import time
 import difflib
 import subprocess
@@ -58,8 +59,7 @@ def listar(forcar=False):
     except Exception:
         pass
     apps = _ler_menu_iniciar()
-    with open(ARQUIVO_CACHE, "w", encoding="utf-8") as f:
-        json.dump(apps, f, ensure_ascii=False)
+    arquivo.salvar_json(ARQUIVO_CACHE, apps, indent=None)
     return apps
 
 

@@ -10,11 +10,49 @@ PASTA_GHOST = os.path.dirname(os.path.abspath(__file__))
 os.chdir(PASTA_GHOST)  # garante caminhos relativos certos ao iniciar com o Windows
 
 # Rodando oculto (pythonw) não existe terminal: tudo vai para ghost.log
+class _LogRotativo:
+    """ghost.log com limite de tamanho: passou de 2 MB, vira ghost.log.1 (guarda só 1 anterior)."""
+    LIMITE = 2_000_000
+
+    def __init__(self, caminho):
+        self.caminho, self._n = caminho, 0
+        self._f = open(caminho, "a", encoding="utf-8", buffering=1)
+
+    def write(self, texto):
+        try:
+            self._f.write(texto)
+            self._n += 1
+            if self._n % 200 == 0 and self._f.tell() > self.LIMITE:
+                self._f.close()
+                os.replace(self.caminho, self.caminho + ".1")
+                self._f = open(self.caminho, "a", encoding="utf-8", buffering=1)
+        except Exception:
+            pass
+        return len(texto)
+
+    def flush(self):
+        try:
+            self._f.flush()
+        except Exception:
+            pass
+
+    def isatty(self):
+        return False
+
+
 if sys.stdout is None or sys.stderr is None:
-    _log = os.path.join(PASTA_GHOST, "ghost.log")
-    if os.path.exists(_log) and os.path.getsize(_log) > 2_000_000:  # limpa acima de ~2 MB
-        os.remove(_log)
-    sys.stdout = sys.stderr = open(_log, "a", encoding="utf-8", buffering=1)
+    sys.stdout = sys.stderr = _LogRotativo(os.path.join(PASTA_GHOST, "ghost.log"))
+
+# Travamentos dentro de bibliotecas (som, câmera, Vosk) fecham o Python sem mensagem.
+# O faulthandler grava em travamentos.log ONDE foi a queda, em todas as threads.
+import faulthandler
+_caminho_trav = os.path.join(PASTA_GHOST, "travamentos.log")
+if os.path.exists(_caminho_trav) and os.path.getsize(_caminho_trav) > 1_000_000:
+    os.replace(_caminho_trav, _caminho_trav + ".1")
+_arq_travamentos = open(_caminho_trav, "a", encoding="utf-8")
+_arq_travamentos.write(f"\n===== sessão iniciada em {datetime.now():%d/%m/%Y %H:%M:%S} (pid {os.getpid()}) =====\n")
+_arq_travamentos.flush()
+faulthandler.enable(file=_arq_travamentos, all_threads=True)
 print(f"\n===== GHOST iniciado em {datetime.now():%d/%m/%Y %H:%M:%S} =====")
 
 # Impede dois GHOSTs ao mesmo tempo (ex.: inicialização + execução manual)
@@ -53,7 +91,15 @@ import ativacao
 import lembretes
 import resumo
 import hud
+import som
+import arquivo
 import alertas
+import offline
+import palavra
+import notificacoes
+import tarefas
+import telegram_bot
+import memoria_longa
 
 
 # -------------------------------------------------------------
@@ -101,7 +147,14 @@ def _sintetizar(texto_limpo, rate):
             if chunk["type"] == "audio":
                 dados.extend(chunk["data"])
         return bytes(dados)
-    mp3 = asyncio.run(_gerar())
+    if not offline.internet_ok():
+        return _voz_local(texto_limpo)
+    try:
+        mp3 = asyncio.run(_gerar())
+    except Exception as e:
+        offline.marcar_sem_internet()
+        print(f"\n[OFFLINE]: voz da nuvem falhou ({e}); usando a voz local.")
+        return _voz_local(texto_limpo)
     if cache:
         try:
             os.makedirs(PASTA_CACHE_VOZ, exist_ok=True)
@@ -113,6 +166,12 @@ def _sintetizar(texto_limpo, rate):
         except Exception:
             pass
     return sf.read(io.BytesIO(mp3), dtype='float32')
+
+def _voz_local(texto_limpo):
+    """Voz Piper (sem internet). Não vai para o cache, para não substituir a voz normal."""
+    if not offline.voz_disponivel():
+        raise RuntimeError("sem internet e voz local não instalada")
+    return offline.sintetizar(texto_limpo)
 
 def preaquecer_voz():
     """Gera em segundo plano as frases mais comuns, para saírem instantâneas."""
@@ -147,10 +206,9 @@ def reprodutor_de_audio():
         try:
             _falando.set()
             hud.falando(texto)
-            sd.play(data, fs)
-            sd.wait()
-        except Exception:
-            pass
+            som.tocar(data, fs)
+        except Exception as e:
+            print(f"\nErro ao tocar voz: {e}")
         finally:
             _falando.clear()
         if texto_queue.empty() and audio_queue.empty():
@@ -170,17 +228,27 @@ def parar_fala():
                 fila.get_nowait()
             except queue.Empty:
                 break
-    try:
-        sd.stop()
-    except Exception:
-        pass
+    som.parar()
 
 threading.Thread(target=gerador_de_audio, daemon=True).start()
 threading.Thread(target=reprodutor_de_audio, daemon=True).start()
 
+# Pedido vindo do Telegram: o que o Ghost "falaria" vai por escrito para o celular, não para o alto-falante.
+# Só vale para a thread que está atendendo o pedido (alertas de outras threads continuam em voz).
+_telegram = {"thread": None, "partes": []}
+
+def _desviar_para_telegram(texto):
+    if _telegram["thread"] == threading.get_ident():
+        if texto and texto.strip():
+            _telegram["partes"].append(texto.strip())
+        return True
+    return False
+
 def falar_imediato(texto):
     """Fala e espera terminar (usado em confirmações curtas de comandos locais)."""
     print(f"\n[GHOST]: {texto}")
+    if _desviar_para_telegram(texto):
+        return
     texto_limpo = limpar_texto_para_voz(texto)
     if not texto_limpo:
         return
@@ -188,8 +256,7 @@ def falar_imediato(texto):
         data, fs = _sintetizar(texto_limpo, "+10%")
         _falando.set()
         hud.falando(texto_limpo)
-        sd.play(data, fs)
-        sd.wait()
+        som.tocar(data, fs)
     except Exception as e:
         print(f"\nErro ao gerar voz: {e}")
     finally:
@@ -204,6 +271,8 @@ def falar_local(texto):
 
 def falar_frase_assincrona(texto):
     """Coloca a frase na fila e retorna na hora; as threads geram e tocam."""
+    if _desviar_para_telegram(texto):
+        return
     texto_limpo = limpar_texto_para_voz(texto)
     if texto_limpo:
         texto_queue.put(texto_limpo)
@@ -224,8 +293,7 @@ def carregar_historico_memoria():
 
 def salvar_historico_memoria(historico_lista):
     try:
-        with open(ARQUIVO_MEMORIA, "w", encoding="utf-8") as f:
-            json.dump(historico_lista, f, ensure_ascii=False, indent=2)
+        arquivo.salvar_json(ARQUIVO_MEMORIA, historico_lista, indent=2)
     except Exception as e:
         print(f"Erro ao salvar memória: {e}")
 
@@ -254,7 +322,7 @@ if not GEMINI_KEY or not GROQ_KEY:
 
 # Modelos (troque aqui quando um provedor descontinuar algum)
 MODELOS_GROQ = ["openai/gpt-oss-120b", "openai/gpt-oss-20b"]  # principal: tentados nesta ordem
-MODELOS_GEMINI = ["gemini-3.8-flash", "gemini-3.5-flash", "gemini-2.5-flash"]  # reserva: tentados em ordem
+MODELOS_GEMINI = ["gemini-3.5-flash", "gemini-3.8-flash", "gemini-3.5-flash-lite"]  # reserva: tentados em ordem
 MODELO_TRANSCRICAO = "whisper-large-v3-turbo"                  # voz -> texto (Groq)
 ESFORCO_RACIOCINIO = "medium"  # "low" responde mais rápido, mas erra/recusa mais perguntas simples
 MOSTRAR_TEMPOS = True
@@ -265,7 +333,7 @@ REQUISICOES_HOJE = 0
 LIMITE_ALERTA = 1350
 
 # Inicialização dos clientes das APIs
-client_gemini = genai.Client(api_key=GEMINI_KEY)
+client_gemini = genai.Client(api_key=GEMINI_KEY, http_options={"timeout": 30000, "retry_options": {"attempts": 1}})
 import httpx
 # se o Groq travar (já medimos 14 s), desiste em 6 s sem resposta e passa para o modelo reserva
 client_groq = Groq(api_key=GROQ_KEY, timeout=httpx.Timeout(6.0, connect=3.0), max_retries=0)
@@ -382,16 +450,30 @@ RODADAS_FERRAMENTAS = 4   # ex.: ver a estrutura da planilha -> calcular -> resp
 
 def _executar_ferramentas(modelo, mensagens, chamadas, ao_receber_frase):
     """Executa as ferramentas pedidas pela IA. Se alguma devolver dados (ex.: estrutura de planilha,
-    espaço em disco), devolve à IA, que pode pedir outra ferramenta ou responder em voz."""
+    espaço em disco), devolve à IA, que pode pedir outra ferramenta ou responder em voz.
+    Proteção: depois que a IA leu conteúdo de FORA (e-mail, agenda, planilha, câmera...), qualquer
+    AÇÃO no PC pedida em seguida só acontece se você confirmar por voz. Assim um texto escrito
+    por outra pessoa (ex.: assunto de e-mail "digite...") não consegue comandar o seu computador."""
     msgs, resumo = list(mensagens), ""
+    leu_externo = False
     for rodada in range(RODADAS_FERRAMENTAS):
         resultados, precisa_ia = [], False
         for c in chamadas:
             args = ferramentas.args_json(c["args"])
             print(f"\n[FERRAMENTA]: {c['nome']} {args}")
+            if leu_externo and c["nome"] in ferramentas.ACOES:
+                descricao = ferramentas.descrever(c["nome"], args)
+                print(f"\n[SEGURANÇA]: ação após ler conteúdo externo -> pedindo confirmação ({descricao})")
+                automacoes.pedir_confirmacao(
+                    f"Senhor, confirma {descricao}?",
+                    lambda n=c["nome"], a=args: ferramentas.executar(n, a, falar_local, automacoes.pedir_confirmacao),
+                    falar_local)
+                resultados.append((c, "aguardando confirmação por voz do usuário; não diga mais nada"))
+                return f"[aguardando confirmação] {descricao}"
             resultado, volta = ferramentas.executar(c["nome"], args, falar_local, automacoes.pedir_confirmacao)
             resultados.append((c, resultado))
             precisa_ia = precisa_ia or volta
+            leu_externo = leu_externo or c["nome"] in ferramentas.EXTERNAS
         resumo = "; ".join(f"{c['nome']}({c['args']}) -> {r[:200]}" for c, r in resultados)
         if not precisa_ia:
             return f"[ações executadas] {resumo}"
@@ -424,6 +506,10 @@ def consultar_ia_streaming(prompt_usuario, ao_receber_frase):
     )
     ultimo_erro = None
 
+    # 0. SEM INTERNET: IA local direto (não perde tempo esperando a nuvem)
+    if not offline.internet_ok():
+        return _ia_local(mensagens[1:], ao_receber_frase)
+
     # 1. GROQ (streaming, com ferramentas para agir no PC)
     for modelo in MODELOS_GROQ:
         estado = {"completo": "", "buffer": ""}
@@ -452,7 +538,7 @@ def consultar_ia_streaming(prompt_usuario, ao_receber_frase):
                 response = client_gemini.models.generate_content(
                     model=modelo_g,
                     contents=conversa.como_texto() + prompt_usuario,
-                    config={"system_instruction": instrucao_completa(), "temperature": 0.1, "max_output_tokens": 1024}
+                    config={"system_instruction": instrucao_completa(), "temperature": 0.1, "max_output_tokens": 4096}
                 )
                 texto = (response.text or "").strip()
                 if texto:
@@ -469,12 +555,33 @@ def consultar_ia_streaming(prompt_usuario, ao_receber_frase):
             return texto
         raise RuntimeError("resposta vazia do Gemini")
     except Exception as e:
-        print(f"\n[SISTEMA - ERRO CRÍTICO]: Ambas as APIs falharam. Detalhe: {e}")
+        print(f"\n[SISTEMA]: Groq e Gemini falharam ({e}). Tentando a IA local...")
+        if offline.ollama_ok():
+            return _ia_local(mensagens[1:], ao_receber_frase)
         aviso = "Desculpe, senhor. Ambas as conexões de inteligência falharam no momento."
         print(f"\n[GHOST]: {aviso}")
         ao_receber_frase(aviso)
         return None  # sem resposta real: nada para aprender
 
+
+def _ia_local(mensagens_sem_sistema, ao_receber_frase):
+    """Ollama no próprio PC (sem ferramentas). Usado sem internet ou com as duas nuvens fora."""
+    try:
+        if not offline.ollama_ok():
+            raise RuntimeError("Ollama não está rodando ou o modelo não foi baixado")
+        # prompt CURTO: no processador do notebook cada palavra do prompt custa tempo (o completo levava ~50 s)
+        sistema = {"role": "system", "content": (
+            "Você é o Ghost, assistente pessoal do Ivan, responsável pelo PCP (Planejamento e Controle da Produção) "
+            "da Pedacinho do Sol Alimentos. Trate-o por 'senhor'. Responda em até 3 frases, em português do Brasil. "
+            f"Agora: {datetime.now():%d/%m/%Y %H:%M}.")}
+        texto = offline.conversar([sistema] + mensagens_sem_sistema[-5:], ao_receber_frase, _separar_frases)
+        print(f"\n[GHOST - local]: {texto}")
+        return texto or None
+    except Exception as e:
+        print(f"\n[OFFLINE]: IA local indisponível ({e}).")
+        aviso = "Senhor, estou sem internet e a inteligência local não respondeu. Comandos do PC continuam funcionando."
+        ao_receber_frase(aviso)
+        return None
 
 def processar_resposta_em_tempo_real(comando, t_inicio=None):
     """
@@ -515,38 +622,35 @@ TAXA_AMOSTRAGEM = 16000
 ALUCINACOES_WHISPER = ("amara.org", "obrigado por assistir", "legendas pela comunidade", "inscreva-se")
 
 def gravar_enquanto_segurar():
-    """Grava enquanto F9 estiver pressionada e devolve o áudio em WAV (bytes)."""
+    """Grava enquanto F9 estiver pressionada e devolve o áudio em WAV (bytes).
+    Usa o MESMO microfone já aberto pela ativação por voz (abrir um 2º derrubava o Ghost)."""
     print("\n[Gravando... Fale o seu comando!]")
-    frames = []
-
-    def callback(indata, frame_count, time_info, status):
-        frames.append(indata.copy())
-
-    with sd.InputStream(samplerate=TAXA_AMOSTRAGEM, channels=1, dtype='int16', callback=callback):
-        while keyboard.is_pressed('f9'):
-            sd.sleep(30)
-
+    pcm = ativacao.gravar_enquanto(lambda: keyboard.is_pressed('f9'))
     print("[Gravação encerrada.]")
-
-    if not frames:
+    if not pcm or len(pcm) < TAXA_AMOSTRAGEM * 2 * 0.3:   # menos de 0,3s: toque acidental na tecla
         return None
-    audio_data = np.concatenate(frames, axis=0)
-    if len(audio_data) < TAXA_AMOSTRAGEM * 0.3:   # menos de 0,3s: toque acidental na tecla
-        return None
-
     byte_io = io.BytesIO()
     with wave.open(byte_io, 'wb') as wf:
         wf.setnchannels(1)
         wf.setsampwidth(2)
         wf.setframerate(TAXA_AMOSTRAGEM)
-        wf.writeframes(audio_data.tobytes())
+        wf.writeframes(pcm)
     return byte_io.getvalue()
 
-def transcrever(wav_bytes):
-    """Whisper no Groq (rápido); se falhar, usa o reconhecimento do Google."""
+def _transcrever_local(wav_bytes):
+    print("\n[OFFLINE]: transcrevendo no próprio PC...")
+    texto = offline.transcrever(wav_bytes)
+    if not texto or any(a in texto.lower() for a in ALUCINACOES_WHISPER):
+        raise sr.UnknownValueError()
+    return texto
+
+def transcrever(wav_bytes, nome_arquivo="comando.wav"):
+    """Whisper no Groq (rápido); se falhar, Google; sem internet, Whisper local no PC."""
+    if not offline.internet_ok():
+        return _transcrever_local(wav_bytes)
     try:
         resultado = client_groq.audio.transcriptions.create(
-            file=("comando.wav", wav_bytes),
+            file=(nome_arquivo, wav_bytes),
             model=MODELO_TRANSCRICAO,
             language="pt",
             temperature=0.0,
@@ -560,9 +664,18 @@ def transcrever(wav_bytes):
         raise
     except Exception as e:
         print(f"\n[SISTEMA]: Whisper indisponível ({e}). Usando reconhecimento do Google...")
-        with sr.AudioFile(io.BytesIO(wav_bytes)) as source:
-            audio = recognizer.record(source)
-        return recognizer.recognize_google(audio, language="pt-BR")
+        try:
+            if not nome_arquivo.endswith(".wav"):
+                raise RuntimeError("Google só aceita WAV")
+            with sr.AudioFile(io.BytesIO(wav_bytes)) as source:
+                audio = recognizer.record(source)
+            return recognizer.recognize_google(audio, language="pt-BR")
+        except sr.UnknownValueError:
+            raise
+        except Exception:
+            if nome_arquivo.endswith(".wav"):
+                offline.marcar_sem_internet()
+            return _transcrever_local(wav_bytes)
 
 # -------------------------------------------------------------
 # 8. LOOP PRINCIPAL
@@ -583,13 +696,55 @@ def _escutar_f9():
         keyboard.wait('f9')
         parar_fala()
         hud.ouvindo("Pode falar… (solte o F9 ao terminar)")
-        ativacao.pausar()
-        try:
-            wav = gravar_enquanto_segurar()
-        finally:
-            ativacao.retomar()
+        wav = gravar_enquanto_segurar()
         if wav:
             fila_comandos.put({"wav": wav, "verificar_nome": False, "so_nome": False})
+
+def _registrar_exemplo_ativacao(item, confirmado):
+    """Treino contínuo da palavra "Ghost": acerto vira exemplo positivo, alarme falso vira negativo."""
+    clip = item.get("clip_ativacao")
+    if clip:
+        try:
+            palavra.registrar(clip, confirmado, recortar=item.get("recortar", False))
+        except Exception as e:
+            print(f"\n[PALAVRA]: não consegui guardar o exemplo ({e}).")
+
+def _atender_telegram(item):
+    """Pedido pelo celular: mesmo cérebro do Ghost, resposta por escrito."""
+    _telegram.update(thread=threading.get_ident(), partes=[])
+    enviado = {"ok": False}
+
+    def falar_tg(t):
+        """Resposta das ações locais (que rodam em outra thread): vai para o Telegram, nunca para a voz."""
+        print(f"\n[GHOST -> Telegram]: {t}")
+        if enviado["ok"]:
+            telegram_bot.enviar(item["chat"], t)        # chegou depois: manda separado
+        else:
+            _telegram["partes"].append(t)
+    try:
+        if item.get("audio"):
+            texto = transcrever(item["audio"], item.get("nome_audio", "audio.ogg"))
+            _telegram["partes"].append(f"(ouvi: {texto})")
+        else:
+            texto = item["texto"].strip()
+        print(f"\n[Você - Telegram]: {texto}")
+        comando = re.sub(r'^\W*(ghost|gost)\b[,.!?]?', '', texto, flags=re.IGNORECASE).strip(" ,.!?") or texto
+        if automacoes.executar(comando, falar_tg):
+            conversa.registrar(comando, "[comando executado localmente pelo Ghost via Telegram]")
+            for _ in range(80):                 # ações locais rodam em segundo plano: espera a resposta delas
+                if _telegram["partes"]:
+                    break
+                time.sleep(0.1)
+        else:
+            processar_resposta_em_tempo_real(comando)
+    except sr.UnknownValueError:
+        _telegram["partes"].append("Não entendi o áudio, senhor.")
+    except Exception as e:
+        _telegram["partes"].append(f"Erro: {e}")
+    finally:
+        partes, _telegram["thread"] = list(_telegram["partes"]), None
+        enviado["ok"] = True
+        telegram_bot.enviar(item["chat"], "\n".join(partes) or "Feito, senhor.")
 
 def iniciar_ghost():
     hud.iniciar()
@@ -601,14 +756,25 @@ def iniciar_ghost():
     rotina.iniciar(falar_local, ghost_ocupado, client_groq_fundo, automacoes.pedir_confirmacao)  # aprende a rotina
     lembretes.iniciar(falar_local)                          # lembretes e alarmes
     alertas.iniciar(falar_local, ghost_ocupado)             # avisos proativos (disco, bateria, pausa, chuva...)
+    notificacoes.iniciar(falar_local, ghost_ocupado)        # "Senhor, WhatsApp: Leonard"
+    tarefas.iniciar(client_groq_fundo, MODELOS_GROQ[0], falar_local)  # tarefas longas em segundo plano
+    telegram_bot.iniciar(fila_comandos.put)                 # pedidos pelo celular (se configurado)
+    try:
+        memoria_longa.importar_antigos(conversa.recentes())  # 1ª vez: começa a memória longa com o que já existe
+    except Exception as e:
+        print(f"\n[MEMÓRIA LONGA]: {e}")
     threading.Thread(target=_escutar_f9, daemon=True).start()
     ativacao.iniciar(fila_comandos.put, ghost_falando, parar_fala)  # "Ghost, ..." sem F9
 
     while True:
         item = fila_comandos.get()
         _ocupado.set()
-        hud.pensando("Entendendo…")
         try:
+            if item.get("origem") == "telegram":
+                _atender_telegram(item)
+                continue
+
+            hud.pensando("Entendendo…")
             if item["so_nome"]:  # disse só "Ghost"
                 falar_imediato("Sim, senhor?")
                 ativacao.aguardar_comando()
@@ -620,10 +786,16 @@ def iniciar_ghost():
                 print(f"  [tempo] voz -> texto em {time.perf_counter() - t0:.2f}s")
 
             # 2ª conferência da ativação por voz: a frase precisa começar com "Ghost"
-            if item["verificar_nome"] and not NOME_NO_INICIO.search(texto):
-                print(f"\n[ATIVAÇÃO]: alarme falso ignorado ({texto[:40]!r})")
-                hud.espera()
-                continue
+            if item["verificar_nome"]:
+                confirmado = bool(NOME_NO_INICIO.search(texto))
+                if offline.internet_ok():
+                    _registrar_exemplo_ativacao(item, confirmado)   # só aprende com a transcrição boa (nuvem)
+                elif not confirmado:
+                    confirmado = True   # sem internet o Whisper local às vezes omite o "Ghost": confia no detector
+                if not confirmado:
+                    print(f"\n[ATIVAÇÃO]: alarme falso ignorado ({texto[:40]!r})")
+                    hud.espera()
+                    continue
             print(f"[Você]: {texto}")
             hud.pensando(f"Você: {texto}")
             parar_fala()
@@ -651,7 +823,9 @@ def iniciar_ghost():
                 processar_resposta_em_tempo_real(comando, t0)
 
         except sr.UnknownValueError:
-            if not item.get("verificar_nome"):
+            if item.get("verificar_nome"):
+                _registrar_exemplo_ativacao(item, False)   # nem deu para transcrever: provavelmente não era você
+            else:
                 falar_imediato("Desculpe, senhor. Não entendi.")
             hud.espera()
         except Exception as e:

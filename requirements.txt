@@ -5,7 +5,7 @@ keyboard==0.13.5
 mediapipe==1.1.1
 numpy==2.5.4
 opencv-python==5.0.0.93
-pillow==13.0.0
+pillow
 PyAutoGUI==0.9.54
 PyGetWindow==0.0.9
 pyperclip==1.11.0
@@ -23,3 +23,16 @@ tinytuya
 icalendar
 recurring-ical-events
 httpx
+# modo sem internet, eco, palavra de ativação treinada, memória longa, notificações
+faster-whisper
+piper-tts
+livekit
+openwakeword
+fastembed
+scikit-learn
+winrt-runtime
+winrt-Windows.UI.Notifications
+winrt-Windows.UI.Notifications.Management
+winrt-Windows.Foundation
+winrt-Windows.Foundation.Collections
+winrt-Windows.ApplicationModel

@@ -19,7 +19,7 @@ import camera
 import gestos_lib as gl
 
 # tentados em ordem: se um estiver sobrecarregado (503), passa para o próximo
-MODELOS_GEMINI = ["gemini-3.8-flash", "gemini-3.5-flash", "gemini-2.5-flash", "gemini-3.5-flash-lite"]
+MODELOS_GEMINI = ["gemini-3.5-flash", "gemini-3.8-flash", "gemini-3.5-flash-lite"]
 URL_DETECTOR = ("https://storage.googleapis.com/mediapipe-models/object_detector/"
                 "efficientdet_lite0/float16/latest/efficientdet_lite0.tflite")
 CONFIANCA_LOCAL = 0.5
@@ -85,7 +85,7 @@ def descrever_gemini(frame, pergunta):
     from google import genai
     from google.genai import types
     if _gemini is None:
-        _gemini = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+        _gemini = genai.Client(api_key=os.getenv("GEMINI_API_KEY"), http_options={"timeout": 30000, "retry_options": {"attempts": 1}})
     ok, jpg = cv2.imencode(".jpg", cv2.resize(frame, (640, 480)), [cv2.IMWRITE_JPEG_QUALITY, 85])
     ultimo_erro = None
     for modelo in MODELOS_GEMINI:
@@ -94,7 +94,7 @@ def descrever_gemini(frame, pergunta):
                 model=modelo,
                 contents=[types.Part.from_bytes(data=jpg.tobytes(), mime_type="image/jpeg"),
                           PROMPT.format(pergunta=pergunta)],
-                config={"temperature": 0.2, "max_output_tokens": 1024})
+                config={"temperature": 0.2, "max_output_tokens": 4096})
             if (r.text or "").strip():
                 return r.text.strip()
         except Exception as e:

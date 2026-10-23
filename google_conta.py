@@ -12,6 +12,7 @@ Ghost e diga "Ghost, conectar minha conta Google" (abre o navegador para você
 autorizar). O acesso fica em token_google.json (fora do Git).
 """
 import os
+import arquivo
 from datetime import datetime, timedelta, timezone
 
 PASTA_GHOST = os.path.dirname(os.path.abspath(__file__))
@@ -41,8 +42,7 @@ def _credenciais(permitir_login=False):
         cred = InstalledAppFlow.from_client_secrets_file(CREDENCIAIS, SCOPES).run_local_server(
             port=0, prompt="consent", authorization_prompt_message="",
             success_message="GHOST conectado. Pode fechar esta aba.")
-    with open(TOKEN, "w", encoding="utf-8") as f:
-        f.write(cred.to_json())
+    arquivo.salvar_texto(TOKEN, cred.to_json())
     return cred
 
 

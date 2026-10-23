@@ -5,6 +5,7 @@ Arquivo: preferencias.json (fora do Git).
 """
 import os
 import json
+import arquivo
 
 PASTA_GHOST = os.path.dirname(os.path.abspath(__file__))
 ARQUIVO = os.path.join(PASTA_GHOST, "preferencias.json")
@@ -22,5 +23,4 @@ def carregar():
 def definir(chave, valor):
     dados = carregar()
     dados[chave] = valor
-    with open(ARQUIVO, "w", encoding="utf-8") as f:
-        json.dump(dados, f, ensure_ascii=False, indent=1)
+    arquivo.salvar_json(ARQUIVO, dados)

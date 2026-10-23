@@ -144,6 +144,44 @@ TOOLS = [
         "parameters": {"type": "object", "properties": {"item": {"type": "string", "enum": [
             "espaco_em_disco", "memoria", "endereco_ip", "programas_abertos", "data_e_hora", "bateria", "uso_de_cpu"]}},
             "required": ["item"]}}},
+    {"type": "function", "function": {
+        "name": "olhar_tela",
+        "description": ("Captura a tela do usuário NESTE momento e analisa. Use quando ele pedir para você ver/ler/"
+                        "explicar algo na tela: 'o que é esse erro?', 'resume esse documento aberto', 'o que diz aqui?'. "
+                        "alvo='janela' (padrão, janela ativa) ou 'tudo' (todos os monitores)."),
+        "parameters": {"type": "object", "properties": {
+            "pergunta": {"type": "string"}, "alvo": {"type": "string", "enum": ["janela", "tudo"]}},
+            "required": ["pergunta"]}}},
+    {"type": "function", "function": {
+        "name": "buscar_memoria",
+        "description": ("Busca nas conversas ANTIGAS com o usuário (todas, com data), pelo sentido. Use quando ele "
+                        "perguntar o que disse/combinou/pediu antes ('o que eu te falei semana passada sobre X?', "
+                        "'quando foi que falamos de Y?'). Datas no formato AAAA-MM-DD (opcionais)."),
+        "parameters": {"type": "object", "properties": {
+            "pergunta": {"type": "string"}, "data_inicio": {"type": "string"}, "data_fim": {"type": "string"}},
+            "required": ["pergunta"]}}},
+    {"type": "function", "function": {
+        "name": "listar_notificacoes",
+        "description": "Lista as últimas notificações do Windows recebidas (WhatsApp, Outlook, Teams...), com o texto.",
+        "parameters": {"type": "object", "properties": {
+            "quantidade": {"type": "integer"}, "app": {"type": "string"}}}}},
+    {"type": "function", "function": {
+        "name": "configurar_notificacoes",
+        "description": ("Liga/desliga os avisos de notificações por voz, silencia por X minutos, ou escolhe se o "
+                        "texto da mensagem é lido em voz alta."),
+        "parameters": {"type": "object", "properties": {
+            "acao": {"type": "string", "enum": ["ligar", "desligar", "silenciar", "ler_texto", "nao_ler_texto"]},
+            "minutos": {"type": "integer"}}, "required": ["acao"]}}},
+    {"type": "function", "function": {
+        "name": "tarefa_segundo_plano",
+        "description": ("Inicia uma tarefa LONGA de análise em segundo plano (comparar planilhas, resumir vários "
+                        "e-mails, levantar números) e avisa quando terminar. Use quando o pedido exigir vários passos "
+                        "ou o usuário disser 'me avisa quando terminar'. Só lê dados; não age no PC."),
+        "parameters": {"type": "object", "properties": {"descricao": {"type": "string",
+            "description": "o pedido completo do usuário, com todos os detalhes"}}, "required": ["descricao"]}}},
+    {"type": "function", "function": {
+        "name": "listar_tarefas", "description": "Mostra as tarefas em segundo plano e o andamento.",
+        "parameters": {"type": "object", "properties": {}}}},
 ]
 
 # Consultas fixas, somente leitura (nenhum comando livre é executado)
@@ -166,6 +204,28 @@ def _consulta(item):
                        capture_output=True, timeout=30, creationflags=0x08000000)
     saida = (r.stdout + r.stderr).decode("utf-8", errors="replace").strip()
     return saida[:LIMITE_SAIDA] or "(sem saída)"
+
+
+# Ferramentas que trazem texto escrito por OUTRAS pessoas / de fora do Ghost
+EXTERNAS = {"consultar_emails", "consultar_agenda", "ver_planilha", "calcular_planilha", "olhar_camera",
+            "olhar_tela", "listar_notificacoes",
+            "consultar_sistema", "resumo_do_dia", "estado_casa"}
+# Ferramentas que AGEM (depois de ler algo externo, só com confirmação por voz)
+ACOES = {"abrir_aplicativo", "fechar_aplicativo", "abrir_site", "pesquisar_web", "digitar_texto",
+         "pressionar_teclas", "comando_ghost", "controlar_casa", "criar_skill", "definir_saudacao",
+         "criar_lembrete", "cancelar_lembrete"}
+
+
+def descrever(nome, args):
+    """Frase curta do que a ação vai fazer (para a pergunta de confirmação)."""
+    v = lambda k: str(args.get(k, ""))[:60]
+    return {"abrir_aplicativo": f"abrir {v('nome')}", "fechar_aplicativo": f"fechar {v('nome')}",
+            "abrir_site": f"abrir o site {v('url')}", "pesquisar_web": f"pesquisar {v('termo')}",
+            "digitar_texto": f"digitar: {v('texto')}", "pressionar_teclas": f"apertar {v('combo')}",
+            "comando_ghost": f"executar: {v('frase')}", "controlar_casa": f"{v('acao')} {v('aparelho')}",
+            "criar_skill": "criar uma skill nova", "definir_saudacao": "mudar a saudação",
+            "criar_lembrete": f"criar o lembrete {v('texto')}", "cancelar_lembrete": f"cancelar o lembrete {v('trecho')}",
+            }.get(nome, nome.replace("_", " "))
 
 
 def executar(nome, args, falar, pedir_confirmacao):
@@ -305,6 +365,47 @@ def executar(nome, args, falar, pedir_confirmacao):
             preferencias.definir("saudacao", frase)
             falar(f"Combinado. A partir de agora vou dizer: {frase}")
             return "saudação alterada", False
+
+        if nome == "olhar_tela":
+            import tela
+            falar("Deixe-me ver a tela.")
+            resposta = tela.olhar(args.get("pergunta", "o que tem na tela?"), args.get("alvo", "janela"))
+            return f"visto na tela: {resposta}", True
+
+        if nome == "buscar_memoria":
+            import memoria_longa
+            return memoria_longa.buscar(args.get("pergunta", ""), args.get("data_inicio", ""),
+                                        args.get("data_fim", "")), True
+
+        if nome == "listar_notificacoes":
+            import notificacoes
+            return notificacoes.listar(args.get("quantidade") or 5, args.get("app", "")), True
+
+        if nome == "configurar_notificacoes":
+            import notificacoes, preferencias
+            acao, minutos = args.get("acao"), int(args.get("minutos") or 60)
+            if acao in ("ligar", "desligar"):
+                preferencias.definir("notificacoes_ativas", acao == "ligar")
+                frase = f"Avisos de notificações {'ligados' if acao == 'ligar' else 'desligados'}, senhor."
+            elif acao == "silenciar":
+                notificacoes.silenciar(minutos)
+                frase = f"Notificações em silêncio por {minutos} minutos, senhor."
+            else:
+                preferencias.definir("notificacoes_ler_texto", acao == "ler_texto")
+                frase = ("Vou ler o texto das notificações, senhor." if acao == "ler_texto"
+                         else "Vou dizer só o aplicativo e quem mandou, senhor.")
+            falar(frase)
+            return frase, False
+
+        if nome == "tarefa_segundo_plano":
+            import tarefas
+            r = tarefas.criar(args.get("descricao", ""))
+            falar("Pode deixar, senhor. Vou trabalhar nisso em segundo plano e aviso quando terminar.")
+            return r, False
+
+        if nome == "listar_tarefas":
+            import tarefas
+            return tarefas.listar(), True
 
         if nome == "consultar_sistema":
             item = args.get("item", "")

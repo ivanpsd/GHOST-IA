@@ -42,3 +42,17 @@ token_google.json
 # Cópias geradas pelo app do Claude
 Claude outputs/
 
+
+# Logs de quedas/rotação e arquivos temporários de gravação segura
+ghost.log.1
+travamentos.log
+travamentos.log.1
+*.tmp
+
+# Ambiente Python do Ghost (recriado com: py -V:3.13 -m venv .venv e pip install -r requirements.txt)
+.venv/
+
+# Memória de longo prazo (pessoal)
+historico_completo.jsonl
+historico_vetores.npy
+*.npy

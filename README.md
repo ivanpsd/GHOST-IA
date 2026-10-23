@@ -6,8 +6,15 @@ Assistente pessoal para Windows, em Python: você diz **"Ghost, …"** (ou segur
 
 | Área | O que faz |
 |---|---|
-| Voz | "Ghost, …" sem tecla (palavra de ativação **offline** com Vosk) ou segurando F9 → transcrição com Whisper (Groq), com o Google como reserva |
-| Interrupção | Dizer "Ghost" ou apertar F9 enquanto ele fala faz ele parar e ouvir |
+| Voz | "Ghost, …" sem tecla ou segurando F9 → transcrição com Whisper (Groq), Google e Whisper local como reserva |
+| Palavra "Ghost" treinada | "Ghost, treinar ativação": aprende como **você** diz "Ghost" (openWakeWord, local) e reage na hora; continua aprendendo sozinho. Sem treino, usa o Vosk offline |
+| Interrupção | Falar por cima, dizer "Ghost" ou apertar F9 enquanto ele fala faz ele parar e ouvir |
+| Sem internet | Continua funcionando: transcrição (faster-whisper), IA (Ollama `gemma3:4b`) e voz (Piper) no próprio PC; volta para a nuvem sozinho |
+| Memória longa | Todas as conversas com data, pesquisáveis pelo sentido: "o que eu te falei semana passada sobre o fornecedor?" |
+| Tela | "o que é esse erro na tela?": captura a janela (ou os monitores) só quando você pede e analisa (Gemini) |
+| Notificações | Avisa por voz WhatsApp/Outlook/Teams… (só app e remetente; o texto só se você pedir) |
+| Telegram | Pedidos por texto ou áudio pelo celular; resposta por escrito; só o dono é atendido |
+| Tarefas longas | "compara as planilhas de setembro e outubro e me avisa": trabalha em segundo plano (só leitura) e avisa ao terminar |
 | Lembretes | "me lembra às 15h de…", "quais são meus lembretes?"; fala na hora e mostra aviso na tela |
 | IA | Groq (`openai/gpt-oss-120b`), com resposta em streaming falada frase a frase; Gemini como reserva (troca de modelo automática) |
 | Personalidade | Estilo JARVIS (elegante, humor seco ocasional, oferece o próximo passo) ou "modo sério" |
@@ -36,29 +43,32 @@ Assistente pessoal para Windows, em Python: você diz **"Ghost, …"** (ou segur
 
 ## Instalação
 
-1. Python 3.13+ no Windows.
-2. Instale as dependências:
-   ```powershell
-   pip install -r requirements.txt
-   ```
-3. Copie `.env.example` para `.env` e coloque as suas chaves:
-   - Groq: https://console.groq.com → API Keys
-   - Gemini: https://aistudio.google.com → API Keys
-   - Opcionais (contas pessoais, casa inteligente): veja os comentários no `.env.example`
-4. Rode:
-   ```powershell
-   python ghost.py
-   ```
-   Os modelos de mão e rosto do MediaPipe são baixados sozinhos na primeira vez, para a pasta `modelos/`.
-   Para a palavra de ativação, baixe e extraia em `modelos/` o modelo offline
-   [vosk-model-small-en-us-0.15](https://alphacephei.com/vosk/models) (sem ele, use o F9).
+**Guia completo e prático: [INSTALACAO.md](INSTALACAO.md).** Em resumo:
 
-**Iniciar com o Windows:** crie um atalho para `pythonw.exe ghost.py` (pasta de trabalho = pasta do projeto) em `shell:startup`. Rodando oculto, a saída vai para `ghost.log`.
+| Situação | O que fazer |
+|---|---|
+| Primeira vez | `git clone https://github.com/ivanpsd/GHOST-IA.git C:\GHOST` e dois cliques em **`instalar.bat`** |
+| Já instalado, versão nova | Dois cliques em **`atualizar.bat`** (mantém chaves, memória, fichas e skills) |
+| Parar / ligar | **`parar.bat`** / **`iniciar.bat`** (ele também liga sozinho com o Windows) |
+
+O **vigia** roda o Ghost oculto e o reinicia sozinho se ele cair (para depois de 5 quedas em 10 minutos e mostra um aviso).
+
+**Arquivos de diagnóstico:**
+- `ghost.log`: tudo o que o Ghost escreveu (limite de 2 MB; o anterior fica em `ghost.log.1`) e as quedas anotadas pelo vigia.
+- `travamentos.log`: onde o programa estava quando caiu por erro dentro de uma biblioteca (som, câmera, Vosk).
+
+**Segurança:** depois que a IA lê algo de fora (e-mail, agenda, planilha, câmera, tela, notificações), qualquer ação no PC pedida
+na mesma resposta (digitar, apertar teclas, WhatsApp, abrir sites...) só acontece se você confirmar por voz.
 
 ## Comandos de voz (exemplos)
 
 | Fala | Ação |
 |---|---|
+| "treinar ativação" / "esquecer treino da ativação" | Treina (ou apaga) a palavra "Ghost" na sua voz |
+| "o que é esse erro na tela?" / "resume esse documento aberto" | Analisa a tela (só quando pedido) |
+| "o que eu te falei semana passada sobre o fornecedor?" | Busca na memória longa |
+| "quais notificações chegaram?" / "silenciar notificações por 1 hora" | Notificações do Windows |
+| "compara as planilhas de setembro e outubro e me avisa" | Tarefa em segundo plano |
 | "abra a calculadora" / "abra o YouTube" | Abre programa ou site |
 | "abre o AnyDesk" / "fecha o Excel" | Abre/fecha qualquer aplicativo instalado |
 | "quanto espaço livre tenho no disco?" | Consulta do sistema pela IA |
@@ -134,6 +144,19 @@ Assistente pessoal para Windows, em Python: você diz **"Ghost, …"** (ou segur
 | `contas_pessoais.py` | E-mail (IMAP) e agenda (iCal) de contas pessoais, leitura |
 | `planilhas.py` | Consultas em Excel/CSV, cálculo local |
 | `casa.py` | Casa inteligente (Home Assistant / Tuya) |
+| `som.py` | Único acesso ao alto-falante e ao microfone (evita travamentos) |
+| `eco.py` | Cancelamento de eco (WebRTC) |
+| `palavra.py` | Detector de "Ghost" treinado na sua voz |
+| `offline.py` | Modo sem internet (Whisper local, Ollama, Piper) |
+| `memoria_longa.py` | Histórico completo pesquisável pelo sentido |
+| `tela.py` | Captura da tela sob demanda |
+| `notificacoes.py` | Avisos das notificações do Windows |
+| `telegram_bot.py` | Pedidos pelo celular |
+| `tarefas.py` | Tarefas longas em segundo plano |
+| `arquivo.py` | Gravação segura de arquivos |
+| `vigia.pyw` | Inicia o Ghost e o reinicia se cair |
+| `instalar_modelos.py` | Baixa os modelos locais |
+| `instalar.bat` / `atualizar.bat` / `parar.bat` / `iniciar.bat` | Instalação, atualização, parar e ligar (ver INSTALACAO.md) |
 
 ## Privacidade
 
@@ -147,3 +170,7 @@ Assistente pessoal para Windows, em Python: você diz **"Ghost, …"** (ou segur
 - Agenda e e-mail são **somente leitura** (não envia, não apaga, não marca como lido); dos e-mails só remetente e assunto vão para a IA.
 - Planilhas: a IA vê só os nomes das colunas e 3 linhas de exemplo; o cálculo é feito no PC.
 - Expressão facial é uma **estimativa**, não um diagnóstico de sentimento.
+- A tela só é capturada quando você pede; a imagem vai ao Gemini e não é salva.
+- Notificações: lidas do próprio Windows; em voz alta só o app e o remetente, salvo se você pedir o texto.
+- Memória longa (`historico_completo.jsonl`) e o treino da palavra (`modelos/palavra/`) ficam só no PC, fora do Git.
+- Telegram: só o código do dono (`TELEGRAM_DONO`) é atendido; a tela nunca é enviada.

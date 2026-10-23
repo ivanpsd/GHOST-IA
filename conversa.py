@@ -50,6 +50,11 @@ def registrar(usuario, ghost):
             trocas = []
         trocas.append({"t": time.time(), "usuario": usuario, "ghost": ghost})
         _salvar(trocas)
+    try:
+        import memoria_longa            # guarda também na memória de longo prazo (pesquisável)
+        memoria_longa.adicionar(usuario, ghost)
+    except Exception as e:
+        print(f"\n[MEMÓRIA LONGA]: {e}")
 
 
 def como_mensagens():

@@ -1,4 +1,5 @@
 @echo off
-cd /d C:\GHOST
-start "" "C:\Users\TI-Ivan\AppData\Local\Python\pythoncore-3.15-64\pythonw.exe" ghost.py
+rem Inicia o GHOST oculto, com o vigia que o reinicia se cair.
+cd /d "%~dp0"
+start "" "%~dp0.venv\Scripts\pythonw.exe" "%~dp0vigia.pyw"
 exit
