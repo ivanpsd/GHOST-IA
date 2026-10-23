@@ -29,6 +29,7 @@ TAXA = 16000
 JANELA = 2 * TAXA               # 2 s de áudio por exemplo
 QUADROS = 16                    # 16 vetores de 80 ms = 1,28 s analisados
 LIMIAR_PADRAO = 0.85
+LIMIAR_MINIMO = 0.85            # abaixo disso disparava com conversa comum (visto no uso real: 0,5 era baixo demais)
 MAX_EXEMPLOS = 600
 RETREINAR_A_CADA = 15
 MIN_POS, MIN_NEG = 8, 40
@@ -56,7 +57,7 @@ def _carregar_modelo():
     import joblib
     if os.path.exists(ARQ_MODELO):
         d = joblib.load(ARQ_MODELO)
-        _modelo, LIMIAR = d["clf"], d.get("limiar", LIMIAR_PADRAO)
+        _modelo, LIMIAR = d["clf"], max(d.get("limiar", LIMIAR_PADRAO), LIMIAR_MINIMO)
     return _modelo
 
 
@@ -74,6 +75,33 @@ def _resumo(x):
     """(N, 16, 96) -> média, máximo e final da janela. Testado: generaliza bem melhor que usar os 1536 números crus."""
     x = np.asarray(x, dtype=np.float32)
     return np.concatenate([x.mean(1), x.max(1), x[:, -4:].mean(1)], 1)
+
+
+def _features_fluxo(f, clips):
+    """Features calculadas do MESMO jeito que o detector em tempo real (em blocos de 0,25 s).
+    Calcular em lote (embed_clips) dava números diferentes e o modelo errava ao vivo."""
+    f.reset()
+    saida = []
+    for clip in clips:
+        f(np.zeros(TAXA, np.int16))                # separa do clipe anterior
+        for i in range(0, len(clip), 4000):
+            f(np.asarray(clip[i:i + 4000], np.int16))
+        saida.append(f.get_features(QUADROS)[0])
+    return np.stack(saida)
+
+
+def _inicios_de_fala(neg):
+    """Cada frase "não Ghost" também é mostrada COMEÇANDO depois de um silêncio (de 0,25 s em 0,25 s de fala).
+    Sem isso o detector aprendia "silêncio + começo de fala = Ghost" e disparava sempre que alguém falava."""
+    saida = []
+    for n in neg:
+        n = np.asarray(n, np.int16)
+        saida.append(n)
+        x = np.concatenate([np.zeros(JANELA, np.int16), n])
+        for seg in (0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75):
+            fim = JANELA + int(seg * TAXA)
+            saida.append(x[fim - JANELA:fim])
+    return saida
 
 
 def _negativos_gerais():
@@ -192,8 +220,8 @@ def treinar():
     rng = np.random.default_rng(7)
     pos_aum = _aumentar(pos, neg, rng)
     f = _features_obj()
-    xp = _resumo(f.embed_clips(np.stack(pos_aum))[:, -QUADROS:, :])
-    xn = _resumo(f.embed_clips(np.stack(neg))[:, -QUADROS:, :])
+    xp = _resumo(_features_fluxo(f, pos_aum))
+    xn = _resumo(_features_fluxo(f, _inicios_de_fala(neg)))
     try:
         xg = _resumo(_negativos_gerais())
     except Exception as e:
@@ -203,7 +231,7 @@ def treinar():
     clf = make_pipeline(StandardScaler(), LogisticRegression(C=0.5, class_weight="balanced", max_iter=4000)).fit(x, y)
     # limiar: deixa passar no máximo 0,5% dos negativos (os seus + uma parte dos gerais)
     pn = np.sort(clf.predict_proba(np.vstack([xn, xg[:2000]]))[:, 1])
-    limiar = float(max(0.5, min(0.995, pn[int(len(pn) * 0.995)] + 0.02)))
+    limiar = float(max(LIMIAR_MINIMO, min(0.995, pn[int(len(pn) * 0.995)] + 0.02)))
     acerto = float((clf.predict_proba(xp[:: 6])[:, 1] >= limiar).mean())   # só os originais
     with _trava:
         os.makedirs(PASTA, exist_ok=True)

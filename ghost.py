@@ -246,6 +246,17 @@ threading.Thread(target=reprodutor_de_audio, daemon=True).start()
 # Só vale para a thread que está atendendo o pedido (alertas de outras threads continuam em voz).
 _telegram = {"thread": None, "partes": []}
 
+# Frases de "serviço" que não acrescentam nada e ainda abrem a janela de resposta (o Ghost fica esperando):
+# "Precisa de mais algum detalhe, senhor?", "Posso ajudar em algo mais?", "Mais alguma coisa?"...
+# O prompt já proíbe; isto garante, caso a IA escorregue. Perguntas úteis ("Quer que eu abra a planilha?") passam.
+OFERTA_GENERICA = re.compile(
+    r"^\W*(senhor\W+)?((precisa|deseja|quer|gostaria|posso|mais|algo|ha|há|tem)\b.{0,45}"
+    r"\b(mais|algo|alguma|outra coisa|outro assunto|ajud\w*|detalhe\w*|duvida\w*|dúvida\w*)\b.{0,25}|"
+    r"(mais alguma coisa|algo mais).{0,15})\?\W*$", re.IGNORECASE)
+
+def _oferta_generica(frase):
+    return len(frase) <= 90 and bool(OFERTA_GENERICA.match(frase.strip()))
+
 def _desviar_para_telegram(texto):
     if _telegram["thread"] == threading.get_ident():
         if texto and texto.strip():
@@ -280,6 +291,9 @@ def falar_local(texto):
 
 def falar_frase_assincrona(texto):
     """Coloca a frase na fila e retorna na hora; as threads geram e tocam."""
+    if _oferta_generica(texto):
+        print(f"  [omitido: oferta genérica] {texto}")
+        return
     if _desviar_para_telegram(texto):
         return
     texto_limpo = limpar_texto_para_voz(texto)
@@ -355,8 +369,10 @@ PERSONALIDADES = {
                "trata o usuário por 'senhor' e responde em no máximo 2 frases curtas. "
                "Tem um humor seco e sutil, usado com moderação (no máximo uma pitada a cada algumas respostas, "
                "nunca em assuntos sérios, erros ou más notícias). Nunca bajula e nunca enrola. "
-               "Quando houver um próximo passo óbvio e útil, ofereça em poucas palavras "
-               "(ex.: 'Quer que eu abra a planilha?'). Ao concluir uma ação, confirme de forma breve e segura. "),
+               "NUNCA termine com ofertas ou perguntas genéricas ('Precisa de mais algo?', 'Posso ajudar em algo "
+               "mais?', 'Quer mais detalhes?'): o senhor chama quando precisar. Só pergunte se faltar uma "
+               "informação para cumprir o pedido, ou, raramente, se houver um próximo passo concreto e claramente "
+               "útil (ex.: 'Quer que eu abra a planilha?'). Ao concluir uma ação, confirme de forma breve e segura. "),
     # modo sério: só o essencial
     "objetivo": ("Você é o GHOST, um assistente de voz. Responda SEMPRE em português do Brasil com no máximo "
                  "2 frases diretas, extremamente objetivas, sem comentários extras. Trate o usuário como 'senhor'. "),
@@ -783,8 +799,11 @@ def iniciar_ghost():
                 _atender_telegram(item)
                 continue
 
-            hud.pensando("Entendendo…")
-            if item["so_nome"]:  # disse só "Ghost"
+            if not item.get("verificar_nome"):
+                hud.pensando("Entendendo…")   # chamado pelo nome: o painel só reage depois de confirmar que foi "Ghost"
+            # disse só "Ghost": mesmo assim passa pelo Whisper (abaixo) para confirmar que foi mesmo o nome.
+            # Antes o "Sim, senhor?" saía direto e qualquer conversa na sala fazia ele perguntar.
+            if item["so_nome"] and not item.get("verificar_nome"):
                 falar_imediato("Sim, senhor?")
                 ativacao.aguardar_comando()
                 continue

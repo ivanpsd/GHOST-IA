@@ -200,6 +200,7 @@ def _ouvir():
     origem, clip_ativacao, fala_depois_s = "resposta", None, 0.0
     detector, espera_detector, ultimo_negativo = None, 0.0, 0.0
     seguidos = 0                                # blocos seguidos com a sua voz enquanto o Ghost fala
+    pontos_ultimo = 0.0
     eco_nivel = 0.0                             # quanto da voz do Ghost "vaza" no microfone (aprende sozinho)
     _carregar_volume()
 
@@ -252,20 +253,23 @@ def _ouvir():
             elif detector is None and palavra.versao and palavra.pronto() and time.time() > espera_detector:
                 espera_detector = time.time() + 30
                 detector = carregar_detector()
+            pontos_antes = pontos_ultimo if detector is not None else 0.0
             pontos = detector.processar(dados) if detector is not None else 0.0
+            pontos_ultimo = pontos
+            # "Ghost" de verdade dura ~0,5 s: exige 2 blocos seguidos acima do limiar (ou 1 muito alto)
+            confirmado_det = pontos >= 0.97 or (pontos >= palavra.LIMIAR and pontos_antes >= palavra.LIMIAR)
             falando_agora = bool(_falando and _falando())
 
             # ---------- "GHOST" pelo detector treinado: reage na hora (com ele falando, quem interrompe
             # é o Vosk ou a sua voz por cima: o detector sozinho não corta a fala, para evitar cortes à toa)
             if (detector is not None and resposta is None and not falando_agora
-                    and pontos >= palavra.LIMIAR and time.time() > espera_detector):
+                    and confirmado_det and time.time() > espera_detector):
                 espera_detector = time.time() + 2.0
                 clip_ativacao = b"".join(janela)
                 resposta, origem = bytearray(clip_ativacao), "ghost"
                 falando_s, silencio_s, fala_depois_s = 0.5, 0.0, 0.0
                 _aguardando_ate = time.time() + ESPERA_COMANDO
-                _hud("ouvindo", "Pode falar…")
-                print(f"\n[ATIVAÇÃO]: \"Ghost\" detectado ({pontos:.2f}).")
+                print(f"\n[ATIVAÇÃO]: \"Ghost\" detectado ({pontos:.2f}); conferindo...")
                 continue
 
             # ---------- FALAR POR CIMA: enquanto ele fala, volume bem acima do "vazamento" da voz dele
@@ -346,7 +350,6 @@ def _ouvir():
                 frase = bytes(_buffer)
                 _buffer = bytearray()
                 if palavras[:1] == ["ghost"] and time.time() > espera_detector:
-                    _hud("pensando", "Ouvi \"Ghost\"…")
                     _aprender_volume(frase, limiar)
                     so_nome = len(palavras) == 1 and len(frase) < 2.5 * TAXA * 2
                     _entregar({"wav": _para_wav(frase), "verificar_nome": True, "so_nome": so_nome,
