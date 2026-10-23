@@ -8,7 +8,7 @@ import json
 
 PASTA_GHOST = os.path.dirname(os.path.abspath(__file__))
 ARQUIVO = os.path.join(PASTA_GHOST, "preferencias.json")
-PADRAO = {"saudacao": "Olá, Ivan."}
+PADRAO = {"saudacao": "Olá, Ivan.", "cidade": "Santana de Parnaíba", "personalidade": "jarvis"}
 
 
 def carregar():

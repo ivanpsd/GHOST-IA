@@ -51,6 +51,9 @@ import preferencias
 import rotina
 import ativacao
 import lembretes
+import resumo
+import hud
+import alertas
 
 
 # -------------------------------------------------------------
@@ -58,6 +61,7 @@ import lembretes
 # -------------------------------------------------------------
 def limpar_texto_para_voz(texto):
     """Remove caracteres de Markdown (*, #, _, ~, `, etc.) para a voz ler limpo"""
+    texto = (texto or "").replace("\u202f", " ").replace("\u00a0", " ").replace("\u2011", "-")
     texto_limpo = re.sub(r'[*_~`#]', '', texto)
     texto_limpo = re.sub(r'^\s*[\-\*]\s+', '', texto_limpo, flags=re.MULTILINE)
     texto_limpo = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', texto_limpo)
@@ -71,8 +75,25 @@ VOZ_MASCULINA = "pt-BR-AntonioNeural"
 texto_queue = queue.Queue()   # frases esperando virar áudio
 audio_queue = queue.Queue()   # áudios prontos esperando tocar
 
+PASTA_CACHE_VOZ = os.path.join(PASTA_GHOST, "modelos", "cache_voz")
+MAX_CACHE_VOZ = 400   # frases guardadas (as mais antigas saem)
+
+def _arquivo_cache(texto_limpo, rate):
+    import hashlib
+    h = hashlib.sha1(f"{VOZ_MASCULINA}|{rate}|{texto_limpo}".encode("utf-8")).hexdigest()[:20]
+    return os.path.join(PASTA_CACHE_VOZ, h + ".mp3")
+
 def _sintetizar(texto_limpo, rate):
-    """Gera o áudio da frase direto na memória (sem gravar arquivo em disco)."""
+    """Gera o áudio da frase. Frases curtas já faladas antes saem do cache na hora
+    (gerar a voz leva ~1 s por frase; o cache leva milissegundos)."""
+    cache = _arquivo_cache(texto_limpo, rate) if len(texto_limpo) <= 120 else None
+    if cache and os.path.exists(cache):
+        try:
+            os.utime(cache, None)  # marca como usado recentemente
+            return sf.read(cache, dtype='float32')
+        except Exception:
+            pass
+
     async def _gerar():
         dados = bytearray()
         communicate = edge_tts.Communicate(texto_limpo, VOZ_MASCULINA, pitch="-6Hz", rate=rate)
@@ -81,7 +102,31 @@ def _sintetizar(texto_limpo, rate):
                 dados.extend(chunk["data"])
         return bytes(dados)
     mp3 = asyncio.run(_gerar())
+    if cache:
+        try:
+            os.makedirs(PASTA_CACHE_VOZ, exist_ok=True)
+            with open(cache, "wb") as f:
+                f.write(mp3)
+            arquivos = sorted((os.path.join(PASTA_CACHE_VOZ, a) for a in os.listdir(PASTA_CACHE_VOZ)), key=os.path.getmtime)
+            for velho in arquivos[:-MAX_CACHE_VOZ]:
+                os.remove(velho)
+        except Exception:
+            pass
     return sf.read(io.BytesIO(mp3), dtype='float32')
+
+def preaquecer_voz():
+    """Gera em segundo plano as frases mais comuns, para saírem instantâneas."""
+    comuns = ["Sim, senhor?", "Pois não, senhor?", "Desculpe, senhor. Não entendi.", "Deixe-me ver.",
+              "Um momento, senhor.", "Feito, senhor.", "Cancelado, senhor.", "Montando a skill, um instante.",
+              preferencias.carregar()["saudacao"]]
+    def _rodar():
+        for frase in comuns:
+            for rate in ("+5%", "+10%"):
+                try:
+                    _sintetizar(limpar_texto_para_voz(frase), rate)
+                except Exception:
+                    pass
+    threading.Thread(target=_rodar, daemon=True).start()
 
 _falando = threading.Event()   # True enquanto o Ghost está com som saindo
 
@@ -101,12 +146,15 @@ def reprodutor_de_audio():
         data, fs, texto = audio_queue.get()
         try:
             _falando.set()
+            hud.falando(texto)
             sd.play(data, fs)
             sd.wait()
         except Exception:
             pass
         finally:
             _falando.clear()
+        if texto_queue.empty() and audio_queue.empty():
+            hud.espera()
         # terminou de falar uma pergunta: a próxima frase vale como resposta, sem dizer "Ghost"
         if texto.rstrip().endswith("?") and texto_queue.empty() and audio_queue.empty():
             ativacao.aguardar_comando()
@@ -139,12 +187,15 @@ def falar_imediato(texto):
     try:
         data, fs = _sintetizar(texto_limpo, "+10%")
         _falando.set()
+        hud.falando(texto_limpo)
         sd.play(data, fs)
         sd.wait()
     except Exception as e:
         print(f"\nErro ao gerar voz: {e}")
     finally:
         _falando.clear()
+        if texto_queue.empty() and audio_queue.empty():
+            hud.espera()
 
 def falar_local(texto):
     """Usada pelas automações: mostra no terminal/log e fala sem travar."""
@@ -215,13 +266,27 @@ LIMITE_ALERTA = 1350
 
 # Inicialização dos clientes das APIs
 client_gemini = genai.Client(api_key=GEMINI_KEY)
-client_groq = Groq(api_key=GROQ_KEY)
+import httpx
+# se o Groq travar (já medimos 14 s), desiste em 6 s sem resposta e passa para o modelo reserva
+client_groq = Groq(api_key=GROQ_KEY, timeout=httpx.Timeout(6.0, connect=3.0), max_retries=0)
+client_groq_fundo = Groq(api_key=GROQ_KEY, timeout=60.0)   # memória/rotina/padrões: sem pressa
+
+PERSONALIDADES = {
+    # estilo JARVIS: mordomo digital elegante, competente, com humor seco e raro
+    "jarvis": ("Você é o GHOST, o assistente pessoal do usuário, no espírito do JARVIS: um mordomo digital "
+               "elegante, calmo e extremamente competente. Fala português do Brasil com polidez natural, "
+               "trata o usuário por 'senhor' e responde em no máximo 2 frases curtas. "
+               "Tem um humor seco e sutil, usado com moderação (no máximo uma pitada a cada algumas respostas, "
+               "nunca em assuntos sérios, erros ou más notícias). Nunca bajula e nunca enrola. "
+               "Quando houver um próximo passo óbvio e útil, ofereça em poucas palavras "
+               "(ex.: 'Quer que eu abra a planilha?'). Ao concluir uma ação, confirme de forma breve e segura. "),
+    # modo sério: só o essencial
+    "objetivo": ("Você é o GHOST, um assistente de voz. Responda SEMPRE em português do Brasil com no máximo "
+                 "2 frases diretas, extremamente objetivas, sem comentários extras. Trate o usuário como 'senhor'. "),
+}
 
 SYSTEM_INSTRUCTION = (
-    "Você é o GHOST, um assistente de voz ultra-inteligente estilo JARVIS. "
-    "Responda SEMPRE em português do Brasil com no máximo 2 frases diretas. "
-    "Seja extremamente objetivo, preciso e sem enrolação. "
-    "Trate o usuário como 'senhor'. "
+    "Seja preciso e sem enrolação. "
     "Use o histórico da conversa: não pergunte de novo o que o usuário já disse e entenda referências "
     "como 'ele', 'isso', 'o anterior'. "
     "Responda normalmente perguntas de conhecimento geral com o que você sabe (história, geografia, ciência, "
@@ -232,6 +297,15 @@ SYSTEM_INSTRUCTION = (
     "mandar mensagem, volume, gestos, macros), CHAME A FERRAMENTA em vez de responder com texto; "
     "nunca diga que não é capaz de algo que uma ferramenta faz. "
     "Para informações do computador (disco, memória, IP, programas abertos, data e hora) use consultar_sistema. "
+    "Você LÊ as agendas e os e-mails do usuário, de trabalho e pessoais (somente leitura), com consultar_agenda e "
+    "consultar_emails; se ele disser 'pessoal' ou 'do trabalho', passe isso em 'conta'; "
+    "ao resumir e-mails, diga quem enviou e o assunto, sem ler o texto inteiro. "
+    "Você CONTROLA aparelhos inteligentes (luzes, tomadas, ar, TV) com controlar_casa e estado_casa, quando "
+    "houver aparelhos conectados. "
+    "Você CONSULTA planilhas Excel/CSV do usuário (somente leitura): primeiro use ver_planilha para conhecer as "
+    "colunas e depois calcular_planilha com filtros/agrupamentos; responda com os números calculados, nunca estime. "
+    "Quando o usuário citar a planilha pelo assunto ('planilha de produção'), chame ver_planilha com esse nome "
+    "ANTES de perguntar qual é o arquivo; só pergunte se ela não for encontrada. "
     "Você ENXERGA pela webcam com a ferramenta olhar_camera: quando o usuário mostrar algo ou perguntar o que "
     "é/o que você vê, use-a em vez de pedir que ele descreva. "
     "Você não tem acesso a dados em tempo real na internet: para notícias, cotações ou clima, use pesquisar_web. "
@@ -240,19 +314,25 @@ SYSTEM_INSTRUCTION = (
 )
 
 def instrucao_completa():
-    """Instrução fixa + fatos aprendidos (relidos a cada pergunta)."""
+    """Personalidade + instrução fixa + fatos aprendidos (relidos a cada pergunta)."""
     agora = datetime.now()
     dias = ["segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta-feira", "sábado", "domingo"]
-    return (SYSTEM_INSTRUCTION + f"\n\nAGORA: {dias[agora.weekday()]}, {agora:%d/%m/%Y %H:%M} (horário de Brasília)."
+    estilo = PERSONALIDADES.get(preferencias.carregar().get("personalidade", "jarvis"), PERSONALIDADES["jarvis"])
+    return (estilo + SYSTEM_INSTRUCTION + f"\n\nAGORA: {dias[agora.weekday()]}, {agora:%d/%m/%Y %H:%M} (horário de Brasília)."
             + memoria.texto_para_prompt() + pessoas.texto_para_prompt())
 
 FIM_DE_FRASE = re.compile(r'[.!?…](?=\s)')
 
-def _separar_frases(buffer):
-    """Retorna (frases completas, resto ainda incompleto)."""
+VIRGULA_INICIAL = re.compile(r'^.{25,90}?[,;:](?=\s)', re.S)
+
+def _separar_frases(buffer, primeira=False):
+    """Retorna (frases completas, resto ainda incompleto).
+    Na 1ª frase da resposta, corta na primeira vírgula depois de ~25 letras: a voz começa antes."""
     frases = []
     while True:
         m = FIM_DE_FRASE.search(buffer)
+        if not m and primeira and not frases:
+            m = VIRGULA_INICIAL.search(buffer)
         if not m:
             return frases, buffer
         frases.append(buffer[:m.end()].strip())
@@ -286,7 +366,9 @@ def _stream_groq(modelo, mensagens, ao_receber_frase, estado, usar_ferramentas):
         print(pedaco, end="", flush=True)
         estado["completo"] += pedaco
         estado["buffer"] += pedaco
-        frases, estado["buffer"] = _separar_frases(estado["buffer"])
+        frases, estado["buffer"] = _separar_frases(estado["buffer"], primeira=not estado.get("ja_falou"))
+        if frases:
+            estado["ja_falou"] = True
         for frase in frases:
             ao_receber_frase(frase)
     if estado["buffer"].strip():
@@ -296,26 +378,35 @@ def _stream_groq(modelo, mensagens, ao_receber_frase, estado, usar_ferramentas):
         print()
     return estado["completo"].strip(), [chamadas[k] for k in sorted(chamadas)]
 
+RODADAS_FERRAMENTAS = 4   # ex.: ver a estrutura da planilha -> calcular -> responder
+
 def _executar_ferramentas(modelo, mensagens, chamadas, ao_receber_frase):
-    """Executa as ferramentas pedidas pela IA. Se alguma devolver dados (ex.: espaço em disco),
-    faz uma 2ª chamada para a IA explicar o resultado em voz."""
-    resultados, precisa_ia = [], False
-    for c in chamadas:
-        args = ferramentas.args_json(c["args"])
-        print(f"\n[FERRAMENTA]: {c['nome']} {args}")
-        resultado, volta = ferramentas.executar(c["nome"], args, falar_local, automacoes.pedir_confirmacao)
-        resultados.append((c, resultado))
-        precisa_ia = precisa_ia or volta
-    resumo = "; ".join(f"{c['nome']}({c['args']}) -> {r[:200]}" for c, r in resultados)
-    if not precisa_ia:
-        return f"[ações executadas] {resumo}"
-    msgs = mensagens + [{"role": "assistant", "content": "", "tool_calls": [
-        {"id": c["id"] or f"call_{i}", "type": "function", "function": {"name": c["nome"], "arguments": c["args"] or "{}"}}
-        for i, (c, _) in enumerate(resultados)]}]
-    msgs += [{"role": "tool", "tool_call_id": c["id"] or f"call_{i}", "content": r}
-             for i, (c, r) in enumerate(resultados)]
-    texto, _ = _stream_groq(modelo, msgs, ao_receber_frase, {"completo": "", "buffer": ""}, usar_ferramentas=False)
-    return texto or f"[ações executadas] {resumo}"
+    """Executa as ferramentas pedidas pela IA. Se alguma devolver dados (ex.: estrutura de planilha,
+    espaço em disco), devolve à IA, que pode pedir outra ferramenta ou responder em voz."""
+    msgs, resumo = list(mensagens), ""
+    for rodada in range(RODADAS_FERRAMENTAS):
+        resultados, precisa_ia = [], False
+        for c in chamadas:
+            args = ferramentas.args_json(c["args"])
+            print(f"\n[FERRAMENTA]: {c['nome']} {args}")
+            resultado, volta = ferramentas.executar(c["nome"], args, falar_local, automacoes.pedir_confirmacao)
+            resultados.append((c, resultado))
+            precisa_ia = precisa_ia or volta
+        resumo = "; ".join(f"{c['nome']}({c['args']}) -> {r[:200]}" for c, r in resultados)
+        if not precisa_ia:
+            return f"[ações executadas] {resumo}"
+        msgs += [{"role": "assistant", "content": "", "tool_calls": [
+            {"id": c["id"] or f"call_{rodada}_{i}", "type": "function",
+             "function": {"name": c["nome"], "arguments": c["args"] or "{}"}}
+            for i, (c, _) in enumerate(resultados)]}]
+        msgs += [{"role": "tool", "tool_call_id": c["id"] or f"call_{rodada}_{i}", "content": r}
+                 for i, (c, r) in enumerate(resultados)]
+        ultima = rodada == RODADAS_FERRAMENTAS - 1
+        texto, chamadas = _stream_groq(modelo, msgs, ao_receber_frase, {"completo": "", "buffer": ""},
+                                       usar_ferramentas=not ultima)
+        if not chamadas:
+            return texto or f"[ações executadas] {resumo}"
+    return f"[ações executadas] {resumo}"
 
 def consultar_ia_streaming(prompt_usuario, ao_receber_frase):
     """Groq em streaming (principal) -> Gemini (reserva).
@@ -407,7 +498,7 @@ def processar_resposta_em_tempo_real(comando, t_inicio=None):
         if resposta:
             conversa.registrar(comando, resposta)
             if not pessoas.falante_atual():  # só aprende sobre o dono quando é ele falando
-                memoria.aprender_em_segundo_plano(client_groq, comando, resposta)
+                memoria.aprender_em_segundo_plano(client_groq_fundo, comando, resposta)
     except Exception as e:
         print(f"\nErro no processamento: {e}")
         print("\n[GHOST]: Desculpe, senhor. Tive uma falha geral de conexão com os servidores.")
@@ -491,6 +582,7 @@ def _escutar_f9():
     while True:
         keyboard.wait('f9')
         parar_fala()
+        hud.ouvindo("Pode falar… (solte o F9 ao terminar)")
         ativacao.pausar()
         try:
             wav = gravar_enquanto_segurar()
@@ -500,17 +592,22 @@ def _escutar_f9():
             fila_comandos.put({"wav": wav, "verificar_nome": False, "so_nome": False})
 
 def iniciar_ghost():
-    falar_imediato(preferencias.carregar()["saudacao"])
+    hud.iniciar()
+    # de manhã, na primeira vez do dia: resumo completo; senão, a saudação
+    falar_imediato(resumo.gerar() if resumo.deve_resumir_agora() else preferencias.carregar()["saudacao"])
     ultimo_uso = time.time()
-    rosto.iniciar(falar_local, ghost_ocupado, client_groq)  # leitura facial + check-in periódico
-    rotina.iniciar(falar_local, ghost_ocupado, client_groq, automacoes.pedir_confirmacao)  # aprende a rotina
+    preaquecer_voz()                                        # frases comuns saem instantâneas
+    rosto.iniciar(falar_local, ghost_ocupado, client_groq_fundo)  # leitura facial + check-in periódico
+    rotina.iniciar(falar_local, ghost_ocupado, client_groq_fundo, automacoes.pedir_confirmacao)  # aprende a rotina
     lembretes.iniciar(falar_local)                          # lembretes e alarmes
+    alertas.iniciar(falar_local, ghost_ocupado)             # avisos proativos (disco, bateria, pausa, chuva...)
     threading.Thread(target=_escutar_f9, daemon=True).start()
     ativacao.iniciar(fila_comandos.put, ghost_falando, parar_fala)  # "Ghost, ..." sem F9
 
     while True:
         item = fila_comandos.get()
         _ocupado.set()
+        hud.pensando("Entendendo…")
         try:
             if item["so_nome"]:  # disse só "Ghost"
                 falar_imediato("Sim, senhor?")
@@ -525,8 +622,10 @@ def iniciar_ghost():
             # 2ª conferência da ativação por voz: a frase precisa começar com "Ghost"
             if item["verificar_nome"] and not NOME_NO_INICIO.search(texto):
                 print(f"\n[ATIVAÇÃO]: alarme falso ignorado ({texto[:40]!r})")
+                hud.espera()
                 continue
             print(f"[Você]: {texto}")
+            hud.pensando(f"Você: {texto}")
             parar_fala()
 
             # Remove o nome "Ghost" da frase, mantendo maiúsculas/acentos (usados no WhatsApp)
@@ -537,8 +636,10 @@ def iniciar_ghost():
                 ativacao.aguardar_comando()
                 continue
 
-            # Chamado depois de um tempo parado: cumprimenta antes de responder
-            if time.time() - ultimo_uso > SAUDAR_APOS_MINUTOS * 60:
+            # 1º uso da manhã (Ghost aberto desde ontem): resumo do dia; parado há muito tempo: saudação
+            if resumo.deve_resumir_agora():
+                falar_imediato(resumo.gerar())
+            elif time.time() - ultimo_uso > SAUDAR_APOS_MINUTOS * 60:
                 falar_imediato(preferencias.carregar()["saudacao"])
             ultimo_uso = time.time()
 
@@ -552,8 +653,10 @@ def iniciar_ghost():
         except sr.UnknownValueError:
             if not item.get("verificar_nome"):
                 falar_imediato("Desculpe, senhor. Não entendi.")
+            hud.espera()
         except Exception as e:
             print(f"Erro: {e}")
+            hud.erro(str(e))
         finally:
             _ocupado.clear()
 

@@ -35,3 +35,10 @@ listar_mic.py
 # Lembretes e preferencias (pessoais)
 lembretes.json
 preferencias.json
+# Google (credenciais e acesso)
+credentials.json
+token_google.json
+
+# Cópias geradas pelo app do Claude
+Claude outputs/
+

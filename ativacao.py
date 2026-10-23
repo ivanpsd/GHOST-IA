@@ -69,6 +69,10 @@ def aguardar_comando(segundos=ESPERA_COMANDO):
     global _aguardando_ate
     _resetar()  # descarta o que foi ouvido enquanto o próprio Ghost falava
     _aguardando_ate = time.time() + segundos
+    try:
+        import hud; hud.ouvindo(f"Pode responder… ({int(segundos)} s)")
+    except Exception:
+        pass
 
 
 def pausar():
@@ -108,6 +112,10 @@ def _loop():
                     _aguardando_ate = 0.0
                     _entregar({"wav": _para_wav(frase), "verificar_nome": False, "so_nome": False})
                 elif palavras[0] == "ghost":
+                    try:
+                        import hud; hud.pensando("Ouvi \"Ghost\"…")
+                    except Exception:
+                        pass
                     so_nome = len(palavras) == 1 and len(frase) < 2.5 * TAXA * 2
                     _entregar({"wav": _para_wav(frase), "verificar_nome": True, "so_nome": so_nome})
             else:

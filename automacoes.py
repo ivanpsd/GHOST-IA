@@ -26,6 +26,7 @@ except ImportError:
     pyperclip = None
 
 import camera
+import preferencias
 import gestos
 import rosto
 from gestos import alternar_camera
@@ -574,6 +575,79 @@ def _tratar_pessoas(texto, n, falar):
             return True
     return False
 
+def _tratar_resumo(texto, n, falar):
+    import resumo
+    if (n in ("bom dia", "bom dia ghost", "ghost bom dia") or
+            tem(n, "resumo do dia", "resumo da manha", "resumo de hoje", "como esta o meu dia")):
+        em_segundo_plano(lambda: falar(resumo.gerar()))
+        return True
+    if tem(n, "previsao do tempo", "como esta o tempo", "como esta o clima", "vai chover") and len(n.split()) <= 8:
+        def _clima():
+            try:
+                falar(resumo.clima())
+            except Exception:
+                falar("Senhor, não consegui consultar o clima agora.")
+        em_segundo_plano(_clima)
+        return True
+    m = re.search(r"\bminha cidade (?:e|eh|agora e)\s+(?P<c>.+)$", n)
+    if m:
+        cidade = re.split(r"(?i)\bminha cidade (?:é|e|agora é)\s+", texto, maxsplit=1)[-1].strip(" .!")
+        preferencias.definir("cidade", cidade)
+        falar(f"Certo, senhor. Vou usar {cidade} para o clima.")
+        return True
+    return False
+
+def _tratar_alertas(n, falar):
+    import alertas
+    if tem(n, "alertas", "avisos"):
+        if tem(n, "silenci", "silenciar", "silencie") or re.search(r"\b(?:por|durante)\s+\d+|meia hora|uma hora", n):
+            alertas.silenciar(_minutos_falados(n), falar); return True
+        if re.search(VERBO_DESLIGAR, n):
+            alertas.ligar(False, falar); return True
+        if re.search(VERBO_LIGAR, n):
+            alertas.ligar(True, falar); return True
+    if tem(n, "como esta o computador", "como esta o pc", "status do computador", "status do pc", "saude do pc"):
+        falar(alertas.situacao()); return True
+    return False
+
+def _tratar_personalidade(n, falar):
+    if tem(n, "modo serio", "modo objetivo", "seja mais objetivo", "sem gracinha", "sem piadas"):
+        preferencias.definir("personalidade", "objetivo"); falar("Entendido, senhor. Modo objetivo."); return True
+    if tem(n, "modo jarvis", "modo normal", "pode brincar", "volte ao normal", "personalidade normal"):
+        preferencias.definir("personalidade", "jarvis"); falar("Às suas ordens, senhor. De volta ao normal."); return True
+    return False
+
+def _tratar_casa(n, falar):
+    if tem(n, "conectar casa inteligente", "conectar a casa", "conectar os aparelhos", "procurar aparelhos",
+           "atualizar aparelhos", "conectar casa"):
+        import casa
+        falar("Procurando aparelhos, senhor.")
+        em_segundo_plano(lambda: falar(casa.descobrir()))
+        return True
+    if tem(n, "quais aparelhos", "que aparelhos", "aparelhos voce controla"):
+        import casa
+        falar(casa.listar())
+        return True
+    return False
+
+def _tratar_hud(n, falar):
+    if tem(n, "painel", "hud"):
+        import hud
+        if re.search(r"\b(escond\w*|ocult\w*|tir\w*|deslig\w*|fech\w*)\b", n):
+            hud.mostrar(False); falar("Painel escondido, senhor."); return True
+        if re.search(r"\b(mostr\w*|exib\w*|lig\w*|abr\w*|volt\w*)\b", n):
+            hud.mostrar(True); falar("Painel visível, senhor."); return True
+    return False
+
+def _tratar_google(n, falar):
+    if tem(n, "conectar minha conta google", "conectar a conta google", "conectar o google", "conectar meu gmail",
+           "conectar minha agenda"):
+        import google_conta
+        falar("Vou abrir o navegador para o senhor autorizar o acesso de leitura.")
+        em_segundo_plano(lambda: falar(google_conta.conectar()))
+        return True
+    return False
+
 def _tratar_ativacao(n, falar):
     if tem(n, "ativacao por voz", "palavra de ativacao", "ouvir meu chamado", "me ouvir sem o f9"):
         import ativacao
@@ -584,7 +658,7 @@ def _tratar_ativacao(n, falar):
     return False
 
 def _tratar_ghost(n, falar):
-    if _tratar_ativacao(n, falar) or _executar_acao_cadastrada(n, falar):
+    if _tratar_alertas(n, falar) or _tratar_personalidade(n, falar) or _tratar_casa(n, falar) or _tratar_hud(n, falar) or _tratar_google(n, falar) or _tratar_ativacao(n, falar) or _executar_acao_cadastrada(n, falar):
         return True
     if tem(n, "cadastro de gestos", "cadastro dos gestos", "cadastrar gesto", "cadastrar gestos",
            "cadastrar um gesto", "novo gesto"):
@@ -700,6 +774,7 @@ def executar(texto, falar):
         _tratar_confirmacao(n, falar)
         or _tratar_skills(texto, n, falar)
         or _tratar_pessoas(texto, n, falar)
+        or _tratar_resumo(texto, n, falar)
         or _tratar_ghost(n, falar)
         or _tratar_whatsapp(texto, n, falar)
         or _tratar_ditado_e_teclas(texto, n, falar)

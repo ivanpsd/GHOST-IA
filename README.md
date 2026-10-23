@@ -1,6 +1,6 @@
 # GHOST — assistente de voz estilo JARVIS
 
-Assistente pessoal para Windows, em Python: você fala segurando **F9**, ele responde em voz e texto, executa ações no computador, controla o mouse por gestos da mão, lê a expressão facial e aprende sobre você com o tempo.
+Assistente pessoal para Windows, em Python: você diz **"Ghost, …"** (ou segura **F9**), ele responde em voz e texto, executa ações no computador, controla o mouse por gestos da mão, lê a expressão facial e aprende sobre você com o tempo.
 
 ## Funcionalidades
 
@@ -9,8 +9,15 @@ Assistente pessoal para Windows, em Python: você fala segurando **F9**, ele res
 | Voz | "Ghost, …" sem tecla (palavra de ativação **offline** com Vosk) ou segurando F9 → transcrição com Whisper (Groq), com o Google como reserva |
 | Interrupção | Dizer "Ghost" ou apertar F9 enquanto ele fala faz ele parar e ouvir |
 | Lembretes | "me lembra às 15h de…", "quais são meus lembretes?"; fala na hora e mostra aviso na tela |
-| IA | Groq (`openai/gpt-oss-120b`), com resposta em streaming falada frase a frase; Gemini como reserva |
-| Fala | Voz neural `pt-BR-AntonioNeural` (edge-tts), gerada e tocada em paralelo |
+| IA | Groq (`openai/gpt-oss-120b`), com resposta em streaming falada frase a frase; Gemini como reserva (troca de modelo automática) |
+| Personalidade | Estilo JARVIS (elegante, humor seco ocasional, oferece o próximo passo) ou "modo sério" |
+| Painel (HUD) | Faixa no topo da tela: em espera / ouvindo / pensando / falando; clique atravessa |
+| Resumo da manhã | "bom dia": data, clima (Open-Meteo), lembretes, agenda e e-mails não lidos; automático 1x de manhã |
+| Alertas proativos | Disco cheio, memória alta, bateria fraca, internet caiu/voltou, pausa após 90 min, chuva na hora da saída |
+| Agenda e e-mail | Somente leitura: Google Workspace (API, quando liberado) e contas pessoais (IMAP + link iCal) |
+| Planilhas | Perguntas sobre Excel/CSV ("quanto produzimos ontem?"): a IA escolhe a operação, o cálculo é local |
+| Casa inteligente | Pronto para Home Assistant e Tuya/Smart Life: "liga a luz da sala em 30%" |
+| Fala | Voz neural `pt-BR-AntonioNeural` (edge-tts), gerada e tocada em paralelo; frases comuns em cache (saem na hora) |
 | Aplicativos | Abre/fecha **qualquer app instalado** (lista do Menu Iniciar), com "quis dizer X?" quando o nome não é exato |
 | Ferramentas da IA | A IA age no PC por ferramentas (abrir apps, sites, pesquisar, digitar, teclas, comandos do Ghost, consultas de leitura do sistema) e pergunta o propósito quando fica em dúvida |
 | Automações | Programas, sites, pesquisa no Google/YouTube, volume, mídia, print, desligar, ditado ("digite ...") e teclas ("aperte enter") |
@@ -37,6 +44,7 @@ Assistente pessoal para Windows, em Python: você fala segurando **F9**, ele res
 3. Copie `.env.example` para `.env` e coloque as suas chaves:
    - Groq: https://console.groq.com → API Keys
    - Gemini: https://aistudio.google.com → API Keys
+   - Opcionais (contas pessoais, casa inteligente): veja os comentários no `.env.example`
 4. Rode:
    ```powershell
    python ghost.py
@@ -72,6 +80,14 @@ Assistente pessoal para Windows, em Python: você fala segurando **F9**, ele res
 | "me lembra daqui a 20 minutos de…" / "cancela o lembrete do…" | Lembretes |
 | "ativar / desativar ativação por voz" | Liga/desliga a escuta da palavra "Ghost" |
 | "a partir de agora, me cumprimente dizendo..." | Muda a saudação |
+| "bom dia" / "resumo do dia" / "vai chover hoje?" / "minha cidade é Barueri" | Resumo da manhã e clima |
+| "esconder painel" / "mostrar painel" | Painel visual (HUD) |
+| "modo sério" / "modo Jarvis" | Personalidade |
+| "como está o computador?" / "silenciar alertas por 1 hora" / "pausar alertas" | Alertas proativos |
+| "como está minha agenda hoje?" / "tenho e-mail novo da minha líder?" / "meus e-mails pessoais" | Agenda e e-mail (leitura) |
+| "conectar minha conta Google" | Autoriza a conta do Google Workspace (precisa do `credentials.json`) |
+| "quanto produzimos ontem pela planilha de produção?" | Planilhas |
+| "conectar casa inteligente" / "liga a luz da sala" / "quais aparelhos você controla?" | Casa inteligente |
 
 ## Gestos padrão (editáveis no cadastro)
 
@@ -111,14 +127,23 @@ Assistente pessoal para Windows, em Python: você fala segurando **F9**, ele res
 | `preferencias.py` | Preferências como a saudação |
 | `ativacao.py` | Palavra de ativação offline e interrupção |
 | `lembretes.py` | Lembretes e alarmes |
+| `hud.py` | Painel visual no topo da tela |
+| `resumo.py` | Resumo da manhã e clima |
+| `alertas.py` | Alertas proativos |
+| `google_conta.py` | Agenda e Gmail do Google Workspace (API, leitura) |
+| `contas_pessoais.py` | E-mail (IMAP) e agenda (iCal) de contas pessoais, leitura |
+| `planilhas.py` | Consultas em Excel/CSV, cálculo local |
+| `casa.py` | Casa inteligente (Home Assistant / Tuya) |
 
 ## Privacidade
 
 - As chaves ficam só no `.env`, que não vai para o Git.
 - Nenhuma imagem da câmera é gravada; só números de expressão, mantidos em memória.
-- Ficam fora do Git: `memoria_aprendizado.json`, `conversa_recente.json`, `humor_log.jsonl`, `rotina_log.jsonl`, `skills.json`, `pessoas.json`, `gestos_cadastro.json` e `ghost.log`.
+- Ficam fora do Git: `.env`, `credentials.json`, `token_google.json`, todos os `.json` pessoais (memória, conversa, skills, pessoas, lembretes, preferências, gestos, aparelhos), `humor_log.jsonl`, `rotina_log.jsonl`, `ghost.log` e `modelos/`.
 - A rotina registra apenas o nome do programa e o título da janela (`GUARDAR_TITULOS = False` em `rotina.py` guarda só o programa).
 - Fichas de pessoas não usam rosto nem voz: só o que é dito ao Ghost.
 - A palavra de ativação é reconhecida no próprio PC; só a frase que começa com "Ghost" vai para a transcrição.
 - A visão só tira foto quando você pede; a foto vai ao Gemini para ser descrita e não é salva.
+- Agenda e e-mail são **somente leitura** (não envia, não apaga, não marca como lido); dos e-mails só remetente e assunto vão para a IA.
+- Planilhas: a IA vê só os nomes das colunas e 3 linhas de exemplo; o cálculo é feito no PC.
 - Expressão facial é uma **estimativa**, não um diagnóstico de sentimento.

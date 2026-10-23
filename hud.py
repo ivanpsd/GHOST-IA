@@ -1,0 +1,142 @@
+"""
+GHOST - Painel visual (HUD) no topo da tela.
+
+Uma faixa discreta, sempre visível e "atravessável" (o clique passa para a
+janela de baixo), que mostra o que o Ghost está fazendo:
+  ● cinza   em espera (ouvindo só a palavra "Ghost")
+  ● azul    ouvindo você
+  ● amarelo entendendo / pensando
+  ● verde   falando (mostra a frase)
+  ● vermelho erro
+Fica quase transparente quando está em espera.
+Por voz: "Ghost, esconder painel" / "Ghost, mostrar painel".
+"""
+import time
+import queue
+import ctypes
+import threading
+
+LARGURA, ALTURA = 560, 58
+TRANSPARENCIA_ATIVO = 0.92
+TRANSPARENCIA_ESPERA = 0.35
+VOLTA_A_ESPERA_S = 6        # segundos sem novidade até voltar ao modo espera
+
+CORES = {"espera": "#64748b", "ouvindo": "#38bdf8", "pensando": "#facc15", "falando": "#4ade80", "erro": "#f87171"}
+ROTULOS = {"espera": "GHOST · em espera", "ouvindo": "GHOST · ouvindo", "pensando": "GHOST · pensando",
+           "falando": "GHOST · falando", "erro": "GHOST · erro"}
+FUNDO, TEXTO, TEXTO_FRACO = "#0b1220", "#e2e8f0", "#94a3b8"
+
+_fila = queue.Queue()
+_visivel = True
+_iniciado = False
+
+
+def _cortar(t, n=78):
+    t = " ".join((t or "").split())
+    return t if len(t) <= n else t[: n - 1] + "…"
+
+
+# ---------- API usada pelo resto do Ghost (pode ser chamada de qualquer thread)
+def estado(nome, texto=""):
+    _fila.put(("estado", nome, texto))
+
+def ouvindo(texto="Pode falar…"):
+    estado("ouvindo", texto)
+
+def pensando(texto=""):
+    estado("pensando", texto)
+
+def falando(texto=""):
+    estado("falando", texto)
+
+def espera():
+    estado("espera", "")
+
+def erro(texto):
+    estado("erro", texto)
+
+def mostrar(on=True):
+    _fila.put(("mostrar", on, ""))
+
+
+# ---------- janela (thread própria do Tkinter)
+def _atravessavel(janela):
+    """Clique passa através da janela; ela não rouba o foco nem aparece no Alt+Tab."""
+    try:
+        hwnd = ctypes.windll.user32.GetParent(janela.winfo_id())
+        GWL_EXSTYLE = -20
+        estilo = ctypes.windll.user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
+        estilo |= 0x80000 | 0x20 | 0x80 | 0x08000000   # LAYERED | TRANSPARENT | TOOLWINDOW | NOACTIVATE
+        ctypes.windll.user32.SetWindowLongW(hwnd, GWL_EXSTYLE, estilo)
+    except Exception:
+        pass
+
+
+def _rodar():
+    import tkinter as tk
+    raiz = tk.Tk()
+    raiz.overrideredirect(True)
+    raiz.attributes("-topmost", True)
+    raiz.attributes("-alpha", TRANSPARENCIA_ESPERA)
+    raiz.configure(bg=FUNDO)
+    largura_tela = raiz.winfo_screenwidth()
+    raiz.geometry(f"{LARGURA}x{ALTURA}+{(largura_tela - LARGURA) // 2}+8")
+
+    tela = tk.Canvas(raiz, width=LARGURA, height=ALTURA, bg=FUNDO, highlightthickness=0)
+    tela.pack()
+    borda = tela.create_rectangle(1, 1, LARGURA - 2, ALTURA - 2, outline=CORES["espera"], width=1)
+    ponto = tela.create_oval(16, 21, 32, 37, fill=CORES["espera"], outline="")
+    titulo = tela.create_text(44, 17, anchor="w", text=ROTULOS["espera"], fill=TEXTO_FRACO,
+                              font=("Segoe UI Semibold", 9))
+    linha = tela.create_text(44, 37, anchor="w", text="Diga \"Ghost\" ou segure F9", fill=TEXTO,
+                             font=("Segoe UI", 11))
+    raiz.update_idletasks()
+    _atravessavel(raiz)
+
+    st = {"nome": "espera", "desde": time.time(), "pulso": 0}
+
+    def aplicar(nome, texto):
+        cor = CORES.get(nome, CORES["espera"])
+        st["nome"], st["desde"] = nome, time.time()
+        tela.itemconfig(ponto, fill=cor)
+        tela.itemconfig(borda, outline=cor)
+        tela.itemconfig(titulo, text=ROTULOS.get(nome, "GHOST"))
+        tela.itemconfig(linha, text=_cortar(texto) if texto else
+                        ("Diga \"Ghost\" ou segure F9" if nome == "espera" else ""))
+        raiz.attributes("-alpha", TRANSPARENCIA_ESPERA if nome == "espera" else TRANSPARENCIA_ATIVO)
+
+    def ciclo():
+        try:
+            while True:
+                tipo, a, b = _fila.get_nowait()
+                if tipo == "estado":
+                    aplicar(a, b)
+                elif tipo == "mostrar":
+                    raiz.deiconify() if a else raiz.withdraw()
+        except queue.Empty:
+            pass
+        # volta para a espera depois de um tempo sem novidade (exceto enquanto ouve)
+        if st["nome"] in ("falando", "erro", "pensando") and time.time() - st["desde"] > VOLTA_A_ESPERA_S:
+            aplicar("espera", "")
+        # pulso do ponto enquanto ouve/pensa
+        if st["nome"] in ("ouvindo", "pensando"):
+            st["pulso"] = (st["pulso"] + 1) % 10
+            r = 8 + (2 if st["pulso"] < 5 else 0)
+            tela.coords(ponto, 24 - r, 29 - r, 24 + r, 29 + r)
+        else:
+            tela.coords(ponto, 16, 21, 32, 37)
+        raiz.attributes("-topmost", True)
+        raiz.after(80, ciclo)
+
+    ciclo()
+    raiz.mainloop()
+
+
+def iniciar(mostrar_ao_iniciar=True):
+    global _iniciado
+    if _iniciado:
+        return
+    _iniciado = True
+    threading.Thread(target=_rodar, daemon=True).start()
+    if not mostrar_ao_iniciar:
+        mostrar(False)

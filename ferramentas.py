@@ -49,6 +49,64 @@ TOOLS = [
                         "leitura facial, check-in, monitores, executar ação/macro cadastrada."),
         "parameters": {"type": "object", "properties": {"frase": {"type": "string"}}, "required": ["frase"]}}},
     {"type": "function", "function": {
+        "name": "ver_planilha",
+        "description": ("Mostra a estrutura de uma planilha Excel/CSV do usuário (abas, colunas, 3 linhas de exemplo). "
+                        "Use ANTES de calcular_planilha. 'nome' é como o usuário chama o arquivo."),
+        "parameters": {"type": "object", "properties": {"nome": {"type": "string"}, "aba": {"type": "string"}},
+                       "required": ["nome"]}}},
+    {"type": "function", "function": {
+        "name": "calcular_planilha",
+        "description": ("Calcula sobre uma planilha (somente leitura): filtra linhas, agrupa e soma/média/contagem/max/min. "
+                        "Datas em AAAA-MM-DD (use o horário AGORA para 'ontem', 'este mês'). Use os nomes de coluna vistos em ver_planilha. "
+                        "Para 'qual produto/cliente/turno teve mais...', use agrupar_por com operacao soma e ordenar desc."),
+        "parameters": {"type": "object", "properties": {
+            "nome": {"type": "string"}, "aba": {"type": "string"},
+            "filtros": {"type": "array", "items": {"type": "object", "properties": {
+                "coluna": {"type": "string"},
+                "operador": {"type": "string", "enum": ["=", "!=", "contem", ">", ">=", "<", "<=", "entre"]},
+                "valor": {"type": "string", "description": "para 'entre': 'inicio|fim'"}}, "required": ["coluna", "operador", "valor"]}},
+            "agrupar_por": {"type": "string"},
+            "coluna_valor": {"type": "string"},
+            "operacao": {"type": "string", "enum": ["soma", "media", "contagem", "max", "min"]},
+            "ordenar": {"type": "string", "enum": ["desc", "asc"]},
+            "limite": {"type": "integer"}}, "required": ["nome"]}}},
+    {"type": "function", "function": {
+        "name": "controlar_casa",
+        "description": ("Liga, desliga ou alterna um aparelho inteligente (luz, tomada, ventilador, ar-condicionado, TV). "
+                        "valor: brilho em % para luz, ou temperatura para ar-condicionado."),
+        "parameters": {"type": "object", "properties": {
+            "aparelho": {"type": "string", "description": "nome falado, ex.: 'luz da sala'"},
+            "acao": {"type": "string", "enum": ["ligar", "desligar", "alternar"]},
+            "valor": {"type": "number"}}, "required": ["aparelho", "acao"]}}},
+    {"type": "function", "function": {
+        "name": "estado_casa",
+        "description": "Diz se um aparelho inteligente está ligado/desligado (ou lista todos se aparelho vazio).",
+        "parameters": {"type": "object", "properties": {"aparelho": {"type": "string"}}, "required": []}}},
+    {"type": "function", "function": {
+        "name": "previsao_do_tempo",
+        "description": "Clima de hoje (agora, mínima, máxima, chance de chuva). Sem cidade, usa a cidade do usuário.",
+        "parameters": {"type": "object", "properties": {"cidade": {"type": "string"}}, "required": []}}},
+    {"type": "function", "function": {
+        "name": "resumo_do_dia",
+        "description": "Resumo do dia: data, clima, lembretes de hoje e agenda/e-mails se conectados.",
+        "parameters": {"type": "object", "properties": {}}}},
+    {"type": "function", "function": {
+        "name": "consultar_agenda",
+        "description": "Lê os compromissos das agendas do usuário (trabalho e pessoais), somente leitura.",
+        "parameters": {"type": "object", "properties": {
+            "periodo": {"type": "string", "description": "'hoje', 'amanha', 'semana' ou uma data AAAA-MM-DD"},
+            "conta": {"type": "string", "description": "opcional: 'pessoal', 'trabalho' ou o nome da conta"}},
+            "required": ["periodo"]}}},
+    {"type": "function", "function": {
+        "name": "consultar_emails",
+        "description": "Lê remetente e assunto dos e-mails da caixa de entrada (trabalho e pessoais), somente leitura.",
+        "parameters": {"type": "object", "properties": {
+            "apenas_nao_lidos": {"type": "boolean"},
+            "remetente": {"type": "string", "description": "quem enviou, do jeito que o usuário falou (ex.: 'Deborah', 'minha líder'); o Ghost resolve pelas fichas"},
+            "quantidade": {"type": "integer"},
+            "conta": {"type": "string", "description": "opcional: 'pessoal', 'trabalho' ou o nome da conta"}},
+            "required": []}}},
+    {"type": "function", "function": {
         "name": "criar_lembrete",
         "description": ("Cria um lembrete/alarme. Converta o horário falado ('às 15h', 'daqui a 20 minutos', "
                         "'amanhã às 9') para data e hora absolutas usando o horário AGORA informado."),
@@ -162,6 +220,61 @@ def executar(nome, args, falar, pedir_confirmacao):
             if not ok:
                 falar("Senhor, esse comando não existe nas minhas automações.")
             return "executado" if ok else "comando não reconhecido", False
+
+        if nome in ("ver_planilha", "calcular_planilha"):
+            import planilhas
+            try:
+                if nome == "ver_planilha":
+                    return planilhas.estrutura(args.get("nome", ""), args.get("aba") or None), True
+                return planilhas.calcular(args.get("nome", ""), args.get("aba") or None, args.get("filtros"),
+                                          args.get("agrupar_por") or None, args.get("coluna_valor") or None,
+                                          args.get("operacao", "soma"), args.get("ordenar", "desc"),
+                                          args.get("limite", 10)), True
+            except Exception as e:
+                return f"erro ao ler a planilha: {e}", True
+
+        if nome in ("controlar_casa", "estado_casa"):
+            import casa
+            if nome == "controlar_casa":
+                frase = casa.controlar(args.get("aparelho", ""), args.get("acao", "alternar"), args.get("valor"))
+            else:
+                frase = casa.estado(args["aparelho"]) if args.get("aparelho") else casa.listar()
+            falar(frase)
+            return frase, False
+
+        if nome in ("previsao_do_tempo", "resumo_do_dia"):
+            import resumo
+            frase = resumo.clima(args.get("cidade") or None) if nome == "previsao_do_tempo" else resumo.gerar()
+            falar(frase)
+            return frase, False
+
+        if nome in ("consultar_agenda", "consultar_emails"):
+            import google_conta, contas_pessoais
+            conta = (args.get("conta") or "").lower()
+            usar_trabalho = google_conta.configurado() and conta in ("", "trabalho", "empresa", "google")
+            usar_pessoal = contas_pessoais.configurado() and conta not in ("trabalho", "empresa")
+            if not (usar_trabalho or usar_pessoal):
+                falar("Senhor, nenhuma conta de agenda ou e-mail está conectada ainda.")
+                return "nenhuma conta conectada", False
+            partes = []
+            if nome == "consultar_agenda":
+                if usar_trabalho:
+                    partes.append("[trabalho] " + google_conta.agenda(args.get("periodo", "hoje")))
+                if usar_pessoal:
+                    partes.append(contas_pessoais.agenda(args.get("periodo", "hoje"),
+                                                         "" if conta in ("", "pessoal") else conta))
+            else:
+                remetente = args.get("remetente", "") or ""
+                if remetente:
+                    import pessoas
+                    remetente = pessoas.resolver_contato(remetente)  # "minha líder" -> "Deborah"
+                if usar_trabalho:
+                    partes.append("[trabalho] " + google_conta.emails(args.get("apenas_nao_lidos", True), remetente,
+                                                                     args.get("quantidade", 8)))
+                if usar_pessoal:
+                    partes.append(contas_pessoais.emails(args.get("apenas_nao_lidos", True), remetente,
+                                                         args.get("quantidade", 8), "" if conta in ("", "pessoal") else conta))
+            return "\n".join(partes), True
 
         if nome in ("criar_lembrete", "listar_lembretes", "cancelar_lembrete"):
             import lembretes
