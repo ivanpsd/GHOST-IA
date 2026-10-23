@@ -35,7 +35,8 @@ function Garantir-Python313 {
 function Garantir-Ambiente {
     if (-not (Test-Path $Py)) { & py -V:3.13 -m venv .venv; Ok "ambiente .venv criado" }
     & $Py -m pip install --upgrade pip -q
-    & $Py -m pip install -r requirements.txt
+    Write-Host "   instalando/conferindo bibliotecas (na 1ª vez demora alguns minutos)..."
+    & $Py -m pip install -q -r requirements.txt
     if ($LASTEXITCODE -ne 0) { throw "falha ao instalar as bibliotecas (veja a mensagem acima)" }
     Ok "bibliotecas instaladas"
 }
