@@ -63,6 +63,15 @@ if os.name == "nt":
         print("[SISTEMA]: O GHOST já está em execução. Encerrando esta cópia.")
         sys.exit(0)
 
+# As bibliotecas nativas de IA local (onnxruntime, ctranslate2) PRECISAM ser carregadas aqui, antes de
+# câmera/MediaPipe/microfone: carregadas depois, numa thread, derrubavam o Ghost (0xC0000005) ao treinar a
+# ativação ou ao guardar a memória longa. Testado: carregando antes, não cai.
+for _modulo in ("onnxruntime", "ctranslate2", "fastembed", "openwakeword"):
+    try:
+        __import__(_modulo)
+    except Exception as _e:
+        print(f"[SISTEMA]: {_modulo} indisponível ({_e}); o recurso que depende dele fica desligado.")
+
 import asyncio
 import io
 import wave
