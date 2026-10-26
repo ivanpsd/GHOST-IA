@@ -49,16 +49,26 @@ Aberta fora do Ghost (sem a chave), a mesma página roda uma demonstração com 
 (`painel.criar_demonstracao()` grava essa versão em `Documentos\Ghost\Demonstracao`). O desenho do anel fica em
 `painel_web/nucleo.js`, usado pelo painel e pelo app do celular.
 
-**App do celular:** "conectar celular" liga um segundo servidor na rede local (porta 8766) que só aceita o código do
-celular, guardado em `dados/celular.json` (fixo, para o ícone da tela inicial continuar valendo; "trocar código do celular"
-invalida o antigo). Pela rede só existem `/celular`, `/estado` e `/comando`; exportar e o QR code são só no PC.
-Um pedido do celular entra na mesma fila dos pedidos por voz com `origem = "celular"`; `app._atender_celular` troca o
-destino da fala (`nucleo/canal.py`) para o celular, então nada é falado no PC.
+**App do celular** (`nucleo/celular.py`): servidor próprio (porta 8766), separado do painel do PC.
+- **Caminho de rede:** com Tailscale ligado, o servidor escuta só em `127.0.0.1` e o `tailscale serve` o publica em
+  `https://<pc>.<rede>.ts.net` (criptografado, só para os aparelhos da sua conta). Sem Tailscale, escuta na rede local
+  apenas se todas as redes ativas do Windows forem Privadas/Domínio; uma thread desliga o acesso se aparecer rede Pública.
+- **Pareamento:** código de 6 caracteres, 5 min, uso único, 5 tentativas. Cria o aparelho com chave própria
+  (guardada como SHA-256) e, na 1ª vez, o PIN (PBKDF2, 200 mil iterações, com sal) em `dados/celular.json`.
+- **Sessão:** o PIN abre uma sessão de 12 h (só em memória; reiniciar o Ghost pede o PIN de novo). 5 PINs errados:
+  bloqueio de 15 min; 15 seguidos: o aparelho é removido.
+- **Rotas pela rede:** `/celular`, `/parear` (a página), `/api/parear`, `/api/entrar`, `/api/estado`, `/api/comando`,
+  `/api/audio`, `/api/sair`. Exportar, QR e lista de aparelhos são só no painel do PC.
+- **Pedidos:** entram na mesma fila da voz com `origem = "celular"`. `app._atender_celular` troca o destino da fala
+  (`nucleo/canal.py`) para o celular; `automacoes.comando_sensivel()` faz WhatsApp, digitar, teclas, fechar, desligar e skills
+  pedirem confirmação; e qualquer ferramenta de AÇÃO pedida pela IA também pede (mesma regra do conteúdo externo).
 
 ## Proteções
 
 | Risco | Proteção | Onde |
 |---|---|---|
+| Celular perdido ou link vazado | Pareamento de uso único + PIN + aparelhos removíveis + Tailscale | `nucleo/celular.py` |
+| Pedido do celular mexer no PC sem querer | Ações sensíveis pedem "Sim, confirmo" no app | `automacoes.comando_sensivel`, `app._atender_celular` |
 | Texto de fora (e-mail, tela, planilha) mandar o PC fazer algo | Depois de uma ferramenta **EXTERNA**, qualquer **AÇÃO** pede confirmação por voz | `ia/ferramentas.py` (`EXTERNAS`, `ACOES`), `app._executar_ferramentas` |
 | Arquivo pela metade (queda de energia) | Grava em `.tmp` + `fsync` + troca atômica; arquivo estragado vira `.corrompido` e **não** é sobrescrito | `nucleo/arquivo.py` |
 | Duas threads no áudio (travava o PortAudio) | Um só acesso ao alto-falante/microfone, com trava | `voz/som.py` |

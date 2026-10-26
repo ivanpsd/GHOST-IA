@@ -18,10 +18,10 @@ windows = pytest.mark.skipif(os.name != "nt", reason="só no Windows (biblioteca
 @pytest.fixture(autouse=True)
 def _dados_isolados(tmp_path, monkeypatch):
     """Nenhum teste grava na pasta dados/ de verdade (preferências, celular) nem consulta o clima na internet."""
-    from ghost.nucleo import painel, preferencias
+    from ghost.nucleo import celular, painel, preferencias
     monkeypatch.setattr(preferencias, "ARQUIVO", str(tmp_path / "preferencias.json"))
     monkeypatch.setattr(preferencias, "_cache", None)
-    monkeypatch.setattr(painel, "ARQ_CELULAR", str(tmp_path / "celular.json"))
+    monkeypatch.setattr(celular, "ARQUIVO", str(tmp_path / "celular.json"))
     monkeypatch.setattr(painel, "PASTA_EXPORTAR", str(tmp_path / "relatorios"))
     monkeypatch.setattr(painel, "PASTA_DEMO", str(tmp_path / "demo"))
     monkeypatch.setattr(painel, "_clima", lambda: "")

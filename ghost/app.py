@@ -122,7 +122,7 @@ from groq import Groq
 
 from ghost.automacao import automacoes
 from ghost.ia import conversa, ferramentas, memoria, memoria_longa, pessoas, tarefas
-from ghost.nucleo import canal, hud, painel, preferencias, sistema
+from ghost.nucleo import canal, celular, hud, painel, preferencias, sistema
 from ghost.servicos import alertas, lembretes, notificacoes, resumo, rotina
 from ghost.voz import ativacao, palavra, som
 
@@ -534,7 +534,8 @@ def _executar_ferramentas(modelo, mensagens, chamadas, ao_receber_frase, turno):
         for c in chamadas:
             args = ferramentas.args_json(c["args"])
             print(f"\n[FERRAMENTA]: {c['nome']} {args}")
-            if leu_externo and c["nome"] in ferramentas.ACOES:
+            # pedido vindo do celular: toda AÇÃO no PC também pede confirmação (no próprio app)
+            if (leu_externo or canal.atual() is not None) and c["nome"] in ferramentas.ACOES:
                 descricao = ferramentas.descrever(c["nome"], args)
                 print(f"\n[SEGURANÇA]: ação após ler conteúdo externo -> pedindo confirmação ({descricao})")
                 automacoes.pedir_confirmacao(
@@ -822,12 +823,21 @@ def _atender_celular(item):
 
     canal.definir(falar_cel)
     try:
-        texto = item["texto"].strip()
-        print(f"\n[Você - celular]: {texto}")
+        if item.get("audio"):                       # botão de falar do app (só com https: Tailscale)
+            texto = transcrever(item["audio"], item.get("nome_audio", "celular.webm"))
+            painel.mensagem_celular("voce", f"(voz) {texto}")
+        else:
+            texto = item["texto"].strip()
+        print(f"\n[Você - celular ({item.get('aparelho', '?')})]: {texto}")
         painel.contar("comandos")
         comando = re.sub(r'^\W*(ghost|gost)\b[,.!?]?', '', texto, flags=re.IGNORECASE).strip(" ,.!?") or texto
         n0 = len(partes)
-        if automacoes.executar(comando, falar_cel):
+        sensivel = automacoes.comando_sensivel(comando)
+        if sensivel:                                # pelo celular, ação sensível só com "sim" no app
+            automacoes.pedir_confirmacao(f"Confirma {sensivel}, senhor?",
+                                         lambda: automacoes.executar(comando, falar_cel), falar_cel)
+            painel.evento(f"Celular pediu: {sensivel} (aguardando confirmação)", "alerta")
+        elif automacoes.executar(comando, falar_cel):
             conversa.registrar(comando, "[comando executado localmente pelo Ghost via celular]")
             painel.contar("comandos_locais")
             painel.evento(f"Celular: {comando[:70]}", "acao")
@@ -837,6 +847,10 @@ def _atender_celular(item):
                 time.sleep(0.1)
         else:
             processar_resposta_em_tempo_real(comando)
+    except sr.UnknownValueError:
+        falar_cel("Não entendi o áudio, senhor.")
+    except SemInternet:
+        falar_cel(AVISO_SEM_INTERNET)
     except Exception as e:
         falar_cel(f"Erro: {e}")
     finally:
@@ -857,7 +871,7 @@ def _ligar(nome, funcao, *args):
 
 def iniciar_ghost():
     _ligar("faixa do topo", hud.iniciar)
-    _ligar("painel", painel.iniciar, None, fila_comandos.put)                 # tela de indicadores + app do celular
+    _ligar("painel", painel.iniciar)                                          # tela de indicadores
     painel.evento("Ghost ligado")
     threading.Thread(target=gerador_de_audio, daemon=True, name="gerador-voz").start()
     threading.Thread(target=reprodutor_de_audio, daemon=True, name="reprodutor-voz").start()
@@ -875,6 +889,7 @@ def iniciar_ghost():
     _ligar("tarefas", tarefas.iniciar, client_groq_fundo, MODELOS_GROQ[0], falar_local)
     _ligar("memória longa", memoria_longa.importar_antigos, conversa.recentes())
     threading.Thread(target=_escutar_f9, daemon=True, name="f9").start()
+    _ligar("app do celular", celular.iniciar, fila_comandos.put, falar_local)  # pareamento + PIN + Tailscale
     _ligar("ativação por voz", ativacao.iniciar, fila_comandos.put, ghost_falando, parar_fala)
 
     while True:

@@ -94,3 +94,14 @@ def test_comandos_do_painel(auto, monkeypatch, frase, esperado):
     tratou = auto._tratar_hud(auto.normalizar(frase), lambda t: None)
     assert (feito[0] if feito else None) == esperado
     assert tratou == (esperado is not None)
+
+
+@pytest.mark.parametrize("frase,sensivel", [
+    ("mande mensagem para a Deborah dizendo que a reunião mudou", True),
+    ("digite bom dia equipe", True), ("aperte enter", True), ("desligar o computador", True),
+    ("fecha o excel", True),
+    ("resumo do dia", False), ("quais são meus lembretes?", False), ("sim", False), ("não", False),
+    ("como está o computador?", False),
+])
+def test_acoes_sensiveis_do_celular(auto, frase, sensivel):
+    assert bool(auto.comando_sensivel(frase)) == sensivel

@@ -78,6 +78,13 @@ button.secundario:focus-visible { outline: 2px solid var(--brasa); outline-offse
 .qr .vazio { color: #6b5a44; text-align: center; font-size: 13px; }
 .qr a { color: #7a2e0e; font-weight: 600; }
 .passos { margin: 0; padding-left: 1.2em; display: grid; gap: 8px; }
+.pareamento { display: grid; gap: 12px; }
+.codigo-par { display: grid; gap: 2px; }
+.codigo-par .rotulo { font-size: 12px; color: var(--apagado); }
+.codigo-par b { font: 600 30px var(--f-numero); letter-spacing: .18em; color: var(--ouro); }
+.codigo-par .validade { font: 12px var(--f-numero); color: var(--apagado); }
+#aparelhos button { justify-self: end; }
+#aparelhos li { grid-template-columns: minmax(0, 1fr) auto; }
 .endereco { margin: 0; font: 13px var(--f-numero); color: var(--apagado); overflow-wrap: anywhere; }
 .modal-botoes { display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
 @media (max-width: 560px) { .qr-area { grid-template-columns: minmax(0, 1fr); } .qr { width: min(240px, 100%); justify-self: center; } }
@@ -296,16 +303,25 @@ main {
     <h2 id="titulo-celular">Ghost no celular</h2>
     <div class="qr-area">
       <div class="qr" id="qr"><p class="vazio">Gerando o código…</p></div>
-      <ol class="passos">
-        <li>Deixe o celular no <b>mesmo Wi-Fi</b> deste computador.</li>
-        <li>Aponte a câmera do celular para o código.</li>
-        <li>Na página que abrir: <b>Adicionar à tela inicial</b> (Android: menu ⋮; iPhone: botão Compartilhar). Vira um ícone de app.</li>
-      </ol>
+      <div class="pareamento">
+        <div class="codigo-par"><span class="rotulo">Código de pareamento</span><b id="codigo-par">— —</b>
+          <span class="validade" id="validade"></span></div>
+        <ol class="passos">
+          <li>Aponte a câmera do celular para o QR (ou abra o endereço abaixo e digite o código).</li>
+          <li>Dê um nome ao aparelho e digite o PIN (na 1ª vez, você cria o PIN).</li>
+          <li><b>Adicionar à tela inicial</b>: vira um ícone de app. Ao abrir, ele pede o PIN.</li>
+        </ol>
+      </div>
     </div>
-    <p class="endereco" id="endereco-celular"></p>
-    <p class="aviso-demo">O código funciona como uma chave: quem tiver o link pode mandar pedidos ao Ghost. Se perder o celular, use <b>Trocar código</b>.</p>
+    <p class="endereco"><span class="marca-estado" id="modo-celular">—</span> <span id="endereco-celular"></span></p>
+    <p class="aviso-demo" id="aviso-celular" hidden></p>
+    <div>
+      <h2>Aparelhos pareados</h2>
+      <ul class="lista" id="aparelhos"></ul>
+    </div>
     <div class="modal-botoes">
-      <button class="secundario" id="trocar-codigo" type="button">Trocar código</button>
+      <button class="secundario" id="desligar-celular" type="button">Desligar acesso</button>
+      <button class="secundario" id="novo-codigo" type="button">Novo código</button>
       <button class="exportar" id="fechar-celular" type="button">Fechar</button>
     </div>
   </div>
@@ -490,32 +506,71 @@ main {
     } finally { bt.disabled = false; }
   });
 
-  /* ---------- celular: QR code para abrir o app ---------- */
+  /* ---------- celular: pareamento por QR + PIN ---------- */
   const modal = $("modal-celular");
-  async function abrirCelular(trocar) {
+  let relogioCodigo = null;
+  function mostrarAparelhos(lista) {
+    lista = lista || [];
+    const ul = $("aparelhos"); ul.replaceChildren();
+    if (!lista.length) { ul.append(el("li", "vazio", "Nenhum celular pareado ainda.")); return; }
+    for (const a of lista) {
+      const li = document.createElement("li");
+      const info = document.createElement("span");
+      info.append(el("span", "oque", a.nome), el("span", "detalhe", a.ultimo_uso ? ` · último uso ${a.ultimo_uso.replace("T", " ").slice(0, 16)}` : " · ainda não usado"));
+      const bt = el("button", "secundario", "Remover"); bt.type = "button";
+      bt.addEventListener("click", async () => {
+        if (DEMO) { li.remove(); return; }
+        const r = await fetch(`celular/remover?t=${encodeURIComponent(TOKEN)}&id=${encodeURIComponent(a.id)}`, { method: "POST" });
+        mostrarAparelhos((await r.json()).aparelhos); brinde(`${a.nome} removido: ele não acessa mais o Ghost.`);
+      });
+      li.append(info, bt); ul.append(li);
+    }
+  }
+  function contarValidade(seg) {
+    clearInterval(relogioCodigo);
+    const fim = Date.now() + seg * 1000;
+    const tique = () => {
+      const r = Math.max(0, Math.round((fim - Date.now()) / 1000));
+      $("validade").textContent = r ? `vale por mais ${Math.floor(r / 60)}:${String(r % 60).padStart(2, "0")} · uma vez só` : "vencido: clique em Novo código";
+      if (!r) clearInterval(relogioCodigo);
+    };
+    tique(); relogioCodigo = setInterval(tique, 1000);
+  }
+  async function abrirCelular() {
     modal.hidden = false; $("fechar-celular").focus();
+    $("qr").innerHTML = '<p class="vazio">Gerando o código…</p>'; $("aviso-celular").hidden = true;
     if (DEMO) {
-      $("qr").innerHTML = '<p class="vazio">No Ghost, aqui aparece o QR code do seu PC.<br><br><a href="celular.html" target="_blank" rel="noopener">Ver o app do celular (demonstração)</a></p>';
-      $("endereco-celular").textContent = "http://192.168.0.25:8766/celular?t=… (exemplo)";
+      $("qr").innerHTML = '<p class="vazio">No Ghost, aqui aparece o QR code de pareamento.<br><br><a href="celular.html" target="_blank" rel="noopener">Ver o app do celular (demonstração)</a></p>';
+      $("codigo-par").textContent = "K7P 4QX"; contarValidade(300);
+      $("modo-celular").textContent = "tailscale"; $("modo-celular").className = "marca-estado ok";
+      $("endereco-celular").textContent = "https://ti-ivan.exemplo.ts.net/celular";
+      mostrarAparelhos([{ id: "1", nome: "Celular do Ivan", ultimo_uso: "2026-10-26T09:41" }]);
       return;
     }
     try {
-      const r = await fetch(`celular/ativar?t=${encodeURIComponent(TOKEN)}${trocar ? "&trocar=1" : ""}`, { method: "POST" });
+      const r = await fetch(`celular/ativar?t=${encodeURIComponent(TOKEN)}`, { method: "POST" });
       const j = await r.json();
       if (!r.ok) throw new Error(j.erro || r.status);
-      $("qr").innerHTML = j.qr_svg;
+      $("qr").innerHTML = j.qr_svg; $("codigo-par").textContent = j.codigo; contarValidade(j.expira_s);
+      $("modo-celular").textContent = j.modo; $("modo-celular").className = "marca-estado " + (j.modo === "tailscale" ? "ok" : "mal");
       $("endereco-celular").textContent = j.endereco;
-      if (trocar) brinde("Código trocado. O link antigo do celular deixou de funcionar.");
+      $("aviso-celular").textContent = j.aviso || ""; $("aviso-celular").hidden = !j.aviso;
+      mostrarAparelhos(j.aparelhos);
     } catch (e) {
-      $("qr").innerHTML = `<p class="vazio">Não consegui ligar o acesso pelo celular: ${e.message}</p>`;
+      $("qr").innerHTML = ""; $("qr").append(el("p", "vazio", `Acesso pelo celular indisponível: ${e.message}`));
+      $("codigo-par").textContent = "— —"; $("validade").textContent = "";
     }
   }
-  $("abrir-celular").addEventListener("click", () => abrirCelular(false));
-  $("trocar-codigo").addEventListener("click", () => abrirCelular(true));
+  $("abrir-celular").addEventListener("click", abrirCelular);
+  $("novo-codigo").addEventListener("click", abrirCelular);
+  $("desligar-celular").addEventListener("click", async () => {
+    if (!DEMO) await fetch(`celular/desativar?t=${encodeURIComponent(TOKEN)}`, { method: "POST" });
+    modal.hidden = true; brinde("Acesso pelo celular desligado. Os aparelhos continuam pareados para quando religar.");
+  });
   $("fechar-celular").addEventListener("click", () => { modal.hidden = true; });
   modal.addEventListener("click", (e) => { if (e.target === modal) modal.hidden = true; });
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") modal.hidden = true; });
-  if (new URLSearchParams(location.search).get("qr") === "1") abrirCelular(false);
+  if (new URLSearchParams(location.search).get("qr") === "1") abrirCelular();
 
   if (!DEMO) { buscar(); setInterval(buscar, 1000); return; }
 

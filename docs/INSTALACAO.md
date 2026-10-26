@@ -103,15 +103,34 @@ Se faltar uma chave no `.env`, o Ghost mostra um aviso e o vigia **não** fica r
 
 ---
 
-## 4b. App do celular
+## 4b. App do celular (com segurança e no 5G)
 
-1. Celular e PC no **mesmo Wi-Fi**.
-2. Diga **"Ghost, conectar celular"** (ou clique em **Celular** no painel). Na 1ª vez o Windows pergunta se o Python pode usar a
-   rede: marque **Redes privadas** e clique em **Permitir**.
-3. Aponte a câmera do celular para o QR code. Na página que abrir: **Adicionar à tela inicial**.
-4. Perdeu o celular? Diga "Ghost, trocar código do celular": o link antigo deixa de funcionar.
+**Passo 1. Tailscale (uma vez, ~5 minutos; recomendado).** É o que deixa usar no 5G e criptografa tudo.
 
-O app funciona só dentro da rede do escritório (não pela internet). O código do QR é uma senha: não compartilhe a foto dele.
+1. No PC: baixe em https://tailscale.com/download/windows, instale e entre com a sua conta (Google ou Microsoft).
+2. No celular: instale o app **Tailscale** (Play Store / App Store) e entre com a **mesma conta**. Deixe ligado.
+3. Na 1ª vez que você pedir o QR, o Ghost pode avisar que é preciso ligar os **certificados HTTPS** na sua conta
+   Tailscale: ele mostra o link; abra, clique em *Enable* e peça o QR de novo.
+
+Sem Tailscale o app ainda funciona, mas só no mesmo Wi-Fi, sem criptografia, e só se a rede do Windows for Privada ou de
+Domínio (em rede Pública ele desliga sozinho). Na 1ª vez o Windows pergunta se o Python pode usar a rede: marque só
+**Redes privadas**.
+
+**Passo 2. Parear o celular.**
+
+1. Diga **"Ghost, conectar celular"** (ou clique em **Celular** no painel). Aparecem um QR e um código de 6 letras
+   (valem 5 minutos e uma vez só).
+2. Aponte a câmera do celular para o QR. Dê um nome ao aparelho e **crie o PIN** de 6 números (nos próximos aparelhos,
+   use o mesmo PIN).
+3. **Adicionar à tela inicial** (Android: menu ⋮; iPhone: botão Compartilhar). No iPhone, o ícone da tela inicial guarda os
+   dados separado do Safari: se ele pedir para parear, abra o app pelo ícone e digite o código de 6 letras do painel.
+
+**No dia a dia:** o app pede o PIN ao abrir (a sessão vale 12 h; o botão **Travar** encerra na hora). Com Tailscale aparece
+o botão **●** para falar com o Ghost. Ações importantes (WhatsApp, digitar, apertar teclas, fechar programas, desligar o PC,
+rodar skills) pedem **Sim, confirmo** no app.
+
+**Se perder o celular:** no painel, **Celular → Remover** no aparelho (ou diga "Ghost, remover os celulares").
+Esqueceu o PIN: "Ghost, trocar PIN do celular" (apaga o PIN e todos os aparelhos; pareie de novo).
 
 ---
 

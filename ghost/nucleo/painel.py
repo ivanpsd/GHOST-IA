@@ -52,10 +52,6 @@ _sistema = {"cpu": None, "ram": None, "disco_livre_gb": None, "disco_livre_pct":
             "bateria": None, "na_tomada": None, "internet": None, "latencia_ms": None}
 _requisicoes = {"n": 0, "limite": 0}
 _celular = deque(maxlen=60)           # conversa do app do celular
-_entregar = None                      # põe um pedido na fila do Ghost (definido em iniciar)
-_servidor_celular = None
-PORTA_CELULAR = 8766
-ARQ_CELULAR = caminhos.dado("celular.json")
 PASTA_DEMO = os.path.join(os.path.expanduser("~"), "Documents", "Ghost", "Demonstracao")
 ESTATICOS = {"nucleo.js": "text/javascript; charset=utf-8", "icone-192.png": "image/png", "icone-512.png": "image/png"}
 
@@ -259,7 +255,6 @@ def foto():
             "serie": [{"cpu": a["cpu"], "ram": a["ram"], "latencia_ms": a["latencia_ms"]} for a in list(_amostras)[-120:]],
             "eventos": list(_eventos)[-14:][::-1],
             "celular": list(_celular),
-            "celular_ativo": _servidor_celular is not None,
         }
     base.update({
         "modo": _seguro(_modo, "normal"),
@@ -353,78 +348,8 @@ def exportar():
 
 
 # =============================================================
-# 5. APP DO CELULAR (mesmo Wi-Fi) + QR CODE
+# 5. DEMONSTRAÇÃO (o app do celular fica em nucleo/celular.py)
 # =============================================================
-def _token_celular(trocar=False):
-    """Código fixo do celular (fica em dados/celular.json): o ícone na tela inicial continua valendo
-    depois de reiniciar o Ghost. trocar=True invalida o link antigo (celular perdido)."""
-    from ghost.nucleo import arquivo
-    try:
-        dados = arquivo.ler_json(ARQ_CELULAR, {}, tolerar_corrompido=True) or {}
-    except Exception:
-        dados = {}
-    if trocar or not dados.get("token"):
-        dados = {"token": secrets.token_urlsafe(18), "criado": datetime.now().isoformat(timespec="seconds")}
-        arquivo.salvar_json(ARQ_CELULAR, dados)
-    return dados["token"]
-
-
-def ip_da_rede():
-    """IP deste PC na rede local (o celular acessa por ele)."""
-    import socket
-    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-        try:
-            s.connect(("10.255.255.255", 1))       # não envia nada: só descobre a interface de saída
-            return s.getsockname()[0]
-        except OSError:
-            return "127.0.0.1"
-
-
-def endereco_celular():
-    if not _servidor_celular:
-        return None
-    return f"http://{ip_da_rede()}:{_servidor_celular.server_address[1]}/celular?t={_token_celular()}"
-
-
-def qr_svg(texto):
-    import io
-
-    import segno
-    buf = io.BytesIO()
-    segno.make(texto, error="m").save(buf, kind="svg", scale=6, border=2, dark="#120d09", light="#f5ead6",
-                                      xmldecl=False, svgns=True)
-    return buf.getvalue().decode("utf-8")
-
-
-def celular_ativar(trocar=False):
-    """Liga o acesso pelo celular (porta na rede local) e devolve {endereco, qr_svg}.
-    Na 1ª vez o Windows pergunta se o Python pode usar a rede: marque "Redes privadas" e permita."""
-    global _servidor_celular
-    if trocar:
-        _token_celular(trocar=True)
-    if not _servidor_celular:
-        try:
-            _servidor_celular = ThreadingHTTPServer(("0.0.0.0", PORTA_CELULAR), _Rotas)
-        except OSError:
-            _servidor_celular = ThreadingHTTPServer(("0.0.0.0", 0), _Rotas)
-        _servidor_celular.daemon_threads = True
-        threading.Thread(target=_servidor_celular.serve_forever, daemon=True, name="painel-celular").start()
-        preferencias.definir("celular_ativo", True)
-        evento("Acesso pelo celular ligado", "info")
-    endereco_ = endereco_celular()
-    return {"endereco": endereco_, "qr_svg": qr_svg(endereco_)}
-
-
-def celular_desativar():
-    global _servidor_celular
-    if _servidor_celular:
-        _servidor_celular.shutdown()
-        _servidor_celular.server_close()
-        _servidor_celular = None
-    preferencias.definir("celular_ativo", False)
-    evento("Acesso pelo celular desligado", "info")
-
-
 def criar_demonstracao(abrir=True):
     """Gera a demonstração (dados de exemplo) em Documentos\\Ghost\\Demonstracao e abre a janela.
     São arquivos soltos: dá para copiar num pendrive ou mandar para alguém ver."""
@@ -460,24 +385,21 @@ def criar_demonstracao(abrir=True):
 # 6. SERVIDOR LOCAL + JANELA
 # =============================================================
 class _Rotas(BaseHTTPRequestHandler):
+    """Servidor do PC: só 127.0.0.1 e só com a chave desta sessão (o celular usa nucleo/celular.py)."""
+
     def log_message(self, *_):            # sem poluir o ghost.log a cada segundo
         pass
 
-    def _token_recebido(self):
-        return (parse_qs(urlparse(self.path).query).get("t") or [""])[0]
-
-    def _autorizado(self, so_pc=False):
-        """No PC (127.0.0.1): chave da sessão. Pela rede (celular): só o código do celular."""
-        recebido = self._token_recebido()
-        if self.server is _servidor:
-            return secrets.compare_digest(recebido, _token)
-        return not so_pc and secrets.compare_digest(recebido, _token_celular())
+    def _autorizado(self):
+        recebido = (parse_qs(urlparse(self.path).query).get("t") or [""])[0]
+        return secrets.compare_digest(recebido, _token)
 
     def _responder(self, codigo, corpo, tipo="application/json; charset=utf-8"):
         dados = corpo if isinstance(corpo, bytes) else json.dumps(corpo, ensure_ascii=False, default=str).encode()
         self.send_response(codigo)
         self.send_header("Content-Type", tipo)
         self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Content-Length", str(len(dados)))
         self.end_headers()
         self.wfile.write(dados)
@@ -492,56 +414,44 @@ class _Rotas(BaseHTTPRequestHandler):
             return self._responder(200, self._arquivo(rota), ESTATICOS[rota])
         if not self._autorizado():
             return self._responder(403, {"erro": "acesso negado"})
-        token = self._token_recebido().encode()
         try:
-            if rota in ("", "index.html") and self.server is _servidor:
-                corpo = self._arquivo("index.html").replace(b"__GHOST_TOKEN__", token)
+            if rota in ("", "index.html"):
+                corpo = self._arquivo("index.html").replace(b"__GHOST_TOKEN__", _token.encode())
                 html = (b'<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">'
                         b'<meta name="viewport" content="width=device-width, initial-scale=1"></head><body>'
                         + corpo + b"</body></html>")
                 return self._responder(200, html, "text/html; charset=utf-8")
-            if rota == "celular":
-                return self._responder(200, self._arquivo("celular.html").replace(b"__GHOST_TOKEN__", token),
-                                       "text/html; charset=utf-8")
-            if rota == "manifest.webmanifest":
-                return self._responder(200, {
-                    "name": "Ghost", "short_name": "Ghost", "lang": "pt-BR", "display": "standalone",
-                    "start_url": f"/celular?t={token.decode()}", "scope": "/",
-                    "background_color": "#0d0a08", "theme_color": "#0d0a08",
-                    "icons": [{"src": "icone-192.png", "sizes": "192x192", "type": "image/png"},
-                              {"src": "icone-512.png", "sizes": "512x512", "type": "image/png"}]},
-                    "application/manifest+json; charset=utf-8")
             if rota == "estado":
                 return self._responder(200, foto())
+            if rota == "celular/situacao":
+                from ghost.nucleo import celular
+                return self._responder(200, celular.situacao())
             return self._responder(404, {"erro": "não encontrado"})
         except Exception as e:
             return self._responder(500, {"erro": str(e)})
 
-    def _corpo_json(self):
-        n = min(int(self.headers.get("Content-Length") or 0), 10_000)
-        return json.loads(self.rfile.read(n) or b"{}") if n else {}
-
     def do_POST(self):
-        rota = urlparse(self.path).path.lstrip("/")
-        if not self._autorizado(so_pc=(rota != "comando")):
+        if not self._autorizado():
             return self._responder(403, {"erro": "acesso negado"})
+        rota = urlparse(self.path).path.lstrip("/")
+        q = parse_qs(urlparse(self.path).query)
         try:
             if rota == "exportar":
                 return self._responder(200, {"arquivo": exportar()})
+            from ghost.nucleo import celular
             if rota == "celular/ativar":
-                trocar = (parse_qs(urlparse(self.path).query).get("trocar") or [""])[0] == "1"
-                return self._responder(200, celular_ativar(trocar=trocar))
-            if rota == "comando":
-                texto = str(self._corpo_json().get("texto") or "").strip()[:500]
-                if not texto:
-                    return self._responder(400, {"erro": "pedido vazio"})
-                if not _entregar:
-                    return self._responder(503, {"erro": "o Ghost ainda está iniciando"})
-                mensagem_celular("voce", texto)
-                _entregar({"texto": texto, "origem": "celular"})
-                return self._responder(200, {"ok": True})
+                return self._responder(200, celular.ativar())
+            if rota == "celular/remover":
+                celular.remover((q.get("id") or [""])[0])
+                return self._responder(200, celular.situacao())
+            if rota == "celular/desativar":
+                celular.desativar()
+                return self._responder(200, celular.situacao())
             return self._responder(404, {"erro": "não encontrado"})
         except Exception as e:
+            from ghost.nucleo import celular
+            if isinstance(e, celular.ErroCelular):
+                return self._responder(400, {"erro": str(e)})
             evento(f"Painel: {rota} falhou ({e})", "erro")
             return self._responder(500, {"erro": str(e)})
 
@@ -590,12 +500,9 @@ def fechar_janela():
     _janela = None
 
 
-def iniciar(abrir=None, entregar=None):
-    """Liga o servidor local e a coleta. abrir=None segue a preferência 'painel_ao_iniciar' (padrão: sim).
-    entregar: função que põe um pedido na fila do Ghost (pedidos do app do celular)."""
-    global _servidor, _entregar
-    if entregar:
-        _entregar = entregar
+def iniciar(abrir=None):
+    """Liga o servidor local e a coleta. abrir=None segue a preferência 'painel_ao_iniciar' (padrão: sim)."""
+    global _servidor
     if _servidor:
         return
     try:
@@ -606,12 +513,5 @@ def iniciar(abrir=None, entregar=None):
     threading.Thread(target=_servidor.serve_forever, daemon=True, name="painel-servidor").start()
     threading.Thread(target=_coletar, daemon=True, name="painel-coleta").start()
     print(f"\n[PAINEL]: pronto em {endereco()}")
-    prefs = preferencias.carregar()
-    if prefs.get("celular_ativo"):
-        try:
-            celular_ativar()
-            print(f"[PAINEL]: app do celular em {endereco_celular()}")
-        except Exception as e:
-            print(f"[PAINEL]: acesso pelo celular indisponível ({e}).")
-    if abrir if abrir is not None else prefs.get("painel_ao_iniciar", True):
+    if abrir if abrir is not None else preferencias.carregar().get("painel_ao_iniciar", True):
         abrir_janela()

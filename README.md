@@ -17,7 +17,7 @@ Assistente pessoal para Windows, em Python: você diz **"Ghost, …"** (ou segur
 | IA | Groq (`openai/gpt-oss-120b`), com resposta em streaming falada frase a frase; Gemini como reserva (troca de modelo automática) |
 | Personalidade | Estilo JARVIS (elegante, humor seco ocasional, oferece o próximo passo) ou "modo sério" |
 | Painel | Tela própria do Ghost (janela do Edge em modo aplicativo), com o anel animado no centro e todos os indicadores em volta: estado, máquina, rede, IA, escuta, memória, lembretes, tarefas, notificações, rotina e crônica de eventos. Botão **Exportar** ou "Ghost, exportar indicadores" gera um Excel em `Documentos\Ghost\Relatorios` |
-| App do celular | "Ghost, conectar celular" mostra um **QR code** no painel; o celular (no mesmo Wi-Fi) abre o app, que pode virar ícone na tela inicial. Pedidos digitados; respostas por escrito no celular, sem falar no PC |
+| App do celular | Pelo **Tailscale** (5G, casa, escritório; criptografado) ou só no mesmo Wi-Fi. Pareamento por QR de uso único, **PIN** de 6 dígitos, aparelhos removíveis, ações sensíveis confirmadas no app. Pedidos digitados ou **falados** (com Tailscale); respostas por escrito no celular, sem falar no PC |
 | Demonstração | "Ghost, abrir demonstração do painel": abre o painel e o app do celular com dados de exemplo e salva os arquivos em `Documentos\Ghost\Demonstracao` (dá para mandar para alguém ver) |
 | Faixa do topo | Faixa discreta mostrando ouvindo / pensando / falando; clique atravessa |
 | Resumo da manhã | "bom dia": data, clima (Open-Meteo), lembretes, agenda e e-mails não lidos; automático 1x de manhã |
@@ -88,7 +88,8 @@ na mesma resposta (digitar, apertar teclas, WhatsApp, abrir sites...) só aconte
 | "bom dia" / "resumo do dia" / "vai chover hoje?" / "minha cidade é Barueri" | Resumo da manhã e clima |
 | "abrir painel" / "fechar painel" | Tela de indicadores |
 | "exportar indicadores" | Excel com os indicadores em `Documentos\Ghost\Relatorios` |
-| "conectar celular" / "trocar código do celular" / "desconectar celular" | App do celular (QR code no painel) |
+| "conectar celular" / "desconectar celular" | Liga o acesso e mostra o QR de pareamento / desliga o acesso |
+| "remover os celulares" / "trocar PIN do celular" | Tira todos os aparelhos / apaga o PIN (todos pareiam de novo) |
 | "abrir demonstração do painel" | Painel e app do celular com dados de exemplo |
 | "esconder faixa" / "mostrar faixa" | Faixa do topo |
 | "modo sério" / "modo Jarvis" | Personalidade |

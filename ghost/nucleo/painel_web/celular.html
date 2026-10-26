@@ -9,12 +9,12 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Ghost">
-<link rel="manifest" href="manifest.webmanifest?t=__GHOST_TOKEN__">
+<link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icone-192.png">
 <link rel="apple-touch-icon" href="icone-192.png">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Spectral:ital,wght@0,400;0,600;1,400&family=JetBrains+Mono:wght@400;600&display=swap">
 <style>
-/* App do celular: o Núcleo no topo, a conversa no meio, a caixa de pedido presa embaixo (como um app de mensagens). */
+/* App do celular: três telas — parear (1ª vez), PIN (ao abrir) e conversa. Mesmo visual do painel do PC. */
 :root {
   --obsidiana: #0d0a08; --tabua: #17110c; --tabua-2: #1f1710;
   --fio: rgba(232, 176, 75, .16); --fio-forte: rgba(232, 176, 75, .38);
@@ -26,59 +26,119 @@
 [hidden] { display: none !important; }
 html, body { height: 100%; margin: 0; }
 body { background: var(--obsidiana); color: var(--cinza-quente); font: 16px/1.45 var(--f-texto); -webkit-tap-highlight-color: transparent; }
+.lateral { padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+button { font: inherit; cursor: pointer; }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--brasa); outline-offset: 2px; }
+.botao { font: 700 13px var(--f-titulo); letter-spacing: .12em; text-transform: uppercase; color: var(--obsidiana);
+  background: linear-gradient(180deg, #f3c56a, var(--ouro) 45%, #b9792a); border: 1px solid #f6d48d; border-radius: 10px; padding: 12px 16px; }
+.botao[disabled] { opacity: .6; cursor: progress; }
+.botao-2 { font: 600 13px var(--f-texto); color: var(--ouro); background: transparent; border: 1px solid var(--fio-forte); border-radius: 999px; padding: 6px 12px; }
+input { font: 16px var(--f-texto); color: var(--cinza-quente); background: var(--obsidiana); border: 1px solid var(--fio-forte);
+  border-radius: 10px; padding: 11px 12px; min-width: 0; width: 100%; }
+.erro { color: var(--sangue); min-height: 1.4em; margin: 0; font-size: 14px; }
+.nota { color: var(--apagado); font-size: 13px; font-style: italic; margin: 0; }
+
+/* ---------- telas de acesso */
+.acesso { min-height: 100%; display: grid; place-items: center; padding-block: calc(24px + env(safe-area-inset-top, 0px)) calc(24px + env(safe-area-inset-bottom, 0px)); }
+.acesso-caixa { width: min(380px, 100%); display: grid; gap: 14px; text-align: center; }
+.acesso canvas { width: 150px; height: 150px; border-radius: 50%; justify-self: center; }
+.acesso h1 { margin: 0; font: 700 26px var(--f-titulo); letter-spacing: .3em; color: var(--ouro); }
+.acesso h2 { margin: 0; font: 600 13px var(--f-titulo); letter-spacing: .2em; text-transform: uppercase; color: var(--apagado); }
+.campo { display: grid; gap: 6px; text-align: left; }
+.campo label { font-size: 13px; color: var(--apagado); }
+#codigo { font: 600 22px var(--f-numero); letter-spacing: .3em; text-align: center; text-transform: uppercase; }
+.pin-pontos { display: flex; justify-content: center; gap: 12px; margin: 4px 0; }
+.pin-pontos i { width: 14px; height: 14px; border-radius: 50%; border: 1px solid var(--ouro); }
+.pin-pontos i.cheio { background: var(--ouro); box-shadow: 0 0 10px rgba(255,106,26,.6); }
+.teclado { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.teclado button { font: 600 22px var(--f-numero); color: var(--cinza-quente); background: var(--tabua-2); border: 1px solid var(--fio);
+  border-radius: 14px; padding: 14px 0; }
+.teclado button:active { background: #2b1f15; }
+
+/* ---------- app */
 .app { height: 100%; display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; }
-.topo {
-  display: flex; align-items: center; gap: 10px;
-  padding: calc(10px + env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) 8px max(16px, env(safe-area-inset-left, 0px));
-  border-bottom: 1px solid var(--fio);
-}
+.topo { display: flex; align-items: center; gap: 10px; padding-top: calc(10px + env(safe-area-inset-top, 0px)); padding-bottom: 8px; border-bottom: 1px solid var(--fio); }
 .topo h1 { margin: 0 auto 0 0; font: 700 20px var(--f-titulo); letter-spacing: .3em; color: var(--ouro); text-shadow: 0 0 14px rgba(255,106,26,.4); }
 .pilula { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--fio-forte);
   font: 600 11px var(--f-titulo); letter-spacing: .12em; text-transform: uppercase; }
 .pilula i { width: 7px; height: 7px; border-radius: 50%; background: currentColor; box-shadow: 0 0 8px currentColor; }
-
-.cena { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 12px; align-items: center;
-  padding: 10px max(16px, env(safe-area-inset-right, 0px)) 10px max(16px, env(safe-area-inset-left, 0px)); border-bottom: 1px solid var(--fio); }
-.cena canvas { width: 112px; height: 112px; border-radius: 50%; display: block; }
+.icone-botao { background: none; border: 1px solid var(--fio); color: var(--apagado); border-radius: 8px; padding: 4px 9px; font-size: 13px; }
+.cena { display: grid; grid-template-columns: 104px minmax(0, 1fr); gap: 12px; align-items: center; padding-block: 10px; border-bottom: 1px solid var(--fio); }
+.cena canvas { width: 104px; height: 104px; border-radius: 50%; display: block; }
 .cena .estado { font: 700 15px var(--f-titulo); letter-spacing: .16em; text-transform: uppercase; }
 .cena .texto { font-style: italic; color: var(--apagado); font-size: 14px; overflow-wrap: anywhere; }
 .medidas { display: flex; flex-wrap: wrap; gap: 6px 12px; margin-top: 6px; font: 12px var(--f-numero); color: var(--apagado); }
 .medidas b { color: var(--cinza-quente); font-weight: 600; }
-
-.conversa { overflow-y: auto; padding: 14px max(16px, env(safe-area-inset-right, 0px)) 14px max(16px, env(safe-area-inset-left, 0px));
-  display: flex; flex-direction: column; gap: 10px; }
+.conversa { overflow-y: auto; padding-block: 14px; display: flex; flex-direction: column; gap: 10px; }
 .msg { max-width: 86%; padding: 9px 13px; border-radius: 12px; overflow-wrap: anywhere; }
 .msg small { display: block; font: 11px var(--f-numero); color: var(--apagado); margin-top: 3px; }
 .msg.voce { align-self: flex-end; background: #3a2414; border: 1px solid rgba(255,106,26,.35); border-bottom-right-radius: 4px; }
 .msg.ghost { align-self: flex-start; background: var(--tabua-2); border: 1px solid var(--fio); border-bottom-left-radius: 4px; color: #f0d9a8; }
-.msg.sistema { align-self: center; background: none; color: var(--apagado); font-style: italic; font-size: 14px; text-align: center; }
+.msg.sistema { align-self: center; color: var(--apagado); font-style: italic; font-size: 14px; text-align: center; }
 .digitando { align-self: flex-start; color: var(--apagado); font-style: italic; font-size: 14px; }
-
-.base { border-top: 1px solid var(--fio); background: var(--tabua);
-  padding: 8px max(12px, env(safe-area-inset-right, 0px)) calc(10px + env(safe-area-inset-bottom, 0px)) max(12px, env(safe-area-inset-left, 0px)); display: grid; gap: 8px; }
+.confirmar { display: flex; gap: 10px; justify-content: center; }
+.confirmar .botao { padding: 10px 22px; }
+.confirmar .nao { color: var(--cinza-quente); background: transparent; border: 1px solid var(--fio-forte); }
+.base { border-top: 1px solid var(--fio); background: var(--tabua); padding-top: 8px; padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px)); display: grid; gap: 8px; }
 .atalhos { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; }
 .atalhos::-webkit-scrollbar { display: none; }
-.atalhos button { flex: none; font: 13px var(--f-texto); color: var(--ouro); background: transparent; border: 1px solid var(--fio-forte);
-  border-radius: 999px; padding: 6px 12px; cursor: pointer; }
-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
-input { font: 16px var(--f-texto); color: var(--cinza-quente); background: var(--obsidiana); border: 1px solid var(--fio-forte);
-  border-radius: 10px; padding: 11px 12px; min-width: 0; }
-input:focus { outline: 2px solid var(--brasa); outline-offset: 1px; }
-form button { font: 700 13px var(--f-titulo); letter-spacing: .12em; text-transform: uppercase; color: var(--obsidiana);
-  background: linear-gradient(180deg, #f3c56a, var(--ouro) 45%, #b9792a); border: 1px solid #f6d48d; border-radius: 10px; padding: 0 16px; cursor: pointer; }
-button:focus-visible { outline: 2px solid var(--brasa); outline-offset: 2px; }
-.aviso { margin: 0; font-size: 12px; color: var(--apagado); font-style: italic; }
+.atalhos button { flex: none; }
+#form { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; }
+.mic { width: 48px; border-radius: 10px; border: 1px solid var(--fio-forte); background: var(--tabua-2); color: var(--ouro); font-size: 20px; }
+.mic.gravando { background: var(--sangue); color: #fff; border-color: var(--sangue); animation: pulsar 1s infinite; }
+@keyframes pulsar { 50% { box-shadow: 0 0 0 8px rgba(224,80,58,.2); } }
+@media (prefers-reduced-motion: reduce) { .mic.gravando { animation: none; } }
 </style>
 </head>
 <body>
-<div class="app">
-  <header class="topo">
+
+<!-- 1. PAREAR (primeira vez neste celular) -->
+<section class="acesso lateral" id="tela-parear" hidden>
+  <form class="acesso-caixa" id="form-parear" autocomplete="off">
+    <canvas id="nucleo-parear" width="300" height="300" aria-hidden="true"></canvas>
+    <h1>GHOST</h1>
+    <h2>Parear este celular</h2>
+    <div class="campo"><label for="codigo">Código mostrado no PC</label>
+      <input id="codigo" maxlength="7" inputmode="text" autocapitalize="characters" placeholder="ABC 123" required></div>
+    <div class="campo"><label for="nome-aparelho">Nome deste aparelho</label>
+      <input id="nome-aparelho" maxlength="40" value="Celular do Ivan"></div>
+    <div class="campo"><label for="pin1" id="rotulo-pin1">PIN de 6 números</label>
+      <input id="pin1" type="password" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required></div>
+    <div class="campo" id="campo-pin2" hidden><label for="pin2">Repita o PIN</label>
+      <input id="pin2" type="password" inputmode="numeric" pattern="[0-9]{6}" maxlength="6"></div>
+    <p class="erro" id="erro-parear" role="alert"></p>
+    <button class="botao" type="submit" id="botao-parear">Parear</button>
+    <p class="nota" id="nota-pin">Você vai criar o PIN agora; ele será pedido sempre que abrir o app.</p>
+  </form>
+</section>
+
+<!-- 2. PIN (ao abrir o app) -->
+<section class="acesso lateral" id="tela-pin" hidden>
+  <div class="acesso-caixa">
+    <canvas id="nucleo-pin" width="300" height="300" aria-hidden="true"></canvas>
+    <h1>GHOST</h1>
+    <h2 id="saudacao-pin">Digite o PIN</h2>
+    <div class="pin-pontos" id="pontos" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+    <p class="erro" id="erro-pin" role="alert"></p>
+    <div class="teclado" id="teclado">
+      <button type="button">1</button><button type="button">2</button><button type="button">3</button>
+      <button type="button">4</button><button type="button">5</button><button type="button">6</button>
+      <button type="button">7</button><button type="button">8</button><button type="button">9</button>
+      <button type="button" data-acao="esquecer" style="font-size:12px">Desparear</button><button type="button">0</button>
+      <button type="button" data-acao="apagar" aria-label="Apagar">⌫</button>
+    </div>
+  </div>
+</section>
+
+<!-- 3. APP -->
+<div class="app" id="tela-app" hidden>
+  <header class="topo lateral">
     <h1>GHOST</h1>
     <span class="pilula" id="conexao" style="color: var(--apagado)"><i></i><span>conectando</span></span>
+    <button class="icone-botao" id="travar" type="button" aria-label="Travar o app">Travar</button>
   </header>
-
-  <section class="cena" aria-label="Estado do Ghost">
-    <canvas id="nucleo" width="224" height="224" aria-hidden="true"></canvas>
+  <section class="cena lateral" aria-label="Estado do Ghost">
+    <canvas id="nucleo" width="208" height="208" aria-hidden="true"></canvas>
     <div>
       <div class="estado" id="estado-nome">—</div>
       <div class="texto" id="estado-texto"></div>
@@ -88,22 +148,24 @@ button:focus-visible { outline: 2px solid var(--brasa); outline-offset: 2px; }
       </div>
     </div>
   </section>
-
-  <main class="conversa" id="conversa" aria-live="polite"></main>
-
-  <footer class="base">
+  <main class="conversa lateral" id="conversa" aria-live="polite"></main>
+  <footer class="base lateral">
+    <div class="confirmar" id="confirmar" hidden>
+      <button class="botao" type="button" data-resposta="sim">Sim, confirmo</button>
+      <button class="botao nao" type="button" data-resposta="não">Não</button>
+    </div>
     <div class="atalhos" id="atalhos">
-      <button type="button">Resumo do dia</button>
-      <button type="button">Quais são meus lembretes?</button>
-      <button type="button">Como está o computador?</button>
-      <button type="button">Exportar indicadores</button>
-      <button type="button">Abrir painel</button>
+      <button class="botao-2" type="button">Resumo do dia</button>
+      <button class="botao-2" type="button">Quais são meus lembretes?</button>
+      <button class="botao-2" type="button">Como está o computador?</button>
+      <button class="botao-2" type="button">Exportar indicadores</button>
     </div>
     <form id="form">
       <input id="pedido" type="text" autocomplete="off" enterkeyhint="send" maxlength="500" placeholder="Peça algo ao Ghost…" aria-label="Pedido para o Ghost">
-      <button type="submit">Enviar</button>
+      <button class="mic" id="mic" type="button" aria-label="Segure para falar" hidden>●</button>
+      <button class="botao" type="submit">Enviar</button>
     </form>
-    <p class="aviso" id="aviso" hidden>Demonstração: as respostas são exemplos. Com o QR code do Ghost, este app conversa com o seu PC.</p>
+    <p class="nota" id="aviso-demo" hidden>Demonstração: as respostas são exemplos. No Ghost, este app conversa com o seu PC.</p>
   </footer>
 </div>
 
@@ -111,36 +173,108 @@ button:focus-visible { outline: 2px solid var(--brasa); outline-offset: 2px; }
 <script>
 (() => {
   "use strict";
-  const TOKEN = "__GHOST_TOKEN__";
-  const DEMO = TOKEN.startsWith("__");
+  const DEMO = "__GHOST_SERVIDOR__".startsWith("__");     // aberto fora do Ghost: demonstração
   const $ = (id) => document.getElementById(id);
-  const nucleo = window.GhostNucleo.criar($("nucleo"));
+  const guardar = { ler(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+                    por(k, v) { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (e) {} } };
   const ESTADOS = window.GhostNucleo.ESTADOS;
-  const conversa = $("conversa");
-  let vistos = 0, esperando = false;
+  const telas = { parear: $("tela-parear"), pin: $("tela-pin"), app: $("tela-app") };
+  const nucleos = {};
+  function mostrar(nome) {
+    for (const [k, el] of Object.entries(telas)) el.hidden = k !== nome;
+    const id = { parear: "nucleo-parear", pin: "nucleo-pin", app: "nucleo" }[nome];
+    if (!nucleos[id]) nucleos[id] = window.GhostNucleo.criar($(id));
+    return nucleos[id];
+  }
 
-  function hora(seg) { return new Date(seg * 1000).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }); }
+  async function api(caminho, corpo, opcoes = {}) {
+    const sessao = guardar.ler("ghost_sessao");
+    const r = await fetch(caminho, {
+      method: corpo === undefined ? "GET" : "POST",
+      headers: { ...(sessao ? { Authorization: `Bearer ${sessao}` } : {}), ...(opcoes.tipo ? { "Content-Type": opcoes.tipo } : corpo !== undefined ? { "Content-Type": "application/json" } : {}) },
+      body: corpo === undefined ? undefined : (opcoes.tipo ? corpo : JSON.stringify(corpo)), cache: "no-store" });
+    if (r.status === 401) { guardar.por("ghost_sessao", null); irParaPin(); throw new Error("sessão encerrada"); }
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.erro || `erro ${r.status}`);
+    return j;
+  }
+
+  /* ---------- 1. pareamento ---------- */
+  async function irParaParear() {
+    mostrar("parear").estado("ouvindo");
+    const c = new URLSearchParams(location.search).get("c");
+    if (c) $("codigo").value = c.slice(0, 3) + " " + c.slice(3);
+    let temPin = true;
+    if (DEMO) temPin = false; else try { temPin = (await api("api/info", {})).tem_pin; } catch (e) {}
+    $("campo-pin2").hidden = temPin; $("pin2").required = !temPin;
+    $("rotulo-pin1").textContent = temPin ? "PIN do Ghost (6 números)" : "Crie um PIN de 6 números";
+    $("nota-pin").textContent = temPin ? "Use o mesmo PIN dos outros aparelhos." : "Você vai criar o PIN agora; ele será pedido sempre que abrir o app.";
+  }
+  $("form-parear").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const bt = $("botao-parear"); bt.disabled = true; $("erro-parear").textContent = "";
+    try {
+      const j = DEMO ? { aparelho_token: "demo", sessao: "demo", nome: $("nome-aparelho").value }
+        : await api("api/parear", { codigo: $("codigo").value, nome: $("nome-aparelho").value, pin: $("pin1").value, pin_confirmacao: $("pin2").value });
+      guardar.por("ghost_aparelho", j.aparelho_token); guardar.por("ghost_sessao", j.sessao);
+      guardar.por("ghost_sessao_ate", String(Date.now() + 12 * 3600e3)); guardar.por("ghost_nome", j.nome);
+      try { history.replaceState(null, "", DEMO ? location.pathname : "celular"); } catch (e) {}   // tira o código da barra
+      abrirApp();
+    } catch (err) { $("erro-parear").textContent = err.message; }
+    finally { bt.disabled = false; $("pin1").value = ""; $("pin2").value = ""; }
+  });
+
+  /* ---------- 2. PIN ---------- */
+  let digitado = "";
+  function pontos() { [...$("pontos").children].forEach((p, i) => p.classList.toggle("cheio", i < digitado.length)); }
+  function irParaPin() {
+    if (!guardar.ler("ghost_aparelho")) return irParaParear();
+    mostrar("pin").estado("espera"); digitado = ""; pontos();
+    $("saudacao-pin").textContent = guardar.ler("ghost_nome") ? `${guardar.ler("ghost_nome")} · PIN` : "Digite o PIN";
+  }
+  $("teclado").addEventListener("click", async (e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    if (b.dataset.acao === "apagar") { digitado = digitado.slice(0, -1); return pontos(); }
+    if (b.dataset.acao === "esquecer") {
+      ["ghost_aparelho", "ghost_sessao", "ghost_sessao_ate", "ghost_nome"].forEach((k) => guardar.por(k, null));
+      return irParaParear();
+    }
+    if (digitado.length >= 6) return;
+    digitado += b.textContent; pontos();
+    if (digitado.length < 6) return;
+    $("erro-pin").textContent = "";
+    try {
+      const j = DEMO ? { sessao: "demo", nome: guardar.ler("ghost_nome") }
+        : await api("api/entrar", { aparelho_token: guardar.ler("ghost_aparelho"), pin: digitado });
+      guardar.por("ghost_sessao", j.sessao); guardar.por("ghost_sessao_ate", String(Date.now() + 12 * 3600e3));
+      abrirApp();
+    } catch (err) {
+      $("erro-pin").textContent = err.message; nucleos["nucleo-pin"].estado("erro");
+      if (/pareado|removido/.test(err.message)) guardar.por("ghost_aparelho", null);
+    } finally { digitado = ""; pontos(); }
+  });
+
+  /* ---------- 3. app ---------- */
+  const conversa = $("conversa");
+  let vistos = 0, esperando = false, timer = null;
+  const hora = (seg) => new Date(seg * 1000).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
   function adicionar(quem, texto, t) {
-    const d = document.createElement("div"); d.className = `msg ${quem}`;
-    d.textContent = texto;
+    const d = document.createElement("div"); d.className = `msg ${quem}`; d.textContent = texto;
     if (t) { const s = document.createElement("small"); s.textContent = hora(t); d.append(s); }
-    conversa.querySelector(".digitando")?.remove();
-    conversa.append(d);
-    if (esperando && quem === "ghost") esperando = false;
-    if (esperando) mostrarDigitando();
+    conversa.querySelector(".digitando")?.remove(); conversa.append(d);
+    if (quem === "ghost") esperando = false;
+    if (esperando) digitando();
     conversa.scrollTop = conversa.scrollHeight;
   }
-  function mostrarDigitando() {
+  function digitando() {
     if (conversa.querySelector(".digitando")) return;
     const d = document.createElement("div"); d.className = "digitando"; d.textContent = "Ghost está pensando…";
     conversa.append(d); conversa.scrollTop = conversa.scrollHeight;
   }
-  function conexao(ok, texto) {
-    const c = $("conexao"); c.style.color = ok ? "var(--verdete)" : "var(--sangue)"; c.lastElementChild.textContent = texto;
-  }
+  function conexao(ok, texto) { const c = $("conexao"); c.style.color = ok ? "var(--verdete)" : "var(--sangue)"; c.lastElementChild.textContent = texto; }
   function render(d) {
     const est = ESTADOS[d.estado.nome] || ESTADOS.espera;
-    nucleo.estado(d.estado.nome);
+    nucleos.nucleo.estado(d.estado.nome);
     $("estado-nome").textContent = est.rotulo; $("estado-nome").style.color = est.cor;
     $("estado-texto").textContent = d.estado.texto || "";
     const s = d.sistema || {};
@@ -148,67 +282,107 @@ button:focus-visible { outline: 2px solid var(--brasa); outline-offset: 2px; }
     $("m-ram").textContent = s.ram == null ? "—" : `${s.ram}%`;
     $("m-disco").textContent = s.disco_livre_gb == null ? "—" : `${Math.round(s.disco_livre_gb)} GB`;
     $("m-req").textContent = d.requisicoes ? String(d.requisicoes.n) : "—";
+    $("confirmar").hidden = !d.confirmacao_pendente;
     const msgs = d.celular || [];
-    if (msgs.length < vistos) vistos = 0;                 // Ghost reiniciou: recomeça a lista
+    if (msgs.length < vistos) vistos = 0;
     for (const m of msgs.slice(vistos)) adicionar(m.quem, m.texto, m.t);
     vistos = msgs.length;
   }
-
   async function buscar() {
-    try {
-      const r = await fetch(`estado?t=${encodeURIComponent(TOKEN)}`, { cache: "no-store" });
-      if (r.status === 403) { conexao(false, "código inválido"); return; }
-      if (!r.ok) throw new Error(r.status);
-      render(await r.json()); conexao(true, "conectado");
-    } catch (e) { conexao(false, "sem conexão"); }
+    if (DEMO) return;
+    try { render(await api("api/estado")); conexao(true, "conectado"); }
+    catch (e) { if (!telas.app.hidden) conexao(false, "sem conexão"); }
   }
-
   async function enviar(texto) {
     texto = texto.trim(); if (!texto) return;
-    $("pedido").value = "";
-    if (DEMO) { demoResponder(texto); return; }
-    esperando = true; mostrarDigitando();
-    try {
-      const r = await fetch(`comando?t=${encodeURIComponent(TOKEN)}`, {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ texto }) });
-      if (!r.ok) throw new Error((await r.json()).erro || r.status);
-      buscar();
-    } catch (e) {
-      esperando = false; adicionar("sistema", `Não consegui enviar: ${e.message}. O celular está no mesmo Wi-Fi do PC?`);
-    }
+    $("pedido").value = ""; $("confirmar").hidden = true;
+    if (DEMO) return demoResponder(texto);
+    esperando = true; digitando();
+    try { await api("api/comando", { texto }); buscar(); }
+    catch (e) { esperando = false; adicionar("sistema", `Não consegui enviar: ${e.message}.`); }
+  }
+  function abrirApp() {
+    mostrar("app"); vistos = 0; conversa.replaceChildren();
+    adicionar("sistema", "Respostas por escrito aqui; nada é falado no PC. Ações importantes pedem confirmação.");
+    clearInterval(timer);
+    if (DEMO) { iniciarDemo(); return; }
+    buscar(); timer = setInterval(buscar, 1500);
   }
   $("form").addEventListener("submit", (e) => { e.preventDefault(); enviar($("pedido").value); });
   $("atalhos").addEventListener("click", (e) => { if (e.target.tagName === "BUTTON") enviar(e.target.textContent); });
+  $("confirmar").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) enviar(b.dataset.resposta); });
+  $("travar").addEventListener("click", async () => {
+    clearInterval(timer);
+    try { if (!DEMO) await api("api/sair", {}); } catch (e) {}
+    guardar.por("ghost_sessao", null); irParaPin();
+  });
 
-  if (!DEMO) {
-    adicionar("sistema", "As respostas chegam aqui por escrito; nada é falado no PC.");
-    buscar(); setInterval(buscar, 1500); return;
+  /* ---------- falar (só com https: o navegador libera o microfone) ---------- */
+  if (window.isSecureContext && navigator.mediaDevices && window.MediaRecorder) {
+    const mic = $("mic"); mic.hidden = false;
+    let gravador = null, partes = [];
+    const tipo = ["audio/webm;codecs=opus", "audio/mp4", "audio/webm"].find((t) => MediaRecorder.isTypeSupported(t)) || "";
+    async function comecar(e) {
+      e.preventDefault(); if (gravador) return;
+      try {
+        const fluxo = await navigator.mediaDevices.getUserMedia({ audio: true });
+        partes = []; gravador = new MediaRecorder(fluxo, tipo ? { mimeType: tipo } : undefined);
+        gravador.ondataavailable = (ev) => ev.data.size && partes.push(ev.data);
+        gravador.onstop = async () => {
+          fluxo.getTracks().forEach((t) => t.stop());
+          const blob = new Blob(partes, { type: gravador.mimeType || "audio/webm" }); gravador = null;
+          mic.classList.remove("gravando");
+          if (blob.size < 2000) return;
+          if (DEMO) return demoResponder("(voz) Resumo do dia");
+          esperando = true; digitando();
+          try { await api("api/audio", blob, { tipo: blob.type.split(";")[0] }); buscar(); }
+          catch (err) { esperando = false; adicionar("sistema", `Não consegui mandar o áudio: ${err.message}.`); }
+        };
+        gravador.start(); mic.classList.add("gravando");
+      } catch (err) { adicionar("sistema", "O microfone não foi liberado. Confira a permissão do navegador."); }
+    }
+    function parar() { if (gravador && gravador.state === "recording") gravador.stop(); }
+    mic.addEventListener("pointerdown", comecar);
+    ["pointerup", "pointerleave", "pointercancel"].forEach((ev) => mic.addEventListener(ev, parar));
   }
 
   /* ---------- demonstração ---------- */
-  $("aviso").hidden = false; conexao(true, "demonstração");
-  const agora = () => Date.now() / 1000;
-  const d = { estado: { nome: "espera", texto: "" }, sistema: { cpu: 18, ram: 61, disco_livre_gb: 212 }, requisicoes: { n: 214 },
-              celular: [{ quem: "voce", texto: "Quanto produzimos ontem?", t: agora() - 600 },
-                        { quem: "ghost", texto: "Ontem foram 1.259 unidades, senhor: 1.234 de pão de mel e 25 de bolo.", t: agora() - 595 }] };
   const respostas = [
     [/resumo/i, "Bom dia, senhor. Hoje é segunda-feira, 26 de outubro. Em Santana de Parnaíba, 24 graus, parcialmente nublado. Lembretes de hoje: às 16:00, ligar para o fornecedor de embalagens."],
     [/lembrete/i, "Senhor, o senhor tem 2 lembretes: hoje às 16:00, ligar para o fornecedor de embalagens; amanhã às 08:30, fechar o apontamento da produção de segunda."],
     [/computador|pc/i, "Tudo em ordem, senhor: processador em 18%, memória em 61% e 212 GB livres no disco."],
-    [/exportar/i, "Pronto, senhor. Exportei os indicadores para Documentos, Ghost, Relatórios: Indicadores_Ghost_2026-10-26_0930.xlsx."],
-    [/painel/i, "Abrindo o painel no computador, senhor."],
+    [/exportar/i, "Pronto, senhor. Exportei os indicadores para Documentos, Ghost, Relatórios."],
+    [/whats|mensagem|mande|manda/i, "Confirma mandar no WhatsApp para Deborah: a reunião mudou para as 15h, senhor?", true],
+    [/^sim/i, "Mensagem enviada para Deborah, senhor."], [/^não/i, "Cancelado, senhor."],
   ];
-  function demoResponder(texto) {
-    d.celular.push({ quem: "voce", texto, t: agora() }); esperando = true;
-    d.estado = { nome: "pensando", texto: `Você: ${texto}` }; render(d);
-    setTimeout(() => {
-      const r = (respostas.find(([re]) => re.test(texto)) || [, "Na demonstração eu só respondo aos atalhos, senhor. No seu PC, peço à IA."])[1];
-      d.celular.push({ quem: "ghost", texto: r, t: agora() }); d.requisicoes.n++;
-      d.estado = { nome: "falando", texto: "" }; render(d);
-      setTimeout(() => { d.estado = { nome: "espera", texto: "" }; render(d); }, 2500);
-    }, 1400);
+  let demo = null;
+  function iniciarDemo() {
+    $("aviso-demo").hidden = false; conexao(true, "demonstração");
+    const agora = Date.now() / 1000;
+    demo = { estado: { nome: "espera", texto: "" }, sistema: { cpu: 18, ram: 61, disco_livre_gb: 212 }, requisicoes: { n: 214 },
+             confirmacao_pendente: false,
+             celular: [{ quem: "voce", texto: "Quanto produzimos ontem?", t: agora - 600 },
+                       { quem: "ghost", texto: "Ontem foram 1.259 unidades, senhor: 1.234 de pão de mel e 25 de bolo.", t: agora - 595 },
+                       { quem: "voce", texto: "Mande no whats para a Deborah que a reunião mudou para as 15h", t: agora - 60 },
+                       { quem: "ghost", texto: "Confirma mandar no WhatsApp para Deborah: a reunião mudou para as 15h, senhor?", t: agora - 58 }] };
+    demo.confirmacao_pendente = true; render(demo);
   }
-  render(d);
+  function demoResponder(texto) {
+    demo.celular.push({ quem: "voce", texto, t: Date.now() / 1000 }); demo.confirmacao_pendente = false;
+    demo.estado = { nome: "pensando", texto: `Você: ${texto}` }; esperando = true; render(demo);
+    setTimeout(() => {
+      const r = respostas.find(([re]) => re.test(texto)) || [, "Na demonstração eu só respondo aos atalhos, senhor. No seu PC, peço à IA."];
+      demo.celular.push({ quem: "ghost", texto: r[1], t: Date.now() / 1000 }); demo.confirmacao_pendente = !!r[2];
+      demo.requisicoes.n++; demo.estado = { nome: "falando", texto: "" }; render(demo);
+      setTimeout(() => { demo.estado = { nome: "espera", texto: "" }; render(demo); }, 2500);
+    }, 1200);
+  }
+
+  /* ---------- começo ---------- */
+  const sessaoValida = Number(guardar.ler("ghost_sessao_ate") || 0) > Date.now() && guardar.ler("ghost_sessao");
+  if (new URLSearchParams(location.search).get("c") || !guardar.ler("ghost_aparelho")) irParaParear();
+  else if (sessaoValida) abrirApp();
+  else irParaPin();
 })();
 </script>
 </body>

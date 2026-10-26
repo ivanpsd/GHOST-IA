@@ -685,18 +685,29 @@ def _tratar_hud(n, falar):
         falar("Abri a demonstração do painel, senhor. Os arquivos ficaram em Documentos, Ghost, Demonstração.")
         print(f"\n[PAINEL]: demonstração em {caminho}")
         return True
-    # app do celular: QR code no painel
-    if tem(n, "celular", "qr code", "qrcode", "qr"):
-        from ghost.nucleo import painel
+    # app do celular: pareamento (QR + código) no painel, PIN, aparelhos
+    if tem(n, "celular", "qr code", "qrcode", "qr", "pin do celular", "aparelhos pareados"):
+        from ghost.nucleo import celular, painel
+        if tem(n, "trocar pin", "troca o pin", "trocar o pin", "esqueci o pin", "novo pin", "apagar o pin"):
+            celular.trocar_pin()
+            falar("PIN apagado e todos os celulares removidos, senhor. Para usar de novo, diga conectar celular.")
+            return True
+        if tem(n, "remover os celulares", "remover celulares", "remover todos os celulares", "esquecer os celulares",
+               "remover os aparelhos", "remover aparelhos", "desparear"):
+            celular.remover_todos(); falar("Todos os celulares foram removidos, senhor."); return True
         if re.search(r"\b(deslig\w*|desconect\w*|desativ\w*|bloque\w*)\b", n):
-            painel.celular_desativar(); falar("Acesso pelo celular desligado, senhor."); return True
-        if tem(n, "trocar codigo", "troca o codigo", "trocar o codigo", "novo codigo", "trocar qr", "novo qr"):
-            painel.celular_ativar(trocar=True); painel.abrir_janela(mostrar_qr=True)
-            falar("Código trocado, senhor. O link antigo não funciona mais; o QR novo está no painel."); return True
+            celular.desativar(); falar("Acesso pelo celular desligado, senhor."); return True
         if tem(n, "conectar celular", "conectar o celular", "conectar meu celular", "app do celular", "aplicativo do celular",
-               "usar no celular", "abrir no celular", "qr code", "qrcode", "codigo do celular", "ghost no celular"):
-            painel.celular_ativar(); painel.abrir_janela(mostrar_qr=True)
-            falar("O QR code está no painel, senhor. Com o celular no mesmo Wi-Fi, aponte a câmera para ele."); return True
+               "usar no celular", "abrir no celular", "qr code", "qrcode", "codigo do celular", "ghost no celular",
+               "parear celular", "parear o celular", "parear meu celular", "novo codigo", "parear outro celular"):
+            try:
+                r = celular.ativar()
+                painel.abrir_janela(mostrar_qr=True)
+                via = "pelo Tailscale, inclusive no 5G" if r["modo"] == "tailscale" else "só no mesmo Wi-Fi, sem criptografia"
+                falar(f"O código de pareamento está no painel, senhor, válido por 5 minutos. Acesso {via}.")
+            except celular.ErroCelular as e:
+                falar(f"Senhor, {e}")
+            return True
     # a FAIXA do topo (o que o Ghost está fazendo agora)
     if tem(n, "faixa", "hud"):
         from ghost.nucleo import hud
@@ -783,6 +794,37 @@ SIM = {"sim", "confirmo", "confirma", "pode", "pode sim", "sim pode", "claro", "
        "sim senhor", "pode fazer", "pode mandar", "pode salvar", "sim por favor", "confirmado", "manda", "faz"}
 NAO = {"nao", "cancela", "cancelar", "deixa", "deixa pra la", "esquece", "negativo", "nao precisa", "agora nao",
        "nao obrigado"}
+
+def comando_sensivel(texto):
+    """Descrição da ação se o comando mexe em algo importante (pedido pelo celular pede confirmação), senão None."""
+    n = normalizar(texto)
+    curta = re.sub(r"\b(ghost|senhor)\b", "", n).strip()
+    if curta in SIM or curta in NAO or curta.startswith("nao "):
+        return None                                 # resposta a uma confirmação
+    m = REGEX_MENSAGEM.match(texto)
+    if m:
+        return f"mandar no WhatsApp para {m.group('contato').strip()}: {m.group('msg').strip()[:80]}"
+    m = REGEX_DITADO.match(texto)
+    if m:
+        return f"digitar no computador: {m.group('t').strip()[:80]}"
+    m = REGEX_TECLA.search(n)
+    if m:
+        return f"apertar {m.group('k')}"
+    if re.fullmatch(r"(?:ghost )?(?:desliga|desligar|desligue) (?:o )?(?:computador|pc)(?: agora)?", n):
+        return "desligar o computador"
+    if tem(n, "fechar janela", "fecha a janela", "feche a janela"):
+        return "fechar a janela aberta"
+    m = REGEX_FECHAR_APP.match(n)
+    if m:
+        return f"fechar {m.group('nome')}"
+    if REGEX_ESQUECER.search(n) or tem(n, "esqueca a skill", "apague a skill", "apagar a skill", "excluir a skill"):
+        return "apagar um cadastro"
+    from ghost.ia import skills
+    s = skills.encontrar(n)
+    if s:
+        return f"rodar a skill {s['nome']}"
+    return None
+
 
 def pedir_confirmacao(pergunta, funcao, falar=None):
     global _confirmacao
