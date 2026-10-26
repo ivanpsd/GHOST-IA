@@ -16,7 +16,7 @@ if (-not $DepoisDoPull) {
 }
 
 Passo "3/5 Python e bibliotecas"; Garantir-Python313; Garantir-Ambiente
-Passo "4/5 Modelos (só baixa o que faltar)"; Garantir-Ollama; Garantir-Vosk; Baixar-Modelos
+Passo "4/5 Modelos (só baixa o que faltar)"; Garantir-Vosk; Baixar-Modelos
 Passo "5/5 Reiniciando"; Parar-Ghost; Criar-Atalho-Inicializacao; Iniciar-Ghost
 Write-Host ""
 Write-Host "Atualizado. Suas memórias, fichas, skills e .env foram mantidos." -ForegroundColor Green

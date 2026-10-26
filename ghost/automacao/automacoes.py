@@ -26,8 +26,6 @@ except ImportError:
     pyperclip = None
 
 from ghost.nucleo import caminhos, canal, preferencias
-from ghost.visao import camera, gestos, rosto
-from ghost.visao.gestos import alternar_camera
 
 PASTA_PRINTS = caminhos.PRINTS
 
@@ -62,8 +60,14 @@ VERBO_ABRIR = r"\b(abr\w*|abra|inici\w*|lig\w*|execut\w*|entr\w*)\b"
 def pediu_abrir(n):
     return re.search(VERBO_ABRIR, n) is not None
 
+# Gestos, macros e cadastro de gestos estão DESATIVADOS (o código continua em ghost/visao e
+# ghost/automacao/macros.py). Para religar: True aqui e reinicie o Ghost.
+GESTOS_ATIVOS = False
+AVISO_GESTOS = "Os gestos e as macros estão desativados, senhor."
+
+
 def em_segundo_plano(funcao, *args):
-    """Roda em outra thread mantendo o canal do pedido (ex.: resposta volta ao Telegram, não à voz)."""
+    """Roda em outra thread mantendo o destino da resposta (pedido do celular: a resposta volta para lá)."""
     canal.thread(funcao, *args)
 
 def _colar(texto):
@@ -365,7 +369,11 @@ def obter_localizacao_ip():
 def _tratar_sistema(n, falar):
     curto = len(n.split()) <= 5  # comandos de mídia só valem em frases curtas
 
-    if tem(n, "camera", "gestos"):
+    if tem(n, "camera", "gestos") and re.search(r"\b(fech\w*|deslig\w*|desativ\w*|pare|parar|pausa\w*|ativ\w*|abr\w*|abra|lig\w*|inici\w*)\b", n):
+        if not GESTOS_ATIVOS:
+            falar(AVISO_GESTOS)
+            return True
+        from ghost.visao.gestos import alternar_camera
         if re.search(r"\b(fech\w*|deslig\w*|desativ\w*|pare|parar|pausa\w*)\b", n):   # "par\w*" pegava "para"
             alternar_camera(False, falar_callback=falar, executar_comando=lambda f: executar(f, falar))
             return True
@@ -425,10 +433,11 @@ def _tratar_sistema(n, falar):
     return False
 
 # -------------------------------------------------------------
-# GHOST: CADASTRO DE GESTOS, LEITURA FACIAL, CHECK-IN, MONITORES
+# GHOST: CADASTRO DE GESTOS E MONITORES (desativados: GESTOS_ATIVOS)
 # -------------------------------------------------------------
 def abrir_cadastro(falar):
     """Libera a câmera, abre a tela de cadastro e devolve a câmera quando ela fechar."""
+    from ghost.visao import camera
     pyw = os.path.join(os.path.dirname(sys.executable), "pythonw.exe")
     if not os.path.exists(pyw):
         pyw = sys.executable
@@ -468,6 +477,9 @@ def _executar_acao_cadastrada(n, falar):
     m = re.search(r"\b(?:execut\w*|rod\w*|fac[ae])\s+(?:a\s+)?(?:acao|macro)\s+(?P<nome>.+)$", n)
     if not m:
         return False
+    if not GESTOS_ATIVOS:
+        falar(AVISO_GESTOS)
+        return True
     from ghost.automacao import macros
     from ghost.visao import gestos_lib as gl
     alvo = m.group("nome").strip()
@@ -649,27 +661,60 @@ def _tratar_personalidade(n, falar):
         preferencias.definir("personalidade", "jarvis"); falar("Às suas ordens, senhor. De volta ao normal."); return True
     return False
 
-def _tratar_casa(n, falar):
-    if tem(n, "conectar casa inteligente", "conectar a casa", "conectar os aparelhos", "procurar aparelhos",
-           "atualizar aparelhos", "conectar casa"):
-        from ghost.automacao import casa
-        falar("Procurando aparelhos, senhor.")
-        em_segundo_plano(lambda: falar(casa.descobrir()))
-        return True
-    if tem(n, "quais aparelhos", "que aparelhos", "aparelhos voce controla"):
-        from ghost.automacao import casa
-        falar(casa.listar())
-        return True
-    return False
-
 def _tratar_hud(n, falar):
-    # só o painel DO GHOST ("abra o painel de controle" é outro programa)
-    if tem(n, "hud", "painel do ghost", "seu painel", "o painel") and not tem(n, "painel de controle", "painel de"):
+    # "exportar indicadores": Excel com tudo o que a tela de indicadores mostra
+    if tem(n, "exportar indicadores", "exporta os indicadores", "exportar os indicadores", "exportar painel",
+           "exportar o painel", "exportar relatorio do painel", "exportar relatorio dos indicadores",
+           "gerar relatorio dos indicadores", "exportar metricas"):
+        from ghost.nucleo import painel
+
+        def _exportar():
+            try:
+                caminho = painel.exportar()
+                falar(f"Pronto, senhor. Exportei os indicadores para Documentos, Ghost, Relatórios: {os.path.basename(caminho)}.")
+            except Exception as e:
+                falar(f"Senhor, não consegui exportar os indicadores: {e}.")
+        em_segundo_plano(_exportar)
+        return True
+    # demonstração do painel (dados de exemplo, para mostrar a alguém)
+    if tem(n, "demonstracao do painel", "demonstracao do ghost", "demonstracao do hud", "modo demonstracao", "modo demo",
+           "painel de demonstracao", "painel demo", "abrir demonstracao", "abra a demonstracao", "criar demonstracao",
+           "crie uma demonstracao", "cria uma demonstracao", "fazer uma demonstracao", "faca uma demonstracao"):
+        from ghost.nucleo import painel
+        caminho = painel.criar_demonstracao()
+        falar("Abri a demonstração do painel, senhor. Os arquivos ficaram em Documentos, Ghost, Demonstração.")
+        print(f"\n[PAINEL]: demonstração em {caminho}")
+        return True
+    # app do celular: QR code no painel
+    if tem(n, "celular", "qr code", "qrcode", "qr"):
+        from ghost.nucleo import painel
+        if re.search(r"\b(deslig\w*|desconect\w*|desativ\w*|bloque\w*)\b", n):
+            painel.celular_desativar(); falar("Acesso pelo celular desligado, senhor."); return True
+        if tem(n, "trocar codigo", "troca o codigo", "trocar o codigo", "novo codigo", "trocar qr", "novo qr"):
+            painel.celular_ativar(trocar=True); painel.abrir_janela(mostrar_qr=True)
+            falar("Código trocado, senhor. O link antigo não funciona mais; o QR novo está no painel."); return True
+        if tem(n, "conectar celular", "conectar o celular", "conectar meu celular", "app do celular", "aplicativo do celular",
+               "usar no celular", "abrir no celular", "qr code", "qrcode", "codigo do celular", "ghost no celular"):
+            painel.celular_ativar(); painel.abrir_janela(mostrar_qr=True)
+            falar("O QR code está no painel, senhor. Com o celular no mesmo Wi-Fi, aponte a câmera para ele."); return True
+    # a FAIXA do topo (o que o Ghost está fazendo agora)
+    if tem(n, "faixa", "hud"):
         from ghost.nucleo import hud
         if re.search(r"\b(escond\w*|ocult\w*|tir\w*|deslig\w*|fech\w*)\b", n):
-            hud.mostrar(False); falar("Painel escondido, senhor."); return True
+            hud.mostrar(False); falar("Faixa escondida, senhor."); return True
         if re.search(r"\b(mostr\w*|exib\w*|lig\w*|abr\w*|volt\w*)\b", n):
-            hud.mostrar(True); falar("Painel visível, senhor."); return True
+            hud.mostrar(True); falar("Faixa visível, senhor."); return True
+    # a TELA de indicadores (só a DO GHOST: "abra o painel de controle" é do Windows)
+    outro_painel = re.search(r"\bpainel d[aeo]s?\b(?!\s+ghost)", n)          # "painel de controle", "painel da produção"
+    if not outro_painel and (tem(n, "painel do ghost", "seu painel", "tela de indicadores", "seus indicadores",
+                                 "indicadores do ghost")
+                             or (len(n.split()) <= 4 and tem(n, "painel", "indicadores"))):
+        from ghost.nucleo import painel
+        if re.search(r"\b(escond\w*|ocult\w*|deslig\w*|fech\w*)\b", n):
+            painel.fechar_janela(); falar("Painel fechado, senhor."); return True
+        if re.search(r"\b(mostr\w*|exib\w*|abr\w*|abra|volt\w*|ver|veja)\b", n):
+            falar("Abrindo o painel, senhor." if painel.abrir_janela() else "Senhor, o painel não está disponível agora.")
+            return True
     return False
 
 def _tratar_google(n, falar):
@@ -701,44 +746,26 @@ def _tratar_ativacao(n, falar):
     return False
 
 def _tratar_ghost(n, falar):
-    if _tratar_alertas(n, falar) or _tratar_personalidade(n, falar) or _tratar_casa(n, falar) or _tratar_hud(n, falar) or _tratar_google(n, falar) or _tratar_ativacao(n, falar) or _executar_acao_cadastrada(n, falar):
+    if _tratar_alertas(n, falar) or _tratar_personalidade(n, falar) or _tratar_hud(n, falar) or _tratar_google(n, falar) or _tratar_ativacao(n, falar) or _executar_acao_cadastrada(n, falar):
         return True
     if tem(n, "cadastro de gestos", "cadastro dos gestos", "cadastrar gesto", "cadastrar gestos",
-           "cadastrar um gesto", "novo gesto"):
-        abrir_cadastro(falar)
-        return True
-
-    if tem(n, "leitura facial", "leitura do rosto", "leitura de expressao", "leitura da expressao",
-           "reconhecimento facial", "leitura de rosto"):
-        if re.search(VERBO_DESLIGAR, n):
-            rosto.ativar_leitura(False, falar); return True
-        if re.search(VERBO_LIGAR, n):
-            rosto.ativar_leitura(True, falar); return True
-
-    if tem(n, "nao me pergunte", "nao pergunte", "me deixe em paz", "sem perguntas"):
-        rosto.adiar(_minutos_falados(n), falar)
-        return True
-    if tem(n, "check in", "checkin", "perguntar como estou", "perguntas de como estou"):
-        if re.search(VERBO_DESLIGAR, n):
-            rosto.ligar_checkin(False, falar); return True
-        if re.search(VERBO_LIGAR, n):
-            rosto.ligar_checkin(True, falar); return True
-    if tem(n, "como eu estou", "como estou", "qual meu estado", "como esta minha expressao",
-           "minha expressao") and len(n.split()) <= 7:
-        falar(rosto.descrever_agora())
-        return True
-
-    if tem(n, "outro monitor", "proximo monitor", "trocar de monitor", "trocar monitor",
-           "mudar de monitor", "monitor seguinte", "outra tela", "proxima tela"):
-        gestos.trocar_monitor(falar)
-        return True
-    if tem(n, "os dois monitores", "ambos os monitores", "duas telas"):
-        gestos.MODO_MONITORES = "todos"
-        falar("Gestos cobrindo os dois monitores, senhor.")
-        return True
-    if tem(n, "um monitor por vez", "uma tela por vez", "um monitor de cada vez"):
-        gestos.MODO_MONITORES = "um_por_vez"
-        falar("Gestos em um monitor por vez. Diga outro monitor para trocar, senhor.")
+           "cadastrar um gesto", "novo gesto", "outro monitor", "proximo monitor", "trocar de monitor",
+           "trocar monitor", "os dois monitores", "um monitor por vez"):
+        if not GESTOS_ATIVOS:
+            falar(AVISO_GESTOS)
+            return True
+        from ghost.visao import gestos
+        if tem(n, "cadastro de gestos", "cadastro dos gestos", "cadastrar gesto", "cadastrar gestos",
+               "cadastrar um gesto", "novo gesto"):
+            abrir_cadastro(falar)
+        elif tem(n, "os dois monitores"):
+            gestos.MODO_MONITORES = "todos"
+            falar("Gestos cobrindo os dois monitores, senhor.")
+        elif tem(n, "um monitor por vez"):
+            gestos.MODO_MONITORES = "um_por_vez"
+            falar("Gestos em um monitor por vez. Diga outro monitor para trocar, senhor.")
+        else:
+            gestos.trocar_monitor(falar)
         return True
     return False
 

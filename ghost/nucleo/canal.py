@@ -1,7 +1,7 @@
 """
 GHOST - Para onde vai o que o Ghost "fala" no pedido atual.
 
-Normalmente: alto-falante. Num pedido vindo do Telegram: de volta para o celular, por escrito.
+Normalmente: alto-falante. Num pedido vindo do app do celular: de volta para o celular, por escrito.
 O destino vale para a thread que atende o pedido E para as threads que ela abrir
 (ações locais e confirmações rodam em segundo plano) — por isso use canal.thread()
 em vez de threading.Thread para trabalho disparado por um pedido.

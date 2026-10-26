@@ -77,3 +77,20 @@ def test_confirmacao_sim_nao(auto):
     assert "sim" in auto.SIM and "pode" in auto.SIM
     assert "nao" in auto.NAO and "cancela" in auto.NAO
     assert not (auto.SIM & auto.NAO)
+
+
+@pytest.mark.parametrize("frase,esperado", [
+    ("ghost abrir painel", "abrir"), ("mostra o painel", "abrir"), ("fecha o painel", "fechar"),
+    ("abre seus indicadores", "abrir"), ("exportar indicadores", "exportar"),
+    ("abra o painel de controle", None), ("me mostra os indicadores de produção da planilha de outubro", None),
+])
+def test_comandos_do_painel(auto, monkeypatch, frase, esperado):
+    from ghost.nucleo import painel
+    feito = []
+    monkeypatch.setattr(painel, "abrir_janela", lambda: feito.append("abrir") or True)
+    monkeypatch.setattr(painel, "fechar_janela", lambda: feito.append("fechar"))
+    monkeypatch.setattr(painel, "exportar", lambda: feito.append("exportar") or "C:/x.xlsx")
+    monkeypatch.setattr(auto, "em_segundo_plano", lambda f, *a: f(*a))
+    tratou = auto._tratar_hud(auto.normalizar(frase), lambda t: None)
+    assert (feito[0] if feito else None) == esperado
+    assert tratou == (esperado is not None)

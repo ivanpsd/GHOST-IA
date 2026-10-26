@@ -7,7 +7,6 @@ O Ghost responde na hora "Pode deixar, senhor" e trabalha sozinho, enquanto
 você usa o PC e conversa com ele normalmente. Ao terminar:
 - fala um resumo curto;
 - salva o relatório completo em Documentos\\Ghost\\Tarefas\\;
-- manda no Telegram, se estiver configurado.
 Por segurança, a tarefa só usa ferramentas de LEITURA (planilhas, e-mail, agenda,
 sistema, memória). Ela não digita, não abre programas e não manda mensagens.
 """
@@ -92,11 +91,6 @@ def _executar(t):
     print(f"\n[TAREFA {t['id']}]: {t['status']}.")
     if _falar:
         _falar(aviso)
-    try:
-        from ghost.servicos import telegram_bot
-        telegram_bot.notificar(f"Tarefa {t['id']} ({t['status']}): {t['descricao']}\n\n{texto}")
-    except Exception:
-        pass
 
 
 def _salvar(t, texto):

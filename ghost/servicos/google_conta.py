@@ -25,8 +25,13 @@ SCOPES = ["https://www.googleapis.com/auth/calendar.readonly",
 FUSO = timezone(timedelta(hours=-3))  # Brasília
 
 
+# DESATIVADO: sem o administrador do Google Workspace liberar o Google Cloud, a conta da empresa não conecta.
+# Para religar: True aqui (e coloque o credentials.json em dados/).
+GOOGLE_ATIVO = False
+
+
 def configurado():
-    return os.path.exists(TOKEN)
+    return GOOGLE_ATIVO and os.path.exists(TOKEN)
 
 
 def _login():
@@ -69,6 +74,8 @@ def _credenciais(permitir_login=False):
 
 def conectar():
     """Abre o navegador para autorizar (somente leitura). Retorna a frase para o Ghost falar."""
+    if not GOOGLE_ATIVO:
+        return "Senhor, a conta Google da empresa está desativada no Ghost por enquanto."
     try:
         _credenciais(permitir_login=True)
         return "Conta Google conectada, senhor. Agora posso ler sua agenda e seus e-mails."

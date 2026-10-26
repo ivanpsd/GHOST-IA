@@ -45,8 +45,7 @@ TOOLS = [
     {"type": "function", "function": {
         "name": "comando_ghost",
         "description": ("Executa um comando local do Ghost escrito como o usuário falaria. Use para: enviar mensagem "
-                        "no WhatsApp ('mande mensagem para X dizendo Y'), volume, mídia, print de tela, gestos, "
-                        "leitura facial, check-in, monitores, executar ação/macro cadastrada."),
+                        "no WhatsApp ('mande mensagem para X dizendo Y'), volume, mídia, print de tela."),
         "parameters": {"type": "object", "properties": {"frase": {"type": "string"}}, "required": ["frase"]}}},
     {"type": "function", "function": {
         "name": "ver_planilha",
@@ -70,18 +69,6 @@ TOOLS = [
             "operacao": {"type": "string", "enum": ["soma", "media", "contagem", "max", "min"]},
             "ordenar": {"type": "string", "enum": ["desc", "asc"]},
             "limite": {"type": "integer"}}, "required": ["nome"]}}},
-    {"type": "function", "function": {
-        "name": "controlar_casa",
-        "description": ("Liga, desliga ou alterna um aparelho inteligente (luz, tomada, ventilador, ar-condicionado, TV). "
-                        "valor: brilho em % para luz, ou temperatura para ar-condicionado."),
-        "parameters": {"type": "object", "properties": {
-            "aparelho": {"type": "string", "description": "nome falado, ex.: 'luz da sala'"},
-            "acao": {"type": "string", "enum": ["ligar", "desligar", "alternar"]},
-            "valor": {"type": "number"}}, "required": ["aparelho", "acao"]}}},
-    {"type": "function", "function": {
-        "name": "estado_casa",
-        "description": "Diz se um aparelho inteligente está ligado/desligado (ou lista todos se aparelho vazio).",
-        "parameters": {"type": "object", "properties": {"aparelho": {"type": "string"}}, "required": []}}},
     {"type": "function", "function": {
         "name": "previsao_do_tempo",
         "description": "Clima de hoje (agora, mínima, máxima, chance de chuva). Sem cidade, usa a cidade do usuário.",
@@ -128,7 +115,7 @@ TOOLS = [
     {"type": "function", "function": {
         "name": "criar_skill",
         "description": ("Cria uma skill: uma sequência de ações no PC (abrir programas/sites, digitar, teclas, "
-                        "mensagens, macros) disparada por uma frase. NÃO use para mudar o jeito de o Ghost falar "
+                        "mensagens) disparada por uma frase. NÃO use para mudar o jeito de o Ghost falar "
                         "ou cumprimentar (para isso use definir_saudacao)."),
         "parameters": {"type": "object", "properties": {"descricao": {"type": "string",
             "description": "a descrição completa do usuário: nome, frase de disparo e passos"}},
@@ -209,10 +196,10 @@ def _consulta(item):
 # Ferramentas que trazem texto escrito por OUTRAS pessoas / de fora do Ghost
 EXTERNAS = {"consultar_emails", "consultar_agenda", "ver_planilha", "calcular_planilha", "olhar_camera",
             "olhar_tela", "listar_notificacoes", "buscar_memoria", "listar_tarefas",
-            "consultar_sistema", "resumo_do_dia", "estado_casa"}
+            "consultar_sistema", "resumo_do_dia"}
 # Ferramentas que AGEM (depois de ler algo externo, só com confirmação por voz)
 ACOES = {"abrir_aplicativo", "fechar_aplicativo", "abrir_site", "pesquisar_web", "digitar_texto",
-         "pressionar_teclas", "comando_ghost", "controlar_casa", "criar_skill", "definir_saudacao",
+         "pressionar_teclas", "comando_ghost", "criar_skill", "definir_saudacao",
          "criar_lembrete", "cancelar_lembrete", "configurar_notificacoes", "tarefa_segundo_plano"}
 
 
@@ -222,7 +209,7 @@ def descrever(nome, args):
     return {"abrir_aplicativo": f"abrir {v('nome')}", "fechar_aplicativo": f"fechar {v('nome')}",
             "abrir_site": f"abrir o site {v('url')}", "pesquisar_web": f"pesquisar {v('termo')}",
             "digitar_texto": f"digitar: {v('texto')}", "pressionar_teclas": f"apertar {v('combo')}",
-            "comando_ghost": f"executar: {v('frase')}", "controlar_casa": f"{v('acao')} {v('aparelho')}",
+            "comando_ghost": f"executar: {v('frase')}",
             "criar_skill": "criar uma skill nova", "definir_saudacao": "mudar a saudação",
             "criar_lembrete": f"criar o lembrete {v('texto')}", "cancelar_lembrete": f"cancelar o lembrete {v('trecho')}",
             }.get(nome, nome.replace("_", " "))
@@ -292,15 +279,6 @@ def executar(nome, args, falar, pedir_confirmacao):
                                           args.get("limite", 10)), True
             except Exception as e:
                 return f"erro ao ler a planilha: {e}", True
-
-        if nome in ("controlar_casa", "estado_casa"):
-            from ghost.automacao import casa
-            if nome == "controlar_casa":
-                frase = casa.controlar(args.get("aparelho", ""), args.get("acao", "alternar"), args.get("valor"))
-            else:
-                frase = casa.estado(args["aparelho"]) if args.get("aparelho") else casa.listar()
-            falar(frase)
-            return frase, False
 
         if nome in ("previsao_do_tempo", "resumo_do_dia"):
             from ghost.servicos import resumo

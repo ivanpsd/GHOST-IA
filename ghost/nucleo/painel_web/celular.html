@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ghost</title>
+<meta name="theme-color" content="#0d0a08">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Ghost">
+<link rel="manifest" href="manifest.webmanifest?t=__GHOST_TOKEN__">
+<link rel="icon" href="icone-192.png">
+<link rel="apple-touch-icon" href="icone-192.png">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Spectral:ital,wght@0,400;0,600;1,400&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* App do celular: o Núcleo no topo, a conversa no meio, a caixa de pedido presa embaixo (como um app de mensagens). */
+:root {
+  --obsidiana: #0d0a08; --tabua: #17110c; --tabua-2: #1f1710;
+  --fio: rgba(232, 176, 75, .16); --fio-forte: rgba(232, 176, 75, .38);
+  --brasa: #ff6a1a; --ouro: #e8b04b; --cinza-quente: #e9dcc6; --apagado: #9a8770; --sangue: #e0503a; --verdete: #8fbf9f;
+  --f-titulo: "Cinzel", Georgia, serif; --f-texto: "Spectral", Georgia, serif; --f-numero: "JetBrains Mono", Consolas, monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; margin: 0; }
+body { background: var(--obsidiana); color: var(--cinza-quente); font: 16px/1.45 var(--f-texto); -webkit-tap-highlight-color: transparent; }
+.app { height: 100%; display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; }
+.topo {
+  display: flex; align-items: center; gap: 10px;
+  padding: calc(10px + env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) 8px max(16px, env(safe-area-inset-left, 0px));
+  border-bottom: 1px solid var(--fio);
+}
+.topo h1 { margin: 0 auto 0 0; font: 700 20px var(--f-titulo); letter-spacing: .3em; color: var(--ouro); text-shadow: 0 0 14px rgba(255,106,26,.4); }
+.pilula { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--fio-forte);
+  font: 600 11px var(--f-titulo); letter-spacing: .12em; text-transform: uppercase; }
+.pilula i { width: 7px; height: 7px; border-radius: 50%; background: currentColor; box-shadow: 0 0 8px currentColor; }
+
+.cena { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 12px; align-items: center;
+  padding: 10px max(16px, env(safe-area-inset-right, 0px)) 10px max(16px, env(safe-area-inset-left, 0px)); border-bottom: 1px solid var(--fio); }
+.cena canvas { width: 112px; height: 112px; border-radius: 50%; display: block; }
+.cena .estado { font: 700 15px var(--f-titulo); letter-spacing: .16em; text-transform: uppercase; }
+.cena .texto { font-style: italic; color: var(--apagado); font-size: 14px; overflow-wrap: anywhere; }
+.medidas { display: flex; flex-wrap: wrap; gap: 6px 12px; margin-top: 6px; font: 12px var(--f-numero); color: var(--apagado); }
+.medidas b { color: var(--cinza-quente); font-weight: 600; }
+
+.conversa { overflow-y: auto; padding: 14px max(16px, env(safe-area-inset-right, 0px)) 14px max(16px, env(safe-area-inset-left, 0px));
+  display: flex; flex-direction: column; gap: 10px; }
+.msg { max-width: 86%; padding: 9px 13px; border-radius: 12px; overflow-wrap: anywhere; }
+.msg small { display: block; font: 11px var(--f-numero); color: var(--apagado); margin-top: 3px; }
+.msg.voce { align-self: flex-end; background: #3a2414; border: 1px solid rgba(255,106,26,.35); border-bottom-right-radius: 4px; }
+.msg.ghost { align-self: flex-start; background: var(--tabua-2); border: 1px solid var(--fio); border-bottom-left-radius: 4px; color: #f0d9a8; }
+.msg.sistema { align-self: center; background: none; color: var(--apagado); font-style: italic; font-size: 14px; text-align: center; }
+.digitando { align-self: flex-start; color: var(--apagado); font-style: italic; font-size: 14px; }
+
+.base { border-top: 1px solid var(--fio); background: var(--tabua);
+  padding: 8px max(12px, env(safe-area-inset-right, 0px)) calc(10px + env(safe-area-inset-bottom, 0px)) max(12px, env(safe-area-inset-left, 0px)); display: grid; gap: 8px; }
+.atalhos { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; }
+.atalhos::-webkit-scrollbar { display: none; }
+.atalhos button { flex: none; font: 13px var(--f-texto); color: var(--ouro); background: transparent; border: 1px solid var(--fio-forte);
+  border-radius: 999px; padding: 6px 12px; cursor: pointer; }
+form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+input { font: 16px var(--f-texto); color: var(--cinza-quente); background: var(--obsidiana); border: 1px solid var(--fio-forte);
+  border-radius: 10px; padding: 11px 12px; min-width: 0; }
+input:focus { outline: 2px solid var(--brasa); outline-offset: 1px; }
+form button { font: 700 13px var(--f-titulo); letter-spacing: .12em; text-transform: uppercase; color: var(--obsidiana);
+  background: linear-gradient(180deg, #f3c56a, var(--ouro) 45%, #b9792a); border: 1px solid #f6d48d; border-radius: 10px; padding: 0 16px; cursor: pointer; }
+button:focus-visible { outline: 2px solid var(--brasa); outline-offset: 2px; }
+.aviso { margin: 0; font-size: 12px; color: var(--apagado); font-style: italic; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="topo">
+    <h1>GHOST</h1>
+    <span class="pilula" id="conexao" style="color: var(--apagado)"><i></i><span>conectando</span></span>
+  </header>
+
+  <section class="cena" aria-label="Estado do Ghost">
+    <canvas id="nucleo" width="224" height="224" aria-hidden="true"></canvas>
+    <div>
+      <div class="estado" id="estado-nome">—</div>
+      <div class="texto" id="estado-texto"></div>
+      <div class="medidas">
+        <span>CPU <b id="m-cpu">—</b></span><span>RAM <b id="m-ram">—</b></span>
+        <span>Disco <b id="m-disco">—</b></span><span>IA hoje <b id="m-req">—</b></span>
+      </div>
+    </div>
+  </section>
+
+  <main class="conversa" id="conversa" aria-live="polite"></main>
+
+  <footer class="base">
+    <div class="atalhos" id="atalhos">
+      <button type="button">Resumo do dia</button>
+      <button type="button">Quais são meus lembretes?</button>
+      <button type="button">Como está o computador?</button>
+      <button type="button">Exportar indicadores</button>
+      <button type="button">Abrir painel</button>
+    </div>
+    <form id="form">
+      <input id="pedido" type="text" autocomplete="off" enterkeyhint="send" maxlength="500" placeholder="Peça algo ao Ghost…" aria-label="Pedido para o Ghost">
+      <button type="submit">Enviar</button>
+    </form>
+    <p class="aviso" id="aviso" hidden>Demonstração: as respostas são exemplos. Com o QR code do Ghost, este app conversa com o seu PC.</p>
+  </footer>
+</div>
+
+<script src="nucleo.js"></script>
+<script>
+(() => {
+  "use strict";
+  const TOKEN = "__GHOST_TOKEN__";
+  const DEMO = TOKEN.startsWith("__");
+  const $ = (id) => document.getElementById(id);
+  const nucleo = window.GhostNucleo.criar($("nucleo"));
+  const ESTADOS = window.GhostNucleo.ESTADOS;
+  const conversa = $("conversa");
+  let vistos = 0, esperando = false;
+
+  function hora(seg) { return new Date(seg * 1000).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }); }
+  function adicionar(quem, texto, t) {
+    const d = document.createElement("div"); d.className = `msg ${quem}`;
+    d.textContent = texto;
+    if (t) { const s = document.createElement("small"); s.textContent = hora(t); d.append(s); }
+    conversa.querySelector(".digitando")?.remove();
+    conversa.append(d);
+    if (esperando && quem === "ghost") esperando = false;
+    if (esperando) mostrarDigitando();
+    conversa.scrollTop = conversa.scrollHeight;
+  }
+  function mostrarDigitando() {
+    if (conversa.querySelector(".digitando")) return;
+    const d = document.createElement("div"); d.className = "digitando"; d.textContent = "Ghost está pensando…";
+    conversa.append(d); conversa.scrollTop = conversa.scrollHeight;
+  }
+  function conexao(ok, texto) {
+    const c = $("conexao"); c.style.color = ok ? "var(--verdete)" : "var(--sangue)"; c.lastElementChild.textContent = texto;
+  }
+  function render(d) {
+    const est = ESTADOS[d.estado.nome] || ESTADOS.espera;
+    nucleo.estado(d.estado.nome);
+    $("estado-nome").textContent = est.rotulo; $("estado-nome").style.color = est.cor;
+    $("estado-texto").textContent = d.estado.texto || "";
+    const s = d.sistema || {};
+    $("m-cpu").textContent = s.cpu == null ? "—" : `${s.cpu}%`;
+    $("m-ram").textContent = s.ram == null ? "—" : `${s.ram}%`;
+    $("m-disco").textContent = s.disco_livre_gb == null ? "—" : `${Math.round(s.disco_livre_gb)} GB`;
+    $("m-req").textContent = d.requisicoes ? String(d.requisicoes.n) : "—";
+    const msgs = d.celular || [];
+    if (msgs.length < vistos) vistos = 0;                 // Ghost reiniciou: recomeça a lista
+    for (const m of msgs.slice(vistos)) adicionar(m.quem, m.texto, m.t);
+    vistos = msgs.length;
+  }
+
+  async function buscar() {
+    try {
+      const r = await fetch(`estado?t=${encodeURIComponent(TOKEN)}`, { cache: "no-store" });
+      if (r.status === 403) { conexao(false, "código inválido"); return; }
+      if (!r.ok) throw new Error(r.status);
+      render(await r.json()); conexao(true, "conectado");
+    } catch (e) { conexao(false, "sem conexão"); }
+  }
+
+  async function enviar(texto) {
+    texto = texto.trim(); if (!texto) return;
+    $("pedido").value = "";
+    if (DEMO) { demoResponder(texto); return; }
+    esperando = true; mostrarDigitando();
+    try {
+      const r = await fetch(`comando?t=${encodeURIComponent(TOKEN)}`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ texto }) });
+      if (!r.ok) throw new Error((await r.json()).erro || r.status);
+      buscar();
+    } catch (e) {
+      esperando = false; adicionar("sistema", `Não consegui enviar: ${e.message}. O celular está no mesmo Wi-Fi do PC?`);
+    }
+  }
+  $("form").addEventListener("submit", (e) => { e.preventDefault(); enviar($("pedido").value); });
+  $("atalhos").addEventListener("click", (e) => { if (e.target.tagName === "BUTTON") enviar(e.target.textContent); });
+
+  if (!DEMO) {
+    adicionar("sistema", "As respostas chegam aqui por escrito; nada é falado no PC.");
+    buscar(); setInterval(buscar, 1500); return;
+  }
+
+  /* ---------- demonstração ---------- */
+  $("aviso").hidden = false; conexao(true, "demonstração");
+  const agora = () => Date.now() / 1000;
+  const d = { estado: { nome: "espera", texto: "" }, sistema: { cpu: 18, ram: 61, disco_livre_gb: 212 }, requisicoes: { n: 214 },
+              celular: [{ quem: "voce", texto: "Quanto produzimos ontem?", t: agora() - 600 },
+                        { quem: "ghost", texto: "Ontem foram 1.259 unidades, senhor: 1.234 de pão de mel e 25 de bolo.", t: agora() - 595 }] };
+  const respostas = [
+    [/resumo/i, "Bom dia, senhor. Hoje é segunda-feira, 26 de outubro. Em Santana de Parnaíba, 24 graus, parcialmente nublado. Lembretes de hoje: às 16:00, ligar para o fornecedor de embalagens."],
+    [/lembrete/i, "Senhor, o senhor tem 2 lembretes: hoje às 16:00, ligar para o fornecedor de embalagens; amanhã às 08:30, fechar o apontamento da produção de segunda."],
+    [/computador|pc/i, "Tudo em ordem, senhor: processador em 18%, memória em 61% e 212 GB livres no disco."],
+    [/exportar/i, "Pronto, senhor. Exportei os indicadores para Documentos, Ghost, Relatórios: Indicadores_Ghost_2026-10-26_0930.xlsx."],
+    [/painel/i, "Abrindo o painel no computador, senhor."],
+  ];
+  function demoResponder(texto) {
+    d.celular.push({ quem: "voce", texto, t: agora() }); esperando = true;
+    d.estado = { nome: "pensando", texto: `Você: ${texto}` }; render(d);
+    setTimeout(() => {
+      const r = (respostas.find(([re]) => re.test(texto)) || [, "Na demonstração eu só respondo aos atalhos, senhor. No seu PC, peço à IA."])[1];
+      d.celular.push({ quem: "ghost", texto: r, t: agora() }); d.requisicoes.n++;
+      d.estado = { nome: "falando", texto: "" }; render(d);
+      setTimeout(() => { d.estado = { nome: "espera", texto: "" }; render(d); }, 2500);
+    }, 1400);
+  }
+  render(d);
+})();
+</script>
+</body>
+</html>

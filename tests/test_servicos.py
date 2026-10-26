@@ -15,22 +15,6 @@ def test_nome_do_app_da_notificacao(app_id, nome):
     assert notificacoes._nome_app(app_id) == nome
 
 
-def test_erro_do_telegram_nao_mostra_o_token(monkeypatch):
-    from ghost.servicos import telegram_bot
-    monkeypatch.setenv("TELEGRAM_TOKEN", "123:SEGREDO")
-    erro = RuntimeError("HTTPSConnectionPool: /bot123:SEGREDO/getUpdates falhou")
-    assert "SEGREDO" not in telegram_bot._limpo(erro)
-
-
-def test_telegram_dono(monkeypatch):
-    from ghost.servicos import telegram_bot
-    monkeypatch.setenv("TELEGRAM_TOKEN", "1:x")
-    monkeypatch.setenv("TELEGRAM_DONO", "123456789")
-    assert telegram_bot._dono() == 123456789 and telegram_bot.configurado()
-    monkeypatch.setenv("TELEGRAM_DONO", "abc")
-    assert telegram_bot._dono() is None and not telegram_bot.configurado()
-
-
 def test_resumo_fala_eventos_do_dia_todo():
     from datetime import date
 

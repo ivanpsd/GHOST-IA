@@ -6,6 +6,7 @@ mediapipe==1.1.1
 numpy==2.5.4
 opencv-python==5.0.0.93
 pillow
+segno==1.6.6
 PyAutoGUI==0.9.54
 PyGetWindow==0.0.9
 pyperclip==1.11.0
@@ -20,13 +21,10 @@ google-auth-oauthlib
 pandas
 openpyxl
 xlrd
-tinytuya
 icalendar
 recurring-ical-events
 httpx
-# modo sem internet, eco, palavra de ativação treinada, memória longa, notificações
-faster-whisper
-piper-tts
+# eco, palavra de ativação treinada, memória longa, notificações
 livekit
 openwakeword
 fastembed

@@ -10,7 +10,7 @@ def test_todas_as_ferramentas_estao_classificadas():
     assert not (ferramentas.EXTERNAS & ferramentas.ACOES)
     assert (ferramentas.EXTERNAS | ferramentas.ACOES) <= nomes | {"consultar_sistema"}
     # ferramentas que mexem no PC ou mandam algo precisam estar em ACOES
-    for n in ("abrir_aplicativo", "digitar_texto", "pressionar_teclas", "comando_ghost", "controlar_casa",
+    for n in ("abrir_aplicativo", "digitar_texto", "pressionar_teclas", "comando_ghost",
               "tarefa_segundo_plano", "configurar_notificacoes"):
         assert n in ferramentas.ACOES
     for n in ("consultar_emails", "olhar_tela", "listar_notificacoes", "ver_planilha"):

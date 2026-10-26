@@ -22,15 +22,15 @@ Windows (atalho GHOST.lnk)  ->  pythonw -m ghost.vigia  ->  python -m ghost  -> 
 
 ```
 microfone ─► voz/ativacao ──┐
-F9 ─────────────────────────┼─► fila_comandos ─► app (laço principal)
-Telegram ─► servicos/telegram_bot ┘                 │
-                                                    ├─ transcrever (Groq Whisper → Google → Whisper local)
+F9 ─────────────────────────┴─► fila_comandos ─► app (laço principal)
+                                                    │
+                                                    ├─ transcrever (Groq Whisper → Google)
                                                     ├─ confere "Ghost" no começo (só ativação por voz)
                                                     ├─ modos: "oi Ghost" / "tchau Ghost"
                                                     ├─ automacao/automacoes.executar  (comandos locais, sem IA)
-                                                    └─ IA: Groq → Gemini → Ollama (com ferramentas de ia/ferramentas)
+                                                    └─ IA: Groq → Gemini (com ferramentas de ia/ferramentas)
                                                                 │
-                              texto_queue ─► gerador de voz (edge-tts / Piper) ─► audio_queue ─► voz/som
+                              texto_queue ─► gerador de voz (edge-tts, com cache) ─► audio_queue ─► voz/som
 ```
 
 - **Ativação** (`voz/ativacao.py`): um único fluxo do microfone (`voz/som.py`) alimenta o Vosk e o detector treinado
@@ -38,8 +38,22 @@ Telegram ─► servicos/telegram_bot ┘                 │
   "oi Ghost" ou "Ghost, ..."). Se o microfone travar (fone tirado, suspensão), reabre sozinho.
 - **Fala**: cada frase recebe a "geração" atual; interromper (`parar_fala`) muda a geração e as frases velhas são descartadas
   em vez de tocar atrasadas. `voz/eco.py` tira o som do próprio Ghost do microfone para você poder interrompê-lo falando.
-- **Canal** (`nucleo/canal.py`): num pedido do Telegram, o que o Ghost "fala" vai por escrito para o celular. O destino é
-  herdado pelas threads abertas com `canal.thread()`.
+
+## Painel de indicadores
+
+`nucleo/painel.py` liga um servidor só local (`127.0.0.1`, com chave aleatória por sessão) e abre a página
+`nucleo/painel_web/index.html` no Edge em modo aplicativo. A página lê `/estado` a cada segundo. O resto do Ghost só avisa
+o painel (`painel.estado`, `fala`, `contar`, `medir`, `evento`); nada no painel derruba o Ghost.
+Exportar (`/exportar`, botão ou voz) gera um Excel com Resumo, Histórico (1 linha por minuto, últimas 24 h), Eventos e Rotina.
+Aberta fora do Ghost (sem a chave), a mesma página roda uma demonstração com dados de exemplo
+(`painel.criar_demonstracao()` grava essa versão em `Documentos\Ghost\Demonstracao`). O desenho do anel fica em
+`painel_web/nucleo.js`, usado pelo painel e pelo app do celular.
+
+**App do celular:** "conectar celular" liga um segundo servidor na rede local (porta 8766) que só aceita o código do
+celular, guardado em `dados/celular.json` (fixo, para o ícone da tela inicial continuar valendo; "trocar código do celular"
+invalida o antigo). Pela rede só existem `/celular`, `/estado` e `/comando`; exportar e o QR code são só no PC.
+Um pedido do celular entra na mesma fila dos pedidos por voz com `origem = "celular"`; `app._atender_celular` troca o
+destino da fala (`nucleo/canal.py`) para o celular, então nada é falado no PC.
 
 ## Proteções
 
@@ -49,11 +63,10 @@ Telegram ─► servicos/telegram_bot ┘                 │
 | Arquivo pela metade (queda de energia) | Grava em `.tmp` + `fsync` + troca atômica; arquivo estragado vira `.corrompido` e **não** é sobrescrito | `nucleo/arquivo.py` |
 | Duas threads no áudio (travava o PortAudio) | Um só acesso ao alto-falante/microfone, com trava | `voz/som.py` |
 | Queda em biblioteca nativa | `faulthandler` + vigia | `app.py`, `vigia.py` |
-| IA travada | Tempo limite em cada modelo e troca automática (Groq → Gemini → Ollama) | `app.consultar_ia_streaming` |
-| Sem internet | Transcrição, IA e voz locais | `voz/offline.py` |
+| IA travada | Tempo limite em cada modelo e troca automática (Groq → Gemini) | `app.consultar_ia_streaming` |
+| Sem internet | Avisa "Senhor, estou sem internet" (frase guardada no cache de voz); comandos voltam sozinhos com a rede | `app.SemInternet` |
 | Comando por engano (conversa da sala) | Detector treinado na sua voz + conferência do "Ghost" pelo Whisper + volume mínimo da sua voz | `voz/palavra.py`, `voz/ativacao.py`, `app.py` |
 | Mensagem do WhatsApp para a pessoa errada | Contato só é trocado pela ficha quando há UMA correspondência exata | `ia/pessoas.resolver_contato` |
-| Token do Telegram em log | Erros passam por `_limpo()` | `servicos/telegram_bot.py` |
 
 ## Onde mexer
 
@@ -64,16 +77,16 @@ Telegram ─► servicos/telegram_bot ┘                 │
 | Uma ferramenta nova para a IA | `ghost/ia/ferramentas.py` (`TOOLS`, `executar` e classificar em `EXTERNAS`/`ACOES`) |
 | Sensibilidade do microfone / da palavra "Ghost" | `ghost/voz/ativacao.py` (`FATOR_DONO`, `FATOR_INTERRUPCAO`), `ghost/voz/palavra.py` (`LIMIAR_MINIMO`) |
 | Alertas (disco, bateria, pausa, chuva) | `ghost/servicos/alertas.py` |
-| Gestos padrão | `ghost/visao/gestos_lib.py` |
+| Religar gestos e macros | `ghost/automacao/automacoes.py` (`GESTOS_ATIVOS = True`) |
 | Onde ficam os arquivos | `ghost/nucleo/caminhos.py` |
 
 ## Pastas de dados
 
 | Pasta | Conteúdo | No Git? |
 |---|---|---|
-| `dados/` | memória, conversa, fichas, skills, lembretes, preferências, gestos, aparelhos, humor, rotina, histórico, treino da voz, `credentials.json`, `token_google.json` | não |
+| `dados/` | memória, conversa, fichas, skills, lembretes, preferências, rotina, histórico, treino da voz, `credentials.json`, `token_google.json` | não |
 | `logs/` | `ghost.log` (2 MB + 1 anterior), `travamentos.log` | não |
-| `modelos/` | Vosk, Whisper local, Piper, MediaPipe, base do detector, cache de voz | não |
+| `modelos/` | Vosk, MediaPipe, base do detector, cache de voz | não |
 | `prints/` | capturas de tela pedidas por voz | não |
 
 ## Testes

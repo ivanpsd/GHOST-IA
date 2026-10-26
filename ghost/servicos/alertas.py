@@ -81,6 +81,11 @@ def _pode(tipo, intervalo_s):
 def _avisar(tipo, frase):
     _ultimo[tipo] = time.time()
     print(f"\n[ALERTA]: {frase}")
+    try:
+        from ghost.nucleo import painel
+        painel.evento(frase, "alerta")
+    except Exception:
+        pass
     if _falar:
         _falar(frase)
 

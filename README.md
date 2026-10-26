@@ -1,37 +1,35 @@
 # GHOST — assistente de voz estilo JARVIS
 
-Assistente pessoal para Windows, em Python: você diz **"Ghost, …"** (ou segura **F9**), ele responde em voz e texto, executa ações no computador, controla o mouse por gestos da mão, lê a expressão facial e aprende sobre você com o tempo.
+Assistente pessoal para Windows, em Python: você diz **"Ghost, …"** (ou segura **F9**), ele responde em voz e texto, executa ações no computador e aprende sobre você com o tempo.
 
 ## Funcionalidades
 
 | Área | O que faz |
 |---|---|
-| Voz | "Ghost, …" sem tecla ou segurando F9 → transcrição com Whisper (Groq), Google e Whisper local como reserva |
+| Voz | "Ghost, …" sem tecla ou segurando F9 → transcrição com Whisper (Groq) e Google como reserva |
 | Palavra "Ghost" treinada | "Ghost, treinar ativação": aprende como **você** diz "Ghost" (openWakeWord, local) e reage na hora; continua aprendendo sozinho. Sem treino, usa o Vosk offline |
 | Interrupção | Falar por cima, dizer "Ghost" ou apertar F9 enquanto ele fala faz ele parar e ouvir |
-| Sem internet | Continua funcionando: transcrição (faster-whisper), IA (Ollama `gemma3:4b`) e voz (Piper) no próprio PC; volta para a nuvem sozinho |
 | Memória longa | Todas as conversas com data, pesquisáveis pelo sentido: "o que eu te falei semana passada sobre o fornecedor?" |
 | Tela | "o que é esse erro na tela?": captura a janela (ou os monitores) só quando você pede e analisa (Gemini) |
 | Notificações | Avisa por voz WhatsApp/Outlook/Teams… (só app e remetente; o texto só se você pedir) |
-| Telegram | Pedidos por texto ou áudio pelo celular; resposta por escrito; só o dono é atendido |
 | Tarefas longas | "compara as planilhas de setembro e outubro e me avisa": trabalha em segundo plano (só leitura) e avisa ao terminar |
 | Lembretes | "me lembra às 15h de…", "quais são meus lembretes?"; fala na hora e mostra aviso na tela |
 | IA | Groq (`openai/gpt-oss-120b`), com resposta em streaming falada frase a frase; Gemini como reserva (troca de modelo automática) |
 | Personalidade | Estilo JARVIS (elegante, humor seco ocasional, oferece o próximo passo) ou "modo sério" |
-| Painel (HUD) | Faixa no topo da tela: em espera / ouvindo / pensando / falando; clique atravessa |
+| Painel | Tela própria do Ghost (janela do Edge em modo aplicativo), com o anel animado no centro e todos os indicadores em volta: estado, máquina, rede, IA, escuta, memória, lembretes, tarefas, notificações, rotina e crônica de eventos. Botão **Exportar** ou "Ghost, exportar indicadores" gera um Excel em `Documentos\Ghost\Relatorios` |
+| App do celular | "Ghost, conectar celular" mostra um **QR code** no painel; o celular (no mesmo Wi-Fi) abre o app, que pode virar ícone na tela inicial. Pedidos digitados; respostas por escrito no celular, sem falar no PC |
+| Demonstração | "Ghost, abrir demonstração do painel": abre o painel e o app do celular com dados de exemplo e salva os arquivos em `Documentos\Ghost\Demonstracao` (dá para mandar para alguém ver) |
+| Faixa do topo | Faixa discreta mostrando ouvindo / pensando / falando; clique atravessa |
 | Resumo da manhã | "bom dia": data, clima (Open-Meteo), lembretes, agenda e e-mails não lidos; automático 1x de manhã |
 | Alertas proativos | Disco cheio, memória alta, bateria fraca, internet caiu/voltou, pausa após 90 min, chuva na hora da saída |
 | Agenda e e-mail | Somente leitura: Google Workspace (API, quando liberado) e contas pessoais (IMAP + link iCal) |
 | Planilhas | Perguntas sobre Excel/CSV ("quanto produzimos ontem?"): a IA escolhe a operação, o cálculo é local |
-| Casa inteligente | Pronto para Home Assistant e Tuya/Smart Life: "liga a luz da sala em 30%" |
 | Fala | Voz neural `pt-BR-AntonioNeural` (edge-tts), gerada e tocada em paralelo; frases comuns em cache (saem na hora) |
 | Aplicativos | Abre/fecha **qualquer app instalado** (lista do Menu Iniciar), com "quis dizer X?" quando o nome não é exato |
 | Ferramentas da IA | A IA age no PC por ferramentas (abrir apps, sites, pesquisar, digitar, teclas, comandos do Ghost, consultas de leitura do sistema) e pergunta o propósito quando fica em dúvida |
 | Automações | Programas, sites, pesquisa no Google/YouTube, volume, mídia, print, desligar, ditado ("digite ...") e teclas ("aperte enter") |
 | WhatsApp | "mande uma mensagem para Fulano dizendo ..." (Desktop ou Web) |
-| Gestos | Mouse e atalhos pela mão (MediaPipe), **gestos com as duas mãos** (zoom, visão de tarefas, áreas de trabalho), suporte a dois monitores |
-| Cadastro | Tela com abas **Ações** (teclas, comandos de voz, **macros gravadas** do teclado/mouse) e **Gestos** (nativos ou gravados), cada gesto ligado a uma ação |
-| Rosto | Leitura de expressão (estimativa) e check-in periódico ("como o senhor está?") |
+| Gestos e macros | **Desativados** (o código continua no projeto; para religar: `GESTOS_ATIVOS = True` em `ghost\automacao\automacoes.py`) |
 | Memória | Aprende fatos e padrões de comportamento automaticamente (`dados\memoria_aprendizado.json`) |
 | Conversa contínua | Lembra as últimas 12 trocas (inclusive comandos executados); recomeça após 45 min parado |
 | Skills por voz | "aprenda uma nova skill": a IA monta os passos com as ferramentas existentes e só salva com o seu "sim" |
@@ -66,7 +64,7 @@ na mesma resposta (digitar, apertar teclas, WhatsApp, abrir sites...) só aconte
 | Fala | Ação |
 |---|---|
 | "oi Ghost" / "olá Ghost" | **Conversa contínua**: depois disso fale sem dizer "Ghost" (encerra sozinha após 5 min sem falar) |
-| "tchau Ghost" / "boa noite Ghost" | **Dormir**: ignora tudo e não fala sozinho (alertas, notificações, check-in) até ser chamado; lembretes continuam |
+| "tchau Ghost" / "boa noite Ghost" | **Dormir**: ignora tudo e não fala sozinho (alertas, notificações) até ser chamado; lembretes continuam |
 | "treinar ativação" / "esquecer treino da ativação" | Treina (ou apaga) a palavra "Ghost" na sua voz |
 | "o que é esse erro na tela?" / "resume esse documento aberto" | Analisa a tela (só quando pedido) |
 | "o que eu te falei semana passada sobre o fornecedor?" | Busca na memória longa |
@@ -78,12 +76,6 @@ na mesma resposta (digitar, apertar teclas, WhatsApp, abrir sites...) só aconte
 | "pesquise receita de bolo no YouTube" | Pesquisa |
 | "mande uma mensagem para Deborah dizendo bom dia" | WhatsApp |
 | "digite bom dia equipe" / "aperte enter" | Ditado e teclas |
-| "ativar gestos" / "desativar gestos" | Controle por gestos |
-| "abrir cadastro de gestos" | Tela de cadastro de gestos e ações |
-| "executar ação <nome>" | Roda uma ação cadastrada (ex.: uma macro) |
-| "ativar / desativar leitura facial" | Leitura de expressão |
-| "como eu estou?" | Estado estimado pela expressão |
-| "não me pergunte por 30 minutos" / "pausar check-in" | Controla os check-ins |
 | "outro monitor" / "um monitor por vez" | Mouse em dois monitores |
 | "aprenda uma nova skill" / "quais skills você sabe?" / "esqueça a skill X" | Skills ensinadas por voz |
 | "o que eu fiz hoje?" / "ativar/desativar observação da rotina" | Rotina de uso do PC |
@@ -94,29 +86,16 @@ na mesma resposta (digitar, apertar teclas, WhatsApp, abrir sites...) só aconte
 | "ativar / desativar ativação por voz" | Liga/desliga a escuta da palavra "Ghost" |
 | "a partir de agora, me cumprimente dizendo..." | Muda a saudação |
 | "bom dia" / "resumo do dia" / "vai chover hoje?" / "minha cidade é Barueri" | Resumo da manhã e clima |
-| "esconder painel" / "mostrar painel" | Painel visual (HUD) |
+| "abrir painel" / "fechar painel" | Tela de indicadores |
+| "exportar indicadores" | Excel com os indicadores em `Documentos\Ghost\Relatorios` |
+| "conectar celular" / "trocar código do celular" / "desconectar celular" | App do celular (QR code no painel) |
+| "abrir demonstração do painel" | Painel e app do celular com dados de exemplo |
+| "esconder faixa" / "mostrar faixa" | Faixa do topo |
 | "modo sério" / "modo Jarvis" | Personalidade |
 | "como está o computador?" / "silenciar alertas por 1 hora" / "pausar alertas" | Alertas proativos |
 | "como está minha agenda hoje?" / "tenho e-mail novo da minha líder?" / "meus e-mails pessoais" | Agenda e e-mail (leitura) |
-| "conectar minha conta Google" | Autoriza a conta do Google Workspace (precisa do `dados\credentials.json`) |
+| "conectar minha conta Google" | **Desativado** por enquanto (`GOOGLE_ATIVO` em `ghost\servicos\google_conta.py`) |
 | "quanto produzimos ontem pela planilha de produção?" | Planilhas |
-| "conectar casa inteligente" / "liga a luz da sala" / "quais aparelhos você controla?" | Casa inteligente |
-
-## Gestos padrão (editáveis no cadastro)
-
-| Gesto | Ação |
-|---|---|
-| Só o indicador levantado | Mover o mouse |
-| Pinça polegar + indicador | Clique (segurar = arrastar) |
-| Indicador em pé + polegar no médio | Clique direito |
-| Indicador + médio | Rolar a página |
-| Punho fechado 1 s | Pausar/retomar |
-| Joinha | Enter |
-| Hang loose | Esc |
-| Mão aberta deslizando → / ← | Alt+Tab / Voltar |
-| Pinça nas duas mãos, afastando/aproximando | Zoom |
-| Duas mãos abertas se afastando / aproximando | Visão de tarefas / Área de trabalho |
-| Duas mãos abertas deslizando → / ← | Área de trabalho virtual seguinte / anterior |
 
 ## Estrutura
 
@@ -126,12 +105,12 @@ C:\GHOST
 │   ├── app.py              laço principal: voz -> comandos locais ou IA -> fala
 │   ├── vigia.py            inicia o Ghost e o reinicia se cair (é o que liga com o Windows)
 │   ├── instalar_modelos.py baixa os modelos locais
-│   ├── nucleo\             caminhos, gravação segura, preferências, Windows, painel (HUD)
-│   ├── voz\                microfone/alto-falante, palavra "Ghost", eco, modo sem internet
+│   ├── nucleo\             caminhos, gravação segura, preferências, Windows, painel de indicadores, faixa do topo
+│   ├── voz\                microfone/alto-falante, palavra "Ghost", eco
 │   ├── ia\                 ferramentas da IA, conversa, memórias, tarefas, skills, pessoas
-│   ├── automacao\          comandos locais, aplicativos, macros, casa inteligente, planilhas
-│   ├── visao\              câmera, gestos, cadastro, rosto, foto, tela
-│   └── servicos\           alertas, lembretes, resumo do dia, rotina, notificações, Telegram, Google, e-mail/agenda pessoais
+│   ├── automacao\          comandos locais, aplicativos, planilhas (macros desativadas)
+│   ├── visao\              câmera, foto, tela (gestos e cadastro desativados)
+│   └── servicos\           alertas, lembretes, resumo do dia, rotina, notificações, Google, e-mail/agenda pessoais
 ├── tests\                  testes automáticos (testar.bat)
 ├── scripts\                instalação, atualização, parada e testes (chamados pelos .bat)
 ├── docs\                   INSTALACAO.md e ARQUITETURA.md
@@ -151,16 +130,13 @@ Rodar vendo o terminal (para diagnóstico): `parar.bat` e depois `.\.venv\Script
 ## Privacidade
 
 - As chaves ficam só no `.env`, que não vai para o Git.
-- Nenhuma imagem da câmera é gravada; só números de expressão, mantidos em memória.
-- Ficam fora do Git: `.env` e as pastas `dados\` (memória, conversa, skills, pessoas, lembretes, preferências, gestos, aparelhos, humor, rotina, histórico, treino da voz, `credentials.json`, `token_google.json`), `logs\`, `modelos\` e `prints\`.
+- Ficam fora do Git: `.env` e as pastas `dados\` (memória, conversa, skills, pessoas, lembretes, preferências, rotina, histórico, treino da voz, `credentials.json`, `token_google.json`), `logs\`, `modelos\` e `prints\`.
 - A rotina registra apenas o nome do programa e o título da janela (`GUARDAR_TITULOS = False` em `ghost\servicos\rotina.py` guarda só o programa).
-- Fichas de pessoas não usam rosto nem voz: só o que é dito ao Ghost.
+- Fichas de pessoas não usam biometria: só o que é dito ao Ghost.
 - A palavra de ativação é reconhecida no próprio PC; só a frase que começa com "Ghost" vai para a transcrição.
 - A visão só tira foto quando você pede; a foto vai ao Gemini para ser descrita e não é salva.
 - Agenda e e-mail são **somente leitura** (não envia, não apaga, não marca como lido); dos e-mails só remetente e assunto vão para a IA.
 - Planilhas: a IA vê só os nomes das colunas e 3 linhas de exemplo; o cálculo é feito no PC.
-- Expressão facial é uma **estimativa**, não um diagnóstico de sentimento.
 - A tela só é capturada quando você pede; a imagem vai ao Gemini e não é salva.
 - Notificações: lidas do próprio Windows; em voz alta só o app e o remetente, salvo se você pedir o texto.
 - Memória longa (`dados\historico_completo.jsonl`) e o treino da palavra (`dados\palavra\`) ficam só no PC, fora do Git.
-- Telegram: só o código do dono (`TELEGRAM_DONO`) é atendido; a tela nunca é enviada.

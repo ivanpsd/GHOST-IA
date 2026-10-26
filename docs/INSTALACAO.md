@@ -10,7 +10,7 @@ Tudo é feito por **arquivos de dois cliques** dentro da pasta do Ghost:
 | `parar.bat` | Parar o Ghost que roda escondido (para usar com terminal ou mexer nos arquivos) |
 | `testar.bat` | Conferir se a instalação está íntegra (testes automáticos + checagem do código) |
 
-Requisitos: Windows 10/11, internet na instalação e ~6 GB livres em disco.
+Requisitos: Windows 10/11, internet na instalação e ~2 GB livres em disco.
 
 ---
 
@@ -34,10 +34,9 @@ Requisitos: Windows 10/11, internet na instalação e ~6 GB livres em disco.
 3. Cria o arquivo **`.env`** e abre no Bloco de Notas. Preencha as duas chaves, **salve** e feche o Bloco de Notas para a instalação continuar:
    - `GROQ_API_KEY`: em https://console.groq.com, menu *API Keys*.
    - `GEMINI_API_KEY`: em https://aistudio.google.com, menu *API Keys*.
-4. Instala o **Ollama** (IA sem internet).
-5. Baixa o modelo da palavra **"Ghost"** (Vosk).
-6. Baixa os **modelos locais** (~4 GB; demora na 1ª vez).
-7. Coloca o Ghost para **iniciar com o Windows** e já o liga.
+4. Baixa o modelo da palavra **"Ghost"** (Vosk).
+5. Baixa os **modelos locais** (~400 MB).
+6. Coloca o Ghost para **iniciar com o Windows** e já o liga.
 
 **Passo 3. Treine a palavra de ativação.** Diga **"Ghost, treinar ativação"** e siga as instruções (~1 minuto):
 
@@ -60,7 +59,7 @@ Dê dois cliques em **`atualizar.bat`**. Ele:
 **O que é mantido** (não vai para o GitHub e nunca é apagado):
 
 - `.env` (chaves)
-- a pasta **`dados\`**: memória, fichas de pessoas, skills, lembretes, gestos, histórico das conversas, treino da palavra "Ghost"
+- a pasta **`dados\`**: memória, fichas de pessoas, skills, lembretes, histórico das conversas, treino da palavra "Ghost"
 - a pasta `modelos\` (não baixa de novo)
 
 ### Vindo de uma versão antiga (antes da 8.0, com os arquivos `.py` soltos na pasta)
@@ -98,11 +97,21 @@ Se faltar uma chave no `.env`, o Ghost mostra um aviso e o vigia **não** fica r
 
 | Recurso | O que colocar no `.env` |
 |---|---|
-| **Telegram** (falar com o Ghost pelo celular) | 1) No Telegram, abra o @BotFather, mande `/newbot` e copie o token. 2) `TELEGRAM_TOKEN=token`. 3) Reinicie o Ghost e mande "oi" para o seu bot: ele responde com o seu código. 4) `TELEGRAM_DONO=código` e reinicie de novo. |
 | **E-mail pessoal** (leitura) | `EMAIL1_USUARIO`, `EMAIL1_SENHA` (senha de app) e `EMAIL1_NOME`. Detalhes em `.env.example`. |
 | **Agenda pessoal** (leitura) | `AGENDA1_URL` (link secreto iCal) e `AGENDA1_NOME` |
-| **Casa inteligente** | `HA_URL` + `HA_TOKEN` (Home Assistant) ou `TUYA_API_KEY` / `TUYA_API_SECRET`. Depois diga "Ghost, conectar casa inteligente". |
 | **Google Workspace** (empresa) | Precisa do administrador liberar o Google Cloud. Coloque o `credentials.json` na pasta `dados\` e diga "Ghost, conectar minha conta Google". |
+
+---
+
+## 4b. App do celular
+
+1. Celular e PC no **mesmo Wi-Fi**.
+2. Diga **"Ghost, conectar celular"** (ou clique em **Celular** no painel). Na 1ª vez o Windows pergunta se o Python pode usar a
+   rede: marque **Redes privadas** e clique em **Permitir**.
+3. Aponte a câmera do celular para o QR code. Na página que abrir: **Adicionar à tela inicial**.
+4. Perdeu o celular? Diga "Ghost, trocar código do celular": o link antigo deixa de funcionar.
+
+O app funciona só dentro da rede do escritório (não pela internet). O código do QR é uma senha: não compartilhe a foto dele.
 
 ---
 
@@ -130,6 +139,5 @@ Para levar para outro computador:
 | Ele não ouve "Ghost" | Confira o microfone padrão do Windows; diga "Ghost, treinar ativação" |
 | Ele responde sozinho a conversas da sala | Treine a ativação; em `ghost\voz\ativacao.py`, aumente `FATOR_DONO` |
 | Ele para de falar sem motivo | Em `ghost\voz\ativacao.py`, aumente `FATOR_INTERRUPCAO` |
-| Telegram não responde | Confira `TELEGRAM_TOKEN` e `TELEGRAM_DONO` no `.env` e reinicie; o erro aparece em `logs\ghost.log` (`[TELEGRAM]`) |
 | Apareceu um arquivo `.corrompido` em `dados\` | Um arquivo foi gravado pela metade (ex.: queda de energia). O Ghost guardou a cópia e não grava por cima; apague o arquivo estragado (sem `.corrompido`) para recomeçar aquele item |
-| Sem internet, ele fica mudo | Rode `atualizar.bat`: ele baixa os modelos locais que faltarem |
+| Sem internet, ele só diz "estou sem internet" | É esperado: voz, transcrição e IA são na nuvem. Volta sozinho com a rede |

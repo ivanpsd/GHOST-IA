@@ -1,0 +1,579 @@
+<title>Painel do Ghost</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=Spectral:ital,wght@0,400;0,600;1,400&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: forja à noite — o Núcleo de brasa à esquerda, tábuas de indicadores à direita, crônica embaixo.
+   Visual único e escuro de propósito (é a tela de um programa), por isso sem tema claro. */
+:root {
+  --obsidiana: #0d0a08;
+  --tabua: #17110c;
+  --tabua-2: #1f1710;
+  --fio: rgba(232, 176, 75, .16);
+  --fio-forte: rgba(232, 176, 75, .38);
+  --brasa: #ff6a1a;
+  --ouro: #e8b04b;
+  --cinza-quente: #e9dcc6;
+  --apagado: #9a8770;
+  --sangue: #e0503a;
+  --verdete: #8fbf9f;
+  --f-titulo: "Cinzel", "Trajan Pro", Georgia, serif;
+  --f-texto: "Spectral", Georgia, "Times New Roman", serif;
+  --f-numero: "JetBrains Mono", Consolas, "Courier New", monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; }
+body {
+  margin: 0; background: var(--obsidiana); color: var(--cinza-quente);
+  font: 15px/1.45 var(--f-texto);
+  background-image: radial-gradient(ellipse 60% 50% at 18% 30%, rgba(255, 106, 26, .10), transparent 70%),
+                    radial-gradient(ellipse 50% 40% at 90% 100%, rgba(232, 176, 75, .06), transparent 70%);
+}
+.moldura {
+  min-height: 100%; display: flex; flex-direction: column; gap: 14px;
+  padding-block: 14px 18px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+
+/* ---------- barra superior */
+header {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px;
+  padding-bottom: 12px; border-bottom: 1px solid var(--fio);
+}
+.marca { display: flex; align-items: baseline; gap: 12px; margin-right: auto; }
+.marca h1 {
+  margin: 0; font: 700 26px/1 var(--f-titulo); letter-spacing: .32em; color: var(--ouro);
+  text-shadow: 0 0 18px rgba(255, 106, 26, .45);
+}
+.marca span { font: italic 14px var(--f-texto); color: var(--apagado); }
+.pilula {
+  display: inline-flex; align-items: center; gap: 8px; padding: 4px 12px; border-radius: 999px;
+  border: 1px solid var(--fio-forte); font: 600 12px var(--f-titulo); letter-spacing: .14em; text-transform: uppercase;
+}
+.pilula i { width: 8px; height: 8px; border-radius: 50%; background: currentColor; box-shadow: 0 0 10px currentColor; }
+.cabeca-info { font: 13px var(--f-numero); color: var(--apagado); font-variant-numeric: tabular-nums; }
+.cabeca-info b { color: var(--cinza-quente); font-weight: 600; }
+button.exportar {
+  font: 600 12px var(--f-titulo); letter-spacing: .16em; text-transform: uppercase; cursor: pointer;
+  color: var(--obsidiana); background: linear-gradient(180deg, #f3c56a, var(--ouro) 45%, #b9792a);
+  border: 1px solid #f6d48d; border-radius: 4px; padding: 9px 16px;
+  box-shadow: 0 0 0 1px rgba(0,0,0,.4) inset, 0 4px 18px rgba(255, 106, 26, .25);
+}
+button.exportar:hover { filter: brightness(1.08); }
+button.secundario {
+  font: 600 12px var(--f-titulo); letter-spacing: .16em; text-transform: uppercase; cursor: pointer;
+  color: var(--ouro); background: transparent; border: 1px solid var(--fio-forte); border-radius: 4px; padding: 9px 14px;
+}
+button.secundario:hover { background: rgba(232,176,75,.08); }
+button.secundario:focus-visible { outline: 2px solid var(--brasa); outline-offset: 2px; }
+.modal { position: fixed; inset: 0; z-index: 20; background: rgba(5,3,2,.78); display: grid; place-items: center;
+  padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
+.modal-caixa { width: min(640px, 100%); max-height: 100%; overflow: auto; display: grid; gap: 14px; }
+.qr-area { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 18px; align-items: center; }
+.qr { background: #f5ead6; border-radius: 6px; padding: 10px; aspect-ratio: 1 / 1; display: grid; place-items: center; max-width: 100%; }
+.qr svg, .qr img { width: 100%; height: auto; display: block; }
+.qr .vazio { color: #6b5a44; text-align: center; font-size: 13px; }
+.qr a { color: #7a2e0e; font-weight: 600; }
+.passos { margin: 0; padding-left: 1.2em; display: grid; gap: 8px; }
+.endereco { margin: 0; font: 13px var(--f-numero); color: var(--apagado); overflow-wrap: anywhere; }
+.modal-botoes { display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
+@media (max-width: 560px) { .qr-area { grid-template-columns: minmax(0, 1fr); } .qr { width: min(240px, 100%); justify-self: center; } }
+button.exportar:focus-visible, .lista a:focus-visible { outline: 2px solid var(--brasa); outline-offset: 2px; }
+button.exportar[disabled] { opacity: .6; cursor: progress; }
+
+/* ---------- corpo */
+/* três colunas: indicadores | NÚCLEO (centro, grande) | indicadores; rotina e crônica embaixo */
+main {
+  display: grid; flex: 1; gap: 14px; align-items: start;
+  grid-template-columns: minmax(250px, 1fr) minmax(380px, 1.45fr) minmax(250px, 1fr);
+  grid-template-areas: "esq centro dir" "rodape rodape rodape";
+}
+.lado { display: grid; gap: 14px; min-width: 0; }
+.lado-esq { grid-area: esq; } .lado-dir { grid-area: dir; }
+.centro { grid-area: centro; display: grid; gap: 14px; min-width: 0; }
+.rodape { grid-area: rodape; display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 14px; }
+.tabua {
+  background: linear-gradient(180deg, var(--tabua-2), var(--tabua)); border: 1px solid var(--fio);
+  border-radius: 6px; padding: 14px 16px; min-width: 0; position: relative;
+}
+.tabua::before {   /* cantoneiras de metal */
+  content: ""; position: absolute; inset: 4px; border: 1px solid transparent; pointer-events: none;
+  border-image: linear-gradient(90deg, var(--fio-forte), transparent 18%, transparent 82%, var(--fio-forte)) 1;
+}
+.tabua h2 {
+  margin: 0 0 10px; font: 600 12px var(--f-titulo); letter-spacing: .24em; text-transform: uppercase; color: var(--ouro);
+  display: flex; align-items: center; gap: 8px;
+}
+.tabua h2::after { content: ""; flex: 1; height: 1px; background: linear-gradient(90deg, var(--fio-forte), transparent); }
+
+.nucleo { padding: 0; overflow: hidden; display: flex; flex-direction: column; }
+.nucleo canvas { display: block; width: 100%; aspect-ratio: 1 / 1; max-width: 100%; }
+.nucleo-legenda { padding: 0 16px 18px; text-align: center; margin-top: -8px; }
+.nucleo-legenda .estado { font: 700 24px var(--f-titulo); letter-spacing: .2em; text-transform: uppercase; }
+.nucleo-legenda .texto { min-height: 1.45em; color: var(--apagado); font-style: italic; overflow-wrap: anywhere; }
+
+.dialogo p { margin: 0 0 8px; overflow-wrap: anywhere; }
+.dialogo .quem { display: block; font: 600 11px var(--f-titulo); letter-spacing: .2em; color: var(--apagado); text-transform: uppercase; }
+.dialogo .ghost-fala { color: var(--ouro); }
+
+
+/* ---------- medidores */
+.medidas { display: grid; gap: 10px; }
+.medida { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; align-items: baseline; }
+.medida .rotulo { color: var(--apagado); font-size: 13px; }
+.medida .valor { font: 600 15px var(--f-numero); font-variant-numeric: tabular-nums; }
+.barra { grid-column: 1 / -1; height: 5px; border-radius: 3px; background: rgba(255,255,255,.06); overflow: hidden; }
+.barra > b { display: block; height: 100%; width: 0; border-radius: 3px;
+  background: linear-gradient(90deg, #8a3b12, var(--brasa) 70%, var(--ouro)); transition: width .6s; }
+.barra.alerta > b { background: linear-gradient(90deg, #6f1d14, var(--sangue)); }
+.faisca { grid-column: 1 / -1; width: 100%; height: 34px; display: block; }
+
+.numeros { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 14px; }
+.numero .n { font: 600 24px/1.1 var(--f-numero); font-variant-numeric: tabular-nums; color: var(--cinza-quente); }
+.numero .r { font-size: 12px; color: var(--apagado); }
+
+.marcas { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.marca-estado { font: 600 11px var(--f-titulo); letter-spacing: .1em; padding: 3px 8px; border-radius: 3px;
+  border: 1px solid var(--fio-forte); color: var(--apagado); }
+.marca-estado.ok { color: var(--verdete); border-color: rgba(143,191,159,.45); }
+.marca-estado.mal { color: var(--sangue); border-color: rgba(224,80,58,.5); }
+
+.lista { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.lista li { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px 10px; align-items: baseline; }
+.lista .quando { font: 12px var(--f-numero); color: var(--ouro); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.lista .oque { overflow-wrap: anywhere; }
+.lista .detalhe { grid-column: 2; font-size: 12px; color: var(--apagado); }
+.vazio { color: var(--apagado); font-style: italic; margin: 0; }
+
+.rotina { display: grid; gap: 7px; }
+.rotina .linha { display: grid; grid-template-columns: minmax(0, 9em) minmax(0, 1fr) 4.5em; gap: 10px; align-items: center; font-size: 13px; }
+.rotina .barra { grid-column: auto; }
+.rotina .linha span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rotina .linha span:last-child { font: 12px var(--f-numero); color: var(--apagado); text-align: right; }
+
+.cronica { max-height: 220px; overflow-y: auto; }
+.cronica li { grid-template-columns: 3.4em 0.6em minmax(0, 1fr); }
+.cronica .ponto { width: 7px; height: 7px; border-radius: 50%; background: var(--apagado); align-self: center; }
+.cronica .acao .ponto { background: var(--ouro); }
+.cronica .alerta .ponto { background: var(--brasa); }
+.cronica .erro .ponto { background: var(--sangue); }
+
+.aviso-demo { font: italic 13px var(--f-texto); color: var(--apagado); border-left: 2px solid var(--brasa); padding-left: 10px; margin: 0; }
+.desconectado { color: var(--sangue); }
+
+.brinde {
+  position: fixed; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%);
+  max-width: min(640px, calc(100% - 32px)); background: var(--tabua-2); border: 1px solid var(--fio-forte);
+  border-radius: 6px; padding: 10px 16px; box-shadow: 0 10px 40px rgba(0,0,0,.6); font-size: 14px; overflow-wrap: anywhere;
+}
+
+@media (max-width: 1180px) {
+  main { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "centro centro" "esq dir" "rodape rodape"; }
+  .centro { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); align-items: start; }
+}
+@media (max-width: 720px) {
+  main { grid-template-columns: minmax(0, 1fr); grid-template-areas: "centro" "esq" "dir" "rodape"; }
+  .centro, .rodape { grid-template-columns: minmax(0, 1fr); }
+  .marca h1 { font-size: 22px; }
+}
+@media (prefers-reduced-motion: reduce) { .barra > b { transition: none; } }
+</style>
+
+<div class="moldura">
+  <header>
+    <div class="marca"><h1>GHOST</h1><span id="clima">—</span></div>
+    <span class="pilula" id="pilula-estado"><i></i><span>em espera</span></span>
+    <span class="pilula" id="pilula-modo" style="color: var(--apagado)"><span>modo normal</span></span>
+    <span class="cabeca-info">ligado há <b id="ligado">—</b></span>
+    <span class="cabeca-info"><b id="relogio">--:--</b></span>
+    <button class="secundario" id="abrir-celular" type="button">Celular</button>
+    <button class="exportar" id="exportar" type="button">Exportar indicadores</button>
+  </header>
+
+  <main>
+    <div class="lado lado-esq">
+        <section class="tabua">
+          <h2>Máquina</h2>
+          <div class="medidas">
+            <div class="medida"><span class="rotulo">Processador</span><span class="valor" id="v-cpu">—</span>
+              <canvas class="faisca" id="f-cpu" width="400" height="68"></canvas></div>
+            <div class="medida"><span class="rotulo">Memória</span><span class="valor" id="v-ram">—</span>
+              <div class="barra" id="b-ram"><b></b></div></div>
+            <div class="medida"><span class="rotulo">Disco C livre</span><span class="valor" id="v-disco">—</span>
+              <div class="barra" id="b-disco"><b></b></div></div>
+            <div class="medida"><span class="rotulo">Bateria</span><span class="valor" id="v-bateria">—</span></div>
+          </div>
+        </section>
+        <section class="tabua">
+          <h2>Rede</h2>
+          <div class="medidas">
+            <div class="medida"><span class="rotulo">Internet</span><span class="valor" id="v-net">—</span></div>
+            <div class="medida"><span class="rotulo">Latência até a IA</span><span class="valor" id="v-lat">—</span>
+              <canvas class="faisca" id="f-lat" width="400" height="68"></canvas></div>
+          </div>
+        </section>
+        <section class="tabua">
+          <h2>Inteligência</h2>
+          <div class="medidas">
+            <div class="medida"><span class="rotulo">Modelo em uso</span><span class="valor" id="v-modelo" style="font-size:13px">—</span></div>
+            <div class="medida"><span class="rotulo">Pedidos à IA hoje</span><span class="valor" id="v-req">—</span>
+              <div class="barra" id="b-req"><b></b></div></div>
+            <div class="medida"><span class="rotulo">Voz → texto (média)</span><span class="valor" id="v-transc">—</span></div>
+            <div class="medida"><span class="rotulo">1ª frase da IA (média)</span><span class="valor" id="v-frase">—</span></div>
+            <div class="medida"><span class="rotulo">Personalidade</span><span class="valor" id="v-perso" style="font-size:13px">—</span></div>
+          </div>
+        </section>
+        <section class="tabua">
+          <h2>Memória</h2>
+          <div class="numeros">
+            <div class="numero"><div class="n" id="m-fatos">—</div><div class="r">fatos aprendidos</div></div>
+            <div class="numero"><div class="n" id="m-skills">—</div><div class="r">skills</div></div>
+            <div class="numero"><div class="n" id="m-conversas">—</div><div class="r">conversas guardadas</div></div>
+          </div>
+        </section>
+    </div>
+
+    <div class="centro">
+        <section class="tabua nucleo" aria-label="Estado do Ghost">
+          <canvas id="nucleo" width="800" height="800" aria-hidden="true"></canvas>
+          <div class="nucleo-legenda">
+            <div class="estado" id="estado-nome">Em espera</div>
+            <div class="texto" id="estado-texto">Diga "Ghost" ou segure F9</div>
+          </div>
+        </section>
+        <section class="tabua dialogo" aria-label="Última conversa">
+          <h2>Última troca</h2>
+          <p><span class="quem">Senhor</span><span id="fala-voce" class="vazio">Nada dito ainda.</span></p>
+          <p><span class="quem">Ghost</span><span id="fala-ghost" class="ghost-fala vazio">—</span></p>
+          <p class="aviso-demo" id="aviso-demo" hidden>Demonstração com dados de exemplo. No Ghost, esta tela mostra os números reais do seu PC.</p>
+        </section>
+    </div>
+
+    <div class="lado lado-dir">
+        <section class="tabua">
+          <h2>Escuta de hoje</h2>
+          <div class="numeros">
+            <div class="numero"><div class="n" id="c-comandos">0</div><div class="r">pedidos atendidos</div></div>
+            <div class="numero"><div class="n" id="c-locais">0</div><div class="r">resolvidos sem IA</div></div>
+            <div class="numero"><div class="n" id="c-falsos">0</div><div class="r">alarmes falsos ignorados</div></div>
+            <div class="numero"><div class="n" id="c-erros">0</div><div class="r">erros · <span id="c-naoentendi">0</span> "não entendi"</div></div>
+          </div>
+          <div class="marcas" id="marcas-escuta"></div>
+        </section>
+        <section class="tabua">
+          <h2>Lembretes</h2>
+          <ul class="lista" id="lembretes"></ul>
+        </section>
+        <section class="tabua">
+          <h2>Tarefas em segundo plano</h2>
+          <ul class="lista" id="tarefas"></ul>
+        </section>
+        <section class="tabua">
+          <h2>Notificações</h2>
+          <ul class="lista" id="notificacoes"></ul>
+        </section>
+    </div>
+
+    <div class="rodape">
+        <section class="tabua rotina-tabua">
+          <h2>Rotina de hoje</h2>
+          <div class="rotina" id="rotina"></div>
+        </section>
+        <section class="tabua">
+          <h2>Crônica</h2>
+          <ul class="lista cronica" id="cronica"></ul>
+        </section>
+    </div>
+  </main>
+</div>
+<div class="brinde" id="brinde" role="status" hidden></div>
+
+<div class="modal" id="modal-celular" hidden role="dialog" aria-modal="true" aria-labelledby="titulo-celular">
+  <div class="modal-caixa tabua">
+    <h2 id="titulo-celular">Ghost no celular</h2>
+    <div class="qr-area">
+      <div class="qr" id="qr"><p class="vazio">Gerando o código…</p></div>
+      <ol class="passos">
+        <li>Deixe o celular no <b>mesmo Wi-Fi</b> deste computador.</li>
+        <li>Aponte a câmera do celular para o código.</li>
+        <li>Na página que abrir: <b>Adicionar à tela inicial</b> (Android: menu ⋮; iPhone: botão Compartilhar). Vira um ícone de app.</li>
+      </ol>
+    </div>
+    <p class="endereco" id="endereco-celular"></p>
+    <p class="aviso-demo">O código funciona como uma chave: quem tiver o link pode mandar pedidos ao Ghost. Se perder o celular, use <b>Trocar código</b>.</p>
+    <div class="modal-botoes">
+      <button class="secundario" id="trocar-codigo" type="button">Trocar código</button>
+      <button class="exportar" id="fechar-celular" type="button">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<script src="nucleo.js"></script>
+<script>
+(() => {
+  "use strict";
+  const TOKEN = "__GHOST_TOKEN__";
+  const DEMO = TOKEN.startsWith("__");          // aberto fora do Ghost (ex.: demonstração): dados de exemplo
+  const $ = (id) => document.getElementById(id);
+
+  const ESTADOS = window.GhostNucleo.ESTADOS;
+  const MODOS = { normal: "modo normal", conversa: "conversa contínua", dormindo: "dormindo" };
+
+  const nucleo = window.GhostNucleo.criar($("nucleo"));
+
+  /* =========================================================
+     MINI-GRÁFICOS
+     ========================================================= */
+  function faisca(canvas, valores, maximo) {
+    const c = canvas.getContext("2d"), W = canvas.width, H = canvas.height;
+    c.clearRect(0, 0, W, H);
+    const v = valores.filter((x) => x != null);
+    if (v.length < 2) return;
+    const top = maximo || Math.max(...v, 1);
+    c.strokeStyle = "rgba(232,176,75,.10)"; c.lineWidth = 1;
+    for (const f of [.25, .5, .75]) { c.beginPath(); c.moveTo(0, H * f); c.lineTo(W, H * f); c.stroke(); }
+    const x = (i) => (i / (v.length - 1)) * (W - 8) + 2, y = (n) => H - 4 - (Math.min(n, top) / top) * (H - 10);
+    const g = c.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, "rgba(255,106,26,.35)"); g.addColorStop(1, "rgba(255,106,26,0)");
+    c.beginPath(); c.moveTo(x(0), H);
+    v.forEach((n, i) => c.lineTo(x(i), y(n)));
+    c.lineTo(x(v.length - 1), H); c.closePath(); c.fillStyle = g; c.fill();
+    c.beginPath(); v.forEach((n, i) => (i ? c.lineTo(x(i), y(n)) : c.moveTo(x(i), y(n))));
+    c.strokeStyle = "#ff8a3a"; c.lineWidth = 2; c.stroke();
+    c.fillStyle = "#e8b04b"; c.beginPath(); c.arc(x(v.length - 1), y(v[v.length - 1]), 4, 0, Math.PI * 2); c.fill();
+  }
+
+  /* =========================================================
+     PREENCHER A TELA
+     ========================================================= */
+  const fmt = (v, suf = "", casas = 0) => (v == null || Number.isNaN(v) ? "—" : Number(v).toFixed(casas).replace(".", ",") + suf);
+  const media = (xs) => (xs && xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null);
+  const hora = (seg) => new Date(seg * 1000).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  function barra(id, pct, alerta) {
+    const el = $(id); el.firstElementChild.style.width = `${Math.max(0, Math.min(100, pct || 0))}%`;
+    el.classList.toggle("alerta", !!alerta);
+  }
+  function lista(id, itens, vazio, linha) {
+    const ul = $(id); ul.replaceChildren();
+    if (!itens || !itens.length) { const p = document.createElement("li"); p.innerHTML = `<p class="vazio">${vazio}</p>`; p.style.display = "block"; ul.append(p); return; }
+    for (const it of itens) { const li = document.createElement("li"); linha(li, it); ul.append(li); }
+  }
+  const el = (tag, cls, txt) => { const e = document.createElement(tag); if (cls) e.className = cls; e.textContent = txt; return e; };
+  function duracao(s) {
+    const m = Math.floor(s / 60), h = Math.floor(m / 60);
+    return h ? `${h} h ${String(m % 60).padStart(2, "0")} min` : `${m} min`;
+  }
+
+  function render(d) {
+    const est = ESTADOS[d.estado.nome] || ESTADOS.espera;
+    nucleo.estado(d.estado.nome);
+    const p = $("pilula-estado"); p.style.color = est.cor; p.lastElementChild.textContent = est.rotulo;
+    $("estado-nome").textContent = est.rotulo; $("estado-nome").style.color = est.cor;
+    $("estado-texto").textContent = d.estado.texto || (d.estado.nome === "espera" ? 'Diga "Ghost" ou segure F9' :
+      d.estado.nome === "dormindo" ? 'Diga "oi Ghost" para me chamar' : "");
+    const pm = $("pilula-modo"); pm.lastElementChild.textContent = MODOS[d.modo] || d.modo;
+    pm.style.color = d.modo === "conversa" ? "var(--ouro)" : "var(--apagado)";
+    $("ligado").textContent = duracao(d.agora - d.inicio);
+    $("clima").textContent = d.clima || "Assistente do PCP";
+
+    const fv = $("fala-voce"), fg = $("fala-ghost");
+    fv.textContent = d.falas.voce || "Nada dito ainda."; fv.classList.toggle("vazio", !d.falas.voce);
+    fg.textContent = d.falas.ghost || "—"; fg.classList.toggle("vazio", !d.falas.ghost);
+
+    const s = d.sistema;
+    $("v-cpu").textContent = fmt(s.cpu, " %");
+    faisca($("f-cpu"), d.serie.map((x) => x.cpu), 100);
+    $("v-ram").textContent = fmt(s.ram, " %"); barra("b-ram", s.ram, s.ram >= 90);
+    $("v-disco").textContent = s.disco_livre_gb == null ? "—" : `${fmt(s.disco_livre_gb, " GB", 1)} · ${fmt(s.disco_livre_pct, " %")}`;
+    barra("b-disco", s.disco_livre_pct, s.disco_livre_pct != null && s.disco_livre_pct < 10);
+    $("v-bateria").textContent = s.bateria == null ? (s.na_tomada ? "na tomada" : "—") : `${s.bateria} %${s.na_tomada ? " · carregando" : ""}`;
+    const net = $("v-net"); net.textContent = s.internet === false ? "fora do ar" : s.internet ? "conectada" : "—";
+    net.style.color = s.internet === false ? "var(--sangue)" : s.internet ? "var(--verdete)" : "";
+    $("v-lat").textContent = fmt(s.latencia_ms, " ms");
+    faisca($("f-lat"), d.serie.map((x) => x.latencia_ms));
+
+    $("v-modelo").textContent = d.ia.modelo || "—";
+    const req = d.requisicoes;
+    $("v-req").textContent = req.limite ? `${req.n} / ${req.limite}` : String(req.n);
+    barra("b-req", req.limite ? (100 * req.n) / req.limite : 0, req.limite && req.n >= req.limite * .9);
+    $("v-transc").textContent = fmt(media(d.medidas.transcricao), " s", 2);
+    $("v-frase").textContent = fmt(media(d.medidas.primeira_frase), " s", 2);
+    $("v-perso").textContent = d.personalidade === "objetivo" ? "objetiva" : "Jarvis";
+
+    const c = d.contadores;
+    $("c-comandos").textContent = c.comandos || 0; $("c-locais").textContent = c.comandos_locais || 0;
+    $("c-falsos").textContent = c.falsos_alarmes || 0; $("c-erros").textContent = c.erros || 0;
+    $("c-naoentendi").textContent = c.nao_entendi || 0;
+    const mk = $("marcas-escuta"); mk.replaceChildren();
+    const at = d.ativacao || {};
+    mk.append(el("span", "marca-estado " + (at.ligada ? "ok" : "mal"), at.ligada ? "escuta por voz ligada" : "escuta por voz desligada"));
+    mk.append(el("span", "marca-estado " + (at.treinada ? "ok" : ""), at.treinada ? "voz do senhor treinada" : "voz não treinada"));
+    mk.append(el("span", "marca-estado", MODOS[d.modo] || d.modo));
+
+    const m = d.memoria || {};
+    $("m-fatos").textContent = m.fatos ?? "—"; $("m-skills").textContent = m.skills ?? "—";
+    $("m-conversas").textContent = m.conversas ?? "—";
+
+    lista("lembretes", d.lembretes, "Nenhum lembrete pela frente.", (li, it) => {
+      li.append(el("span", "quando", it.quando), el("span", "oque", it.texto));
+    });
+    lista("tarefas", d.tarefas, "Nenhuma tarefa nesta sessão.", (li, it) => {
+      li.append(el("span", "quando", `#${it.id}`), el("span", "oque", it.descricao), el("span", "detalhe", `${it.status} · ${it.minutos} min`));
+    });
+    lista("notificacoes", d.notificacoes, "Nada chegou desde que liguei.", (li, it) => {
+      li.append(el("span", "quando", it.hora), el("span", "oque", it.app), el("span", "detalhe", it.quem));
+    });
+
+    const rot = $("rotina"); rot.replaceChildren();
+    const top = (d.rotina && d.rotina.top) || [];
+    if (!top.length) rot.append(el("p", "vazio", d.rotina && d.rotina.ativa === false ? "Observação da rotina desligada." : "Ainda sem registro hoje."));
+    const maior = Math.max(1, ...top.map((x) => x.minutos));
+    for (const r of top) {
+      const linha = document.createElement("div"); linha.className = "linha";
+      const b = document.createElement("div"); b.className = "barra"; b.append(document.createElement("b"));
+      b.firstElementChild.style.width = `${(100 * r.minutos) / maior}%`;
+      linha.append(el("span", "", r.app), b, el("span", "", `${r.minutos} min`));
+      rot.append(linha);
+    }
+
+    lista("cronica", d.eventos, "Sem eventos ainda.", (li, it) => {
+      li.className = it.tipo;
+      const ponto = document.createElement("span"); ponto.className = "ponto";
+      li.append(el("span", "quando", hora(it.t)), ponto, el("span", "oque", it.texto));
+    });
+  }
+
+  /* =========================================================
+     DADOS: Ghost de verdade ou demonstração
+     ========================================================= */
+  let falhas = 0;
+  async function buscar() {
+    try {
+      const r = await fetch(`estado?t=${encodeURIComponent(TOKEN)}`, { cache: "no-store" });
+      if (!r.ok) throw new Error(r.status);
+      $("estado-nome").className = "estado";
+      render(await r.json()); falhas = 0;
+    } catch (e) {
+      if (++falhas === 3) {
+        nucleo.estado("dormindo");
+        $("estado-nome").textContent = "Sem contato"; $("estado-nome").className = "estado desconectado";
+        $("estado-texto").textContent = "O Ghost não está respondendo. Ele foi fechado?";
+      }
+    }
+  }
+
+  function relogio() { $("relogio").textContent = new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" }); }
+  setInterval(relogio, 1000); relogio();
+
+  function brinde(texto, ms = 6000) {
+    const b = $("brinde"); b.textContent = texto; b.hidden = false;
+    clearTimeout(brinde.t); brinde.t = setTimeout(() => (b.hidden = true), ms);
+  }
+
+  $("exportar").addEventListener("click", async () => {
+    const bt = $("exportar"); bt.disabled = true;
+    try {
+      if (DEMO) {
+        const agora = new Date(), p = (n) => String(n).padStart(2, "0");
+        brinde(`Demonstração: no Ghost, este botão gera Documentos\\Ghost\\Relatorios\\Indicadores_Ghost_${agora.getFullYear()}-${p(agora.getMonth() + 1)}-${p(agora.getDate())}_${p(agora.getHours())}${p(agora.getMinutes())}.xlsx (abas Resumo, Histórico, Eventos e Rotina).`, 9000);
+      } else {
+        const r = await fetch(`exportar?t=${encodeURIComponent(TOKEN)}`, { method: "POST" });
+        const j = await r.json();
+        if (!r.ok) throw new Error(j.erro || r.status);
+        brinde(`Indicadores exportados em ${j.arquivo}`, 9000);
+      }
+    } catch (e) {
+      brinde(`Não consegui exportar: ${e.message}. Veja logs\\ghost.log.`);
+    } finally { bt.disabled = false; }
+  });
+
+  /* ---------- celular: QR code para abrir o app ---------- */
+  const modal = $("modal-celular");
+  async function abrirCelular(trocar) {
+    modal.hidden = false; $("fechar-celular").focus();
+    if (DEMO) {
+      $("qr").innerHTML = '<p class="vazio">No Ghost, aqui aparece o QR code do seu PC.<br><br><a href="celular.html" target="_blank" rel="noopener">Ver o app do celular (demonstração)</a></p>';
+      $("endereco-celular").textContent = "http://192.168.0.25:8766/celular?t=… (exemplo)";
+      return;
+    }
+    try {
+      const r = await fetch(`celular/ativar?t=${encodeURIComponent(TOKEN)}${trocar ? "&trocar=1" : ""}`, { method: "POST" });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.erro || r.status);
+      $("qr").innerHTML = j.qr_svg;
+      $("endereco-celular").textContent = j.endereco;
+      if (trocar) brinde("Código trocado. O link antigo do celular deixou de funcionar.");
+    } catch (e) {
+      $("qr").innerHTML = `<p class="vazio">Não consegui ligar o acesso pelo celular: ${e.message}</p>`;
+    }
+  }
+  $("abrir-celular").addEventListener("click", () => abrirCelular(false));
+  $("trocar-codigo").addEventListener("click", () => abrirCelular(true));
+  $("fechar-celular").addEventListener("click", () => { modal.hidden = true; });
+  modal.addEventListener("click", (e) => { if (e.target === modal) modal.hidden = true; });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") modal.hidden = true; });
+  if (new URLSearchParams(location.search).get("qr") === "1") abrirCelular(false);
+
+  if (!DEMO) { buscar(); setInterval(buscar, 1000); return; }
+
+  /* ---------- demonstração: um dia de trabalho simulado ---------- */
+  $("aviso-demo").hidden = false;
+  const agora = () => Date.now() / 1000;
+  const inicio = agora() - 3 * 3600 - 17 * 60;
+  const serie = Array.from({ length: 120 }, (_, i) => ({ cpu: 12 + 10 * Math.sin(i / 9) + Math.random() * 8, ram: 61, latencia_ms: 38 + Math.random() * 30 }));
+  const roteiro = [
+    { nome: "espera", texto: "", dur: 4000 },
+    { nome: "ouvindo", texto: "Pode falar…", dur: 2600, voce: "" },
+    { nome: "pensando", texto: "Você: quanto produzimos ontem na planilha de produção?", dur: 2800, voce: "Ghost, quanto produzimos ontem na planilha de produção?" },
+    { nome: "falando", texto: "Ontem foram 1.259 unidades, senhor.", dur: 4200, ghost: "Ontem foram 1.259 unidades, senhor; 1.234 de pão de mel e 25 de bolo." },
+    { nome: "conversa", texto: 'Pode falar sem dizer "Ghost" · "tchau Ghost" encerra', dur: 5000 },
+    { nome: "pensando", texto: "Você: me lembra às quatro de ligar para o fornecedor", dur: 2200, voce: "me lembra às quatro de ligar para o fornecedor" },
+    { nome: "falando", texto: "Lembrete marcado para 16:00, senhor.", dur: 3200, ghost: "Lembrete marcado para as 16:00, senhor." },
+    { nome: "dormindo", texto: "", dur: 4500 },
+  ];
+  const d = {
+    agora: agora(), inicio, estado: { nome: "espera", texto: "" }, modo: "normal",
+    falas: { voce: "Ghost, como está o computador?", ghost: "Tudo em ordem, senhor: 61% de memória e 212 GB livres no disco." },
+    ia: { modelo: "openai/gpt-oss-120b" }, requisicoes: { n: 214, limite: 1350 },
+    medidas: { transcricao: [0.41, 0.38, 0.52, 0.44], primeira_frase: [0.92, 1.10, 0.84, 0.97] },
+    contadores: { comandos: 37, comandos_locais: 22, falsos_alarmes: 6, erros: 1, nao_entendi: 2 },
+    sistema: { cpu: 18, ram: 61, disco_livre_gb: 212.4, disco_livre_pct: 44, bateria: null, na_tomada: true, internet: true, latencia_ms: 46 },
+    serie, personalidade: "jarvis", ativacao: { ligada: true, treinada: true },
+    memoria: { fatos: 48, skills: 5, conversas: 1286 },
+    lembretes: [{ quando: "26/10 16:00", texto: "Ligar para o fornecedor de embalagens" }, { quando: "27/10 08:30", texto: "Fechar o apontamento da produção de segunda" }],
+    tarefas: [{ id: 2, descricao: "Comparar a produção de setembro e outubro", status: "em andamento", minutos: 3 },
+              { id: 1, descricao: "Resumir as notas da reunião de PCP", status: "concluída", minutos: 12 }],
+    notificacoes: [{ hora: "10:42", app: "WhatsApp", quem: "Expedição" }, { hora: "10:15", app: "Outlook", quem: "Compras" }],
+    rotina: { ativa: true, top: [{ app: "EXCEL", minutos: 96 }, { app: "Protheus", minutos: 71 }, { app: "chrome", minutos: 44 }, { app: "WhatsApp", minutos: 18 }, { app: "OUTLOOK", minutos: 12 }] },
+    clima: "Santana de Parnaíba, 24 graus, parcialmente nublado",
+    eventos: [],
+  };
+  const ev = (texto, tipo = "info", atras = 0) => d.eventos.unshift({ t: agora() - atras, tipo, texto });
+  ev("Ghost ligado", "info", 3 * 3600); ev("Resumo da manhã falado", "acao", 3 * 3600 - 20);
+  ev("Excel aberto por voz", "acao", 5400); ev("Memória acima de 90% por 4 min", "alerta", 3000);
+  ev("Groq lento: resposta pelo Gemini", "erro", 1900); ev("Mensagem enviada no WhatsApp para Deborah", "acao", 900);
+  let passo = 0;
+  function avancar() {
+    const p = roteiro[passo % roteiro.length]; passo++;
+    d.estado = { nome: p.nome, texto: p.texto };
+    d.modo = p.nome === "conversa" ? "conversa" : p.nome === "dormindo" ? "dormindo" : d.modo === "conversa" && p.nome !== "espera" ? "conversa" : "normal";
+    if (p.voce) { d.falas.voce = p.voce; d.contadores.comandos++; d.requisicoes.n++; d.medidas.transcricao.push(.35 + Math.random() * .2); }
+    if (p.ghost) { d.falas.ghost = p.ghost; d.medidas.primeira_frase.push(.8 + Math.random() * .4); }
+    if (p.nome === "falando" && p.ghost && p.ghost.includes("Lembrete")) ev("Lembrete criado: ligar para o fornecedor", "acao");
+    if (p.nome === "dormindo") ev('"tchau Ghost": dormindo até ser chamado', "info");
+    setTimeout(avancar, p.dur);
+  }
+  setInterval(() => {
+    d.agora = agora();
+    const ult = serie[serie.length - 1];
+    serie.push({ cpu: Math.max(3, Math.min(95, ult.cpu + (Math.random() - .5) * 9 + (d.estado.nome === "pensando" ? 6 : 0))),
+                 ram: 61, latencia_ms: 35 + Math.random() * 35 }); serie.shift();
+    d.sistema.cpu = Math.round(serie[serie.length - 1].cpu); d.sistema.latencia_ms = Math.round(serie[serie.length - 1].latencia_ms);
+    render(d);
+  }, 1000);
+  render(d); avancar();
+})();
+</script>

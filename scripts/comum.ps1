@@ -66,13 +66,6 @@ function Garantir-Ambiente {
     Ok "bibliotecas instaladas"
 }
 
-function Garantir-Ollama {
-    $exe = Join-Path $env:LOCALAPPDATA "Programs\Ollama\ollama.exe"
-    if ((Test-Path $exe) -or (Get-Command ollama -ErrorAction SilentlyContinue)) { Ok "Ollama já instalado"; return }
-    try { winget install --id Ollama.Ollama -e --silent --accept-package-agreements --accept-source-agreements } catch { }
-    if (Test-Path $exe) { Ok "Ollama instalado" } else { Aviso "Ollama não instalou; o modo sem internet fica sem IA local" }
-}
-
 function Garantir-Vosk {
     $modelos = Join-Path $Pasta "modelos"
     $dir = Join-Path $modelos "vosk-model-small-en-us-0.15"

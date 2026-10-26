@@ -3,13 +3,14 @@ GHOST - Painel visual (HUD) no topo da tela.
 
 Uma faixa discreta, sempre visível e "atravessável" (o clique passa para a
 janela de baixo), que mostra o que o Ghost está fazendo:
-  ● cinza   em espera (ouvindo só a palavra "Ghost")
-  ● azul    ouvindo você
-  ● amarelo entendendo / pensando
-  ● verde   falando (mostra a frase)
-  ● vermelho erro
+  ● cinza-quente  em espera (ouvindo só a palavra "Ghost")
+  ● ouro          ouvindo você
+  ● brasa         entendendo / pensando
+  ● laranja claro falando (mostra a frase)
+  ● vermelho      erro
+A tela completa de indicadores é o painel (ghost/nucleo/painel.py): "Ghost, abrir painel".
 Fica quase transparente quando está em espera.
-Por voz: "Ghost, esconder painel" / "Ghost, mostrar painel".
+Por voz: "Ghost, esconder faixa" / "Ghost, mostrar faixa".
 """
 import ctypes
 import queue
@@ -21,13 +22,14 @@ TRANSPARENCIA_ATIVO = 0.92
 TRANSPARENCIA_ESPERA = 0.35
 VOLTA_A_ESPERA_S = 6        # segundos sem novidade até voltar ao modo espera
 
-CORES = {"espera": "#64748b", "ouvindo": "#38bdf8", "pensando": "#facc15", "falando": "#4ade80", "erro": "#f87171",
-         "conversa": "#a78bfa", "dormindo": "#334155"}
+# mesma paleta da tela de indicadores (brasa e ouro)
+CORES = {"espera": "#9a8770", "ouvindo": "#e8b04b", "pensando": "#ff8a3a", "falando": "#ffb35c", "erro": "#e0503a",
+         "conversa": "#f0c46a", "dormindo": "#5b4a3a"}
 ROTULOS = {"espera": "GHOST · em espera", "ouvindo": "GHOST · ouvindo", "pensando": "GHOST · pensando",
            "falando": "GHOST · falando", "erro": "GHOST · erro", "conversa": "GHOST · conversa ativa",
            "dormindo": "GHOST · dormindo"}
 DISCRETOS = ("espera", "dormindo")     # estados com o painel quase transparente
-FUNDO, TEXTO, TEXTO_FRACO = "#0b1220", "#e2e8f0", "#94a3b8"
+FUNDO, TEXTO, TEXTO_FRACO = "#120d09", "#e9dcc6", "#9a8770"
 
 _fila = queue.Queue()
 _repouso = ["espera", ""]    # para onde o painel volta quando nada acontece (muda com a conversa / dormindo)
@@ -43,6 +45,11 @@ def _cortar(t, n=78):
 # ---------- API usada pelo resto do Ghost (pode ser chamada de qualquer thread)
 def estado(nome, texto=""):
     _fila.put(("estado", nome, texto))
+    try:
+        from ghost.nucleo import painel
+        painel.estado(nome, texto)          # a tela de indicadores mostra o mesmo estado
+    except Exception:
+        pass
 
 def ouvindo(texto="Pode falar…"):
     estado("ouvindo", texto)

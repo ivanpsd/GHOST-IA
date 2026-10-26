@@ -5,8 +5,8 @@ GHOST - Skills ensinadas por voz.
 espere 5 segundos, abra a planilha de produção e mande bom dia para a Deborah."
 
 A IA converte a descrição em passos usando SOMENTE as ferramentas que já
-existem (abrir app/site, pesquisar, digitar, teclas, comandos do Ghost,
-macros). O Ghost lê o resumo e só salva depois do seu "sim".
+existem (abrir app/site, pesquisar, digitar, teclas, comandos do Ghost).
+O Ghost lê o resumo e só salva depois do seu "sim".
 Nenhum código novo é criado ou executado.
 Arquivo: dados/skills.json (fica fora do Git).
 """
@@ -110,7 +110,7 @@ Use SOMENTE estas ferramentas (passos executados em ordem):
 - digitar_texto {{"texto": "..."}}
 - pressionar_teclas {{"combo": "ctrl+c"}}
 - comando_ghost {{"frase": "..."}}  (frase como o usuário falaria: "mande mensagem para X dizendo Y",
-  "aumentar volume", "executar ação <nome de macro cadastrada>", "ativar gestos")
+  "aumentar volume", "tirar print")
 - esperar {{"segundos": N}}  (use entre abrir um programa e interagir com ele, 3 a 8 segundos)
 
 Se algo pedido NÃO puder ser feito com essas ferramentas, liste em "nao_suportado".
