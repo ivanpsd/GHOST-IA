@@ -124,7 +124,7 @@ from ghost.automacao import automacoes
 from ghost.ia import contexto, conversa, ferramentas, memoria, memoria_longa, pessoas, provedores, tarefas
 from ghost.ia.filtro_fala import FiltroFala
 from ghost.nucleo import canal, celular, hud, painel, preferencias, sistema
-from ghost.servicos import alertas, lembretes, notificacoes, resumo, rotina
+from ghost.servicos import alertas, lembretes, notificacoes, rede, resumo, rotina
 from ghost.voz import ativacao, palavra, som
 
 
@@ -955,7 +955,8 @@ def iniciar_ghost():
     preaquecer_voz()                                                             # frases comuns saem instantâneas
     _ligar("rotina", rotina.iniciar, falar_local, ghost_ocupado, client_groq_fundo, automacoes.pedir_confirmacao)
     _ligar("lembretes", lembretes.iniciar, falar_local)
-    _ligar("alertas", alertas.iniciar, falar_local, ghost_ocupado)            # disco, bateria, pausa, chuva...
+    _ligar("alertas", alertas.iniciar, falar_local, ghost_ocupado)
+    _ligar("rede", rede.iniciar, falar_local, ghost_ocupado)                 # inventário da rede (só leitura)            # disco, bateria, pausa, chuva...
     _ligar("notificações", notificacoes.iniciar, falar_local, ghost_ocupado)  # "Senhor, WhatsApp: Leonard"
     _ligar("tarefas", tarefas.iniciar, client_groq_fundo, MODELOS_GROQ[0], falar_local)
     _ligar("memória longa", memoria_longa.importar_antigos, conversa.recentes())

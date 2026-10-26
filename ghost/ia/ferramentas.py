@@ -134,6 +134,22 @@ TOOLS = [
             "espaco_em_disco", "memoria", "endereco_ip", "programas_abertos", "data_e_hora", "bateria", "uso_de_cpu"]}},
             "required": ["item"]}}},
     {"type": "function", "function": {
+        "name": "consultar_rede",
+        "description": ("Rede da empresa, SOMENTE LEITURA: aparelhos ligados, procurar uma máquina (por apelido, "
+                        "responsável, departamento, nome, IP), aparelhos novos nas últimas 24 h, ou qualidade da internet. "
+                        "Nunca liga, desliga ou altera máquinas."),
+        "parameters": {"type": "object", "properties": {
+            "acao": {"type": "string", "enum": ["listar", "procurar", "novos", "internet"]},
+            "termo": {"type": "string", "description": "o que procurar (só para acao=procurar)"}},
+            "required": ["acao"]}}},
+    {"type": "function", "function": {
+        "name": "nomear_maquina",
+        "description": ("Anota no inventário do Ghost quem usa um aparelho da rede (apelido, responsável, departamento). "
+                        "'alvo' = IP, MAC ou nome atual. Não altera a máquina."),
+        "parameters": {"type": "object", "properties": {
+            "alvo": {"type": "string"}, "apelido": {"type": "string"}, "responsavel": {"type": "string"},
+            "departamento": {"type": "string"}}, "required": ["alvo"]}}},
+    {"type": "function", "function": {
         "name": "olhar_tela",
         "description": ("Captura a tela do usuário NESTE momento e analisa. Use quando ele pedir para você ver/ler/"
                         "explicar algo na tela: 'o que é esse erro?', 'resume esse documento aberto', 'o que diz aqui?'. "
@@ -198,11 +214,11 @@ def _consulta(item):
 # Ferramentas que trazem texto escrito por OUTRAS pessoas / de fora do Ghost
 EXTERNAS = {"consultar_emails", "consultar_agenda", "ver_planilha", "calcular_planilha", "olhar_camera",
             "olhar_tela", "listar_notificacoes", "buscar_memoria", "listar_tarefas",
-            "consultar_sistema", "resumo_do_dia"}
+            "consultar_sistema", "resumo_do_dia", "consultar_rede"}   # nomes de máquinas vêm de fora
 # Ferramentas que AGEM (depois de ler algo externo, só com confirmação por voz)
 ACOES = {"abrir_aplicativo", "fechar_aplicativo", "abrir_site", "pesquisar_web", "digitar_texto",
          "pressionar_teclas", "comando_ghost", "criar_skill", "definir_saudacao",
-         "criar_lembrete", "cancelar_lembrete", "configurar_notificacoes", "tarefa_segundo_plano"}
+         "criar_lembrete", "cancelar_lembrete", "configurar_notificacoes", "tarefa_segundo_plano", "nomear_maquina"}
 
 
 # Ferramentas enviadas em TODO pedido; as outras só quando a frase combina (economiza tokens do plano gratuito)
@@ -220,6 +236,8 @@ GRUPOS = [
     (r"skill|habilidade|automatiz|rotina", {"criar_skill"}),
     (r"sauda|cumpriment|me chame|me chama", {"definir_saudacao"}),
     (r"notifica|whats|mensage|quem (me )?(mandou|escreveu)", {"listar_notificacoes", "configurar_notificacoes"}),
+    (r"\brede\b|maquina|computador|\bpcs?\b|\bips?\b|online|ligad|servidor|internet|wi.?fi|roteador|aparelho|"
+     r"impressora|conexao|lento|ping", {"consultar_rede", "nomear_maquina"}),
     (r"segundo plano|tarefa|enquanto|monitor|acompanh|fique de olho|verifique a cada", {"tarefa_segundo_plano",
                                                                                        "listar_tarefas"}),
 ]
@@ -429,6 +447,18 @@ def executar(nome, args, falar, pedir_confirmacao):
         if nome == "listar_tarefas":
             from ghost.ia import tarefas
             return tarefas.listar(), True
+
+        if nome == "consultar_rede":
+            from ghost.servicos import rede
+            return rede.consultar(args.get("acao", "listar"), args.get("termo", "")), True
+
+        if nome == "nomear_maquina":
+            from ghost.servicos import rede
+            a, n = rede.nomear(args.get("alvo", ""), args.get("apelido"), args.get("responsavel"), args.get("departamento"))
+            if not a:
+                return (f"não achei '{args.get('alvo')}' no inventário" if n == 0
+                        else f"'{args.get('alvo')}' corresponde a {n} aparelhos; peça o IP"), True
+            return f"anotado: {rede.nome_exibicao(a)} ({a.get('ip')}), {a.get('responsavel') or ''} {a.get('departamento') or ''}", True
 
         if nome == "consultar_sistema":
             item = args.get("item", "")
