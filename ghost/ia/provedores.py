@@ -3,12 +3,13 @@ quando um estoura (erro 429) ou falha, o Ghost passa para o próximo. Só entram
 
 Chaves no .env (crie a conta no site do provedor e cole a chave):
   GROQ_API_KEY          (já usada)
+  GEMINI_API_KEY        (já usada; aqui pelo endereço compatível, COM ferramentas)
   CEREBRAS_API_KEY      https://cloud.cerebras.ai
   OPENROUTER_API_KEY    https://openrouter.ai/keys      (só modelos ":free")
   MISTRAL_API_KEY       https://console.mistral.ai      (plano "Experiment", gratuito)
   GITHUB_MODELS_TOKEN   https://github.com/settings/tokens  (token com permissão "models")
-O modelo de cada um pode ser trocado no .env: CEREBRAS_MODELO, OPENROUTER_MODELO, MISTRAL_MODELO, GITHUB_MODELO.
-Ordem da fila: FILA (abaixo). Gemini continua como última reserva (em app.py)."""
+O modelo de cada um pode ser trocado no .env: GEMINI_MODELO, CEREBRAS_MODELO, OPENROUTER_MODELO, MISTRAL_MODELO, GITHUB_MODELO.
+Ordem da fila: FILA (abaixo). O Gemini "antigo" (sem ferramentas) continua como última reserva (em app.py)."""
 import os
 
 # (provedor, variável do .env com o modelo, modelo padrão)
@@ -16,11 +17,13 @@ FILA = [
     ("groq", None, "openai/gpt-oss-120b"),
     ("cerebras", "CEREBRAS_MODELO", "gpt-oss-120b"),
     ("groq", None, "openai/gpt-oss-20b"),
+    ("gemini", "GEMINI_MODELO", "gemini-3.5-flash"),
     ("openrouter", "OPENROUTER_MODELO", "openai/gpt-oss-120b:free"),
     ("mistral", "MISTRAL_MODELO", "mistral-small-latest"),
     ("github", "GITHUB_MODELO", "openai/gpt-4.1-mini"),
 ]
 EXTRAS = {   # provedores compatíveis com a API da OpenAI: chave no .env + endereço
+    "gemini": ("GEMINI_API_KEY", "https://generativelanguage.googleapis.com/v1beta/openai/"),
     "cerebras": ("CEREBRAS_API_KEY", "https://api.cerebras.ai/v1"),
     "openrouter": ("OPENROUTER_API_KEY", "https://openrouter.ai/api/v1"),
     "mistral": ("MISTRAL_API_KEY", "https://api.mistral.ai/v1"),

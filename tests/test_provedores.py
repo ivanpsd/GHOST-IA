@@ -16,7 +16,7 @@ def test_fila_so_com_quem_tem_chave(monkeypatch):
     pytest.importorskip("openai")
     monkeypatch.setenv("CEREBRAS_API_KEY", "teste")
     monkeypatch.setenv("CEREBRAS_MODELO", "outro-modelo")
-    assert provedores.iniciar(object()) == ["groq", "cerebras"]
+    assert provedores.iniciar(object()) == ["groq", "cerebras"]          # GEMINI_API_KEY apagada acima
     assert provedores.rotas()[1] == ("cerebras", "outro-modelo")
     assert provedores.parametros("mistral", "mistral-small-latest", "medium") == {}
     assert provedores.parametros("groq", "openai/gpt-oss-120b", "medium") == {"reasoning_effort": "medium"}
