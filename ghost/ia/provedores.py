@@ -18,7 +18,7 @@ FILA = [
     ("cerebras", "CEREBRAS_MODELO", "gpt-oss-120b"),
     ("groq", None, "openai/gpt-oss-20b"),
     ("gemini", "GEMINI_MODELO", "gemini-3.5-flash"),
-    ("openrouter", "OPENROUTER_MODELO", "openai/gpt-oss-120b:free"),
+    ("openrouter", "OPENROUTER_MODELO", "nvidia/nemotron-3.5-super-vl:free"),   # gpt-oss-120b:free deixou de ser grátis
     ("mistral", "MISTRAL_MODELO", "mistral-small-latest"),
     ("github", "GITHUB_MODELO", "openai/gpt-4.1-mini"),
 ]
