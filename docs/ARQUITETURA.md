@@ -72,6 +72,10 @@ rótulo do campo ("Cliente"), um recorte de imagem e a posição relativa. Na ex
 (OCR a cada ~0,8 s, até 25 s), senão procura o recorte (OpenCV), senão a posição relativa (só se a janela tiver o mesmo
 tamanho). Não achou: para e avisa. Digitação depois de clicar perto de "Senha" não é gravada (o Ghost pede na hora);
 digitação marcada como variável vira pergunta antes de começar (`automacoes.perguntar`). Fotos em `dados/skills/<id>/`.
+Datas digitadas na gravação (ex.: `01/10/2026`) viram campos de data com papel início/fim pelo rótulo ("Da Data", "Até a
+Data"); na execução, `automacao/periodo.py` tira o período do próprio pedido ("mês passado", "de 1 a 15 de outubro",
+"semana passada", "últimos 7 dias"…), pergunta uma vez se não houver, e usa a IA só como último recurso. A skill com campo
+variável aceita o gatilho seguido do período. Listas que abrem fora da janela (sem título) são procuradas na tela toda.
 
 ## Proteções
 

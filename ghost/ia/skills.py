@@ -98,6 +98,10 @@ def encontrar(texto_normalizado):
                 continue
             if t == g or (len(g.split()) >= 3 and re.search(rf"\b{re.escape(g)}\b", t)):
                 return s
+            # skill gravada com campos variáveis (datas): "relatório faturamento DO MÊS PASSADO"
+            if s.get("tipo") == "demonstracao" and t.startswith(g + " ") and \
+                    any(p.get("variavel") for p in s.get("passos", [])):
+                return s
     return None
 
 
@@ -148,10 +152,10 @@ def _segundos(valor, padrao=2.0):
     return max(0.0, min(float(m.group(0).replace(",", ".")) if m else padrao, ESPERA_MAXIMA))
 
 
-def executar(skill, falar, pedir_confirmacao):
+def executar(skill, falar, pedir_confirmacao, frase=""):
     if skill.get("tipo") == "demonstracao":            # gravada na tela: repete os cliques/digitação
         from ghost.automacao import automacoes, demonstracao
-        return demonstracao.executar(skill, falar, lambda q: automacoes.perguntar(q, falar))
+        return demonstracao.executar(skill, falar, lambda q: automacoes.perguntar(q, falar), frase=frase)
     from ghost.ia import ferramentas
     sid = skill.get("id") or skill.get("nome")
     with _trava_rodando:

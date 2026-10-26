@@ -86,6 +86,7 @@ button.secundario:focus-visible { outline: 2px solid var(--brasa); outline-offse
 #aparelhos button { justify-self: end; }
 .largo-modal { width: min(860px, 100%); }
 .nota-modal { margin: 0; color: var(--apagado); font-style: italic; }
+.avisos-skill { display: grid; gap: 6px; border-left: 3px solid var(--brasa); padding: 6px 10px; background: rgba(255,106,26,.07); font-size: 14px; }
 .passos-skill { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; max-height: 46vh; overflow-y: auto; }
 .passos-skill li { display: grid; grid-template-columns: 2em 132px minmax(0, 1fr) auto; gap: 12px; align-items: center;
   padding: 8px; border: 1px solid var(--fio); border-radius: 6px; background: rgba(0,0,0,.18); }
@@ -321,6 +322,7 @@ main {
   <div class="modal-caixa tabua largo-modal">
     <h2 id="titulo-skill">Skill gravada · revisão</h2>
     <p class="nota-modal" id="skill-estado">Confira os passos. “Variável” faz o Ghost perguntar o valor na hora de rodar.</p>
+    <div class="avisos-skill" id="avisos-skill" hidden></div>
     <ol class="passos-skill" id="passos-skill"></ol>
     <div class="campos-skill">
       <label>Nome da skill<input id="skill-nome" maxlength="60" placeholder="Ex.: Relatório Débora"></label>
@@ -638,6 +640,8 @@ main {
     const ol = $("passos-skill"); ol.replaceChildren();
     if (!r) { ol.append(el("li", "vazio", "Nenhuma skill gravada esperando revisão. Diga “Ghost, aprenda uma skill pela tela”.")); return; }
     if (document.activeElement !== $("skill-nome") && !$("skill-nome").value) $("skill-nome").value = r.nome || "";
+    const av = $("avisos-skill"); av.replaceChildren(); av.hidden = !(r.avisos && r.avisos.length);
+    for (const a of r.avisos || []) av.append(el("div", "", a));
     for (const p of r.passos) {
       const li = document.createElement("li");
       li.append(el("span", "num", `${p.n}.`));
@@ -645,13 +649,18 @@ main {
       else li.append(el("span", "sem-mini", p.acao));
       const txt = el("span", "oque", p.texto);
       if (p.segredo) txt.append(el("span", "tag", "SENHA"));
-      if (p.variavel) txt.append(el("span", "tag", "VARIÁVEL"));
+      if (p.variavel) txt.append(el("span", "tag", p.data ? "DATA DO PEDIDO" : "VARIÁVEL"));
       li.append(txt);
       const ac = document.createElement("span"); ac.className = "acoes";
       if (p.acao === "digitar" && !p.segredo && !p.variavel) {
         const bv = el("button", "secundario", "Variável"); bv.type = "button";
         bv.addEventListener("click", async () => { await skillAcao({ acao: "variavel", n: p.n }); atualizarSkill(); });
         ac.append(bv);
+      }
+      if (p.variavel) {
+        const bf = el("button", "secundario", "Fixo"); bf.type = "button"; bf.title = "Digitar sempre o mesmo valor da gravação";
+        bf.addEventListener("click", async () => { await skillAcao({ acao: "fixo", n: p.n }); atualizarSkill(); });
+        ac.append(bf);
       }
       const br = el("button", "secundario", "Remover"); br.type = "button";
       br.addEventListener("click", async () => { await skillAcao({ acao: "remover", n: p.n }); atualizarSkill(); });

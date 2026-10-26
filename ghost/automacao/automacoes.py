@@ -531,7 +531,12 @@ def _ao_terminar_gravacao(falar):
             painel.abrir_janela(revisao=True)
         except Exception:
             pass
-        falar(f"Gravei {n} passo{'s' if n > 1 else ''}, senhor. A revisão está no painel. "
+        datas = sum(1 for p in r["passos"] if p.get("tipo") == "data")
+        extra = (f" Achei {datas} campo{'s' if datas > 1 else ''} de data: na hora de rodar, uso o período que o senhor "
+                 "pedir." if datas else "")
+        if any("calendário" in a for a in r.get("avisos", [])):
+            extra += " Atenção: alguns passos escolhem o dia no calendário; isso não repete bem. Veja o aviso no painel."
+        falar(f"Gravei {n} passo{'s' if n > 1 else ''}, senhor.{extra} A revisão está no painel. "
               "Diga teste a skill, ou salve a skill como, e o nome.")
     return fim
 
@@ -544,11 +549,12 @@ def _numero(n):
     return int(v) if v.isdigit() else ["um", "dois", "tres", "quatro", "cinco", "seis", "sete", "oito", "nove", "dez"].index(v) + 1
 
 
-def _tratar_demonstracao(n, falar):
+def _tratar_demonstracao(texto, n, falar):
     from ghost.automacao import demonstracao as demo
     if tem(n, "pela tela", "olhando a tela", "vendo a tela", "por demonstracao", "vou te mostrar", "vou mostrar",
-           "grave uma skill", "gravar uma skill", "gravar skill", "grava uma skill") and \
-            re.search(r"\b(skill|habilidade|mostr\w*|grav\w*)\b", n):
+           "grave uma skill", "gravar uma skill", "gravar skill", "grava uma skill", "gravar isso", "grava isso",
+           "grave isso", "aprenda isso", "aprende isso") and \
+            re.search(r"\b(skill|habilidade|mostr\w*|grav\w*|isso)\b", n):
         demo.iniciar_gravacao(falar, _ao_terminar_gravacao(falar))
         return True
     if demo.gravando() and tem(n, "parar de gravar", "pare de gravar", "para de gravar", "terminei", "pode parar",
@@ -562,7 +568,7 @@ def _tratar_demonstracao(n, falar):
         r = demo.rascunho()
         falar("Testando, senhor. Não mexa no mouse; F10 interrompe.")
         em_segundo_plano(lambda: demo.executar({"nome": "teste", "passos": r["passos"]}, falar,
-                                               lambda q: perguntar(q, falar), teste=True))
+                                               lambda q: perguntar(q, falar), teste=True, frase=texto))
         return True
     m = re.search(r"\b(?:salv\w*|grav\w*)\s+(?:a\s+)?(?:skill|habilidade)\s+(?:como|com o nome(?: de)?|chamada)\s+(?P<nome>.+)$", n)
     if m or tem(n, "salvar a skill", "salve a skill", "salva a skill"):
@@ -661,7 +667,7 @@ def _tratar_skills(texto, n, falar):
     s = skills.encontrar(n)
     if s:
         falar(f"Executando {s['nome']}, senhor.")
-        em_segundo_plano(lambda: skills.executar(s, falar, pedir_confirmacao))
+        em_segundo_plano(lambda: skills.executar(s, falar, pedir_confirmacao, frase=texto))
         return True
 
     # observação da rotina
@@ -1029,7 +1035,7 @@ def executar(texto, falar):
     return (
         _tratar_pergunta(texto, n)
         or _tratar_confirmacao(n, falar)
-        or _tratar_demonstracao(n, falar)
+        or _tratar_demonstracao(texto, n, falar)
         or _tratar_skills(texto, n, falar)
         or _tratar_pessoas(texto, n, falar)
         or _tratar_resumo(texto, n, falar)

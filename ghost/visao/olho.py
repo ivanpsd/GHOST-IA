@@ -261,6 +261,15 @@ def capturar(hwnd):
     return img
 
 
+def capturar_tela():
+    """Foto de todos os monitores (para listas que abrem fora da janela). info['origem'] = canto da área virtual."""
+    from PIL import ImageGrab
+    user32 = ctypes.windll.user32
+    img = ImageGrab.grab(all_screens=True)
+    img.info["origem"] = (user32.GetSystemMetrics(76), user32.GetSystemMetrics(77))   # SM_X/YVIRTUALSCREEN
+    return img
+
+
 async def _ocr_async(img):
     from winrt.windows.globalization import Language
     from winrt.windows.graphics.imaging import BitmapDecoder

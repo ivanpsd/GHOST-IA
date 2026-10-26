@@ -17,11 +17,13 @@ Segurança: o que é digitado logo depois de clicar perto de "Senha" NÃO é gra
 pede para o senhor digitar na hora. As fotos ficam só em dados/skills/ (fora do Git).
 """
 import os
+import re
 import shutil
 import threading
 import time
 import uuid
 
+from ghost.automacao import periodo
 from ghost.nucleo import caminhos
 
 PASTA = caminhos.dado("skills")
@@ -202,7 +204,10 @@ def montar_passos(eventos, ler=None, pasta=None):
                  "rel": [round(x / max(1, foto.width if foto is not None else j["rect"][2]), 4),
                          round(y / max(1, foto.height if foto is not None else j["rect"][3]), 4)],
                  "tamanho": list(foto.size) if foto is not None else list(j["rect"][2:]),
-                 "recorte": None, "nova_janela": janela_ant is None or janela_ant != (j["exe"], olho.nome_base(j["titulo"]))}
+                 "recorte": None, "nova_janela": janela_ant is None or janela_ant != (j["exe"], olho.nome_base(j["titulo"])),
+                 "abs": [ev["x"], ev["y"]],
+                 # lista aberta de um campo (janelinha sem título do Chrome): na execução procura na tela toda
+                 "popup": not j["titulo"].strip()}
             if foto is not None and pasta:
                 w, h = RECORTE
                 caixa = (max(0, x - w // 2), max(0, y - h // 2), min(foto.width, x + w // 2), min(foto.height, y + h // 2))
@@ -211,12 +216,19 @@ def montar_passos(eventos, ler=None, pasta=None):
                 foto.crop(caixa).save(os.path.join(pasta, nome))
                 p["recorte"] = nome
                 p["recorte_centro"] = [x - caixa[0], y - caixa[1]]
-            janela_ant = (j["exe"], olho.nome_base(j["titulo"]))
+            if not p["popup"]:
+                janela_ant = (j["exe"], olho.nome_base(j["titulo"]))
             passos.append(p)
         elif ev["tipo"] == "digitar":
             if senha_pendente:
                 passos.append({"acao": "digitar", "texto": "", "segredo": True, "variavel": None})
                 senha_pendente = False
+            elif periodo.parece_data(ev["texto"]):
+                # data digitada ("26/10/2026"): vira campo de data, preenchido pelo período do pedido
+                ant = next((q for q in reversed(passos) if q["acao"] == "clicar"), None)
+                rotulo = ant["ancora"]["texto"] if ant and ant.get("ancora") else "a data"
+                passos.append({"acao": "digitar", "texto": "", "segredo": False, "variavel": rotulo, "tipo": "data",
+                               "formato": periodo.formato_de(ev["texto"]), "exemplo": ev["texto"]})
             else:
                 passos.append({"acao": "digitar", "texto": ev["texto"], "segredo": False, "variavel": None})
         elif ev["tipo"] == "tecla":
@@ -226,7 +238,32 @@ def montar_passos(eventos, ler=None, pasta=None):
     # tempo entre um passo e outro (ajuda a decidir quanto esperar a tela na execução)
     for i, ev in enumerate(eventos[:len(passos)]):
         passos[i]["pausa"] = round(min(30.0, ev["t"] - eventos[i - 1]["t"]), 1) if i else 0.0
+    _papeis_das_datas(passos)
     return passos
+
+
+def _papeis_das_datas(passos):
+    """Qual campo de data é o início e qual é o fim ("Da Data" / "Até a Data")."""
+    datas = [p for p in passos if p.get("tipo") == "data" and p.get("variavel")]
+    for i, p in enumerate(datas):
+        p["papel"] = periodo.papel(p["variavel"], i)
+    if len(datas) == 2 and datas[0]["papel"] == datas[1]["papel"]:
+        datas[0]["papel"], datas[1]["papel"] = "inicio", "fim"
+
+
+def avisos(passos):
+    """Coisas que não vão repetir bem (mostradas na revisão)."""
+    saida = []
+    dias = [i for i, p in enumerate(passos, 1) if p["acao"] == "clicar" and p.get("ancora")
+            and re.fullmatch(r"\d{1,2}", p["ancora"]["texto"].strip())]
+    if dias:
+        saida.append(f"Os passos {', '.join(map(str, dias))} escolhem um dia no calendário: na próxima vez o calendário "
+                     "estará em outro mês e não vai bater. Grave de novo DIGITANDO a data no campo (ex.: 01/10/2026): "
+                     "aí o Ghost troca a data sozinho conforme o pedido.")
+    sem = [i for i, p in enumerate(passos, 1) if p["acao"] == "clicar" and not p.get("ancora") and not p.get("recorte")]
+    if sem:
+        saida.append(f"Os passos {', '.join(map(str, sem))} não têm texto nem imagem para conferir.")
+    return saida
 
 
 def descrever(p):
@@ -238,6 +275,9 @@ def descrever(p):
     if a == "digitar":
         if p.get("segredo"):
             return "Digitar a senha (o senhor digita na hora; não fica gravada)"
+        if p.get("tipo") == "data" and p.get("variavel"):
+            qual = "inicial" if p.get("papel") == "inicio" else "final"
+            return f"Digitar a data {qual} em “{p['variavel']}” (vem do pedido: “mês passado”, “de 1 a 15 de outubro”…)"
         if p.get("variavel"):
             return f"Digitar “{p['variavel']}” (perguntado na hora)"
         return f"Digitar “{p['texto'][:60]}”"
@@ -273,7 +313,8 @@ def iniciar_gravacao(falar, ao_terminar=None):
                 print(f"\n[GRAVAÇÃO]: falha ao montar os passos ({e!r}).")
             with _trava:
                 _gravacao = None
-                _rascunho = {"passos": passos, "nome": "", "gatilho": "", "criado": time.strftime("%Y-%m-%d %H:%M")}
+                _rascunho = {"passos": passos, "nome": "", "gatilho": "", "criado": time.strftime("%Y-%m-%d %H:%M"),
+                             "avisos": avisos(passos)}
             if ao_terminar:
                 ao_terminar(_rascunho)
 
@@ -302,19 +343,32 @@ def remover_passo(n):
         return True
 
 
-def marcar_variavel(n, rotulo=None):
-    """O texto digitado no passo n muda a cada vez: vira pergunta na hora de rodar."""
+def marcar_variavel(n, rotulo=None, ligar=True):
+    """O texto digitado no passo n muda a cada vez: vira pergunta na hora de rodar. ligar=False: volta a ser fixo."""
     with _trava:
         if not _rascunho or not 1 <= n <= len(_rascunho["passos"]):
             return False
         p = _rascunho["passos"][n - 1]
         if p["acao"] != "digitar" or p.get("segredo"):
             return False
+        if not ligar:
+            if not p.get("variavel"):
+                return False
+            p["texto"] = p.pop("exemplo", "") or p.get("texto", "")
+            p["variavel"] = None
+            p.pop("tipo", None)
+            p.pop("papel", None)
+            _papeis_das_datas(_rascunho["passos"])
+            return True
         if not rotulo:                                   # usa o rótulo do campo clicado antes ("Cliente")
             ant = next((q for q in reversed(_rascunho["passos"][:n - 1]) if q["acao"] == "clicar"), None)
             rotulo = (ant or {}).get("ancora", {}) and ant["ancora"]["texto"] or f"o valor do passo {n}"
         p["variavel"] = rotulo
+        p["exemplo"] = p.get("texto") or p.get("exemplo", "")
         p["texto"] = ""
+        if periodo.parece_data(p["exemplo"]):
+            p["tipo"], p["formato"] = "data", periodo.formato_de(p["exemplo"])
+            _papeis_das_datas(_rascunho["passos"])
         return True
 
 
@@ -382,12 +436,17 @@ def _localizar(p, janela, pasta, leitor=None):
     from PIL import Image
 
     from ghost.visao import olho
-    foto = olho.capturar(janela["hwnd"])
-    ox, oy = foto.info.get("origem", janela["rect"][:2])
+    if p.get("popup"):                     # lista aberta de um campo: janelinha própria, procura na tela toda
+        foto = olho.capturar_tela()
+        ox, oy = foto.info["origem"]
+        esperado = (p["abs"][0] - ox, p["abs"][1] - oy)
+    else:
+        foto = olho.capturar(janela["hwnd"])
+        ox, oy = foto.info.get("origem", janela["rect"][:2])
+        esperado = (p["rel"][0] * foto.width, p["rel"][1] * foto.height)
     a = p.get("ancora")
     if a:
         palavras = (leitor or olho.ler)(foto)
-        esperado = (p["rel"][0] * foto.width, p["rel"][1] * foto.height)
         achados = olho.achar_texto(palavras, a["texto"], perto=esperado)
         if achados:
             c = achados[0]
@@ -400,7 +459,7 @@ def _localizar(p, janela, pasta, leitor=None):
                 if achado:
                     cx, cy = p.get("recorte_centro", [rec.width // 2, rec.height // 2])
                     return ox + achado[0] - rec.width // 2 + cx, oy + achado[1] - rec.height // 2 + cy
-    if not a and list(foto.size) == p.get("tamanho"):        # sem texto e janela igual: posição relativa
+    if not a and not p.get("popup") and list(foto.size) == p.get("tamanho"):   # sem texto e janela igual: posição relativa
         return ox + p["rel"][0] * foto.width, oy + p["rel"][1] * foto.height
     return None
 
@@ -430,8 +489,60 @@ def _janela_do_passo(p, falar):
         _esperar(1)
 
 
-def executar(skill, falar, perguntar, teste=False):
-    """Repete os passos gravados. perguntar(pergunta) -> resposta (texto) ou None (cancelado)."""
+def _periodo_da_ia(texto, hoje):
+    """Último recurso para entender o período ("primeira quinzena do mês passado"): pergunta à IA."""
+    try:
+        import json
+
+        from ghost.ia import skills
+        r = skills._groq().chat.completions.create(
+            model="openai/gpt-oss-20b", temperature=0, max_tokens=200, response_format={"type": "json_object"},
+            messages=[{"role": "user", "content": (
+                f"Hoje é {hoje:%d/%m/%Y}. Converta o período desta frase em datas. Responda só JSON "
+                '{"inicio": "AAAA-MM-DD", "fim": "AAAA-MM-DD"} ou {"inicio": null} se não houver período. '
+                f"Frase: {texto}")}])
+        j = json.loads(r.choices[0].message.content)
+        if not j.get("inicio"):
+            return None
+        from datetime import date
+        ini, fim = date.fromisoformat(j["inicio"]), date.fromisoformat(j.get("fim") or j["inicio"])
+        return (ini, fim) if ini <= fim else (fim, ini)
+    except Exception as e:
+        print(f"\n[SKILL]: IA não entendeu o período ({e!r}).")
+        return None
+
+
+def valores_das_variaveis(passos, frase, perguntar, hoje=None):
+    """{índice do passo: texto a digitar}. Datas vêm do período dito no pedido (ou perguntado uma vez só);
+    as outras variáveis são perguntadas uma a uma."""
+    from datetime import date
+    hoje = hoje or date.today()
+    valores = {}
+    datas = [(i, p) for i, p in enumerate(passos) if p["acao"] == "digitar" and p.get("tipo") == "data" and p.get("variavel")]
+    if datas:
+        per = periodo.interpretar(frase or "", hoje)
+        if per is None:
+            r = perguntar("Qual o período, senhor? Por exemplo: mês passado, ou de 1 a 15 de outubro.")
+            if r is None:
+                raise Parou("Cancelado, senhor.")
+            per = periodo.interpretar(r, hoje) or _periodo_da_ia(r, hoje)
+            if per is None:
+                raise Parou("Não entendi o período, senhor. Peça de novo dizendo as datas, por exemplo: de 01/10 a 15/10.")
+        for i, p in datas:
+            d = per[1] if p.get("papel") == "fim" else per[0]
+            valores[i] = d.strftime(p.get("formato") or "%d/%m/%Y")
+    for i, p in enumerate(passos):
+        if p["acao"] == "digitar" and p.get("variavel") and i not in valores:
+            r = perguntar(f"Qual {p['variavel']}, senhor?")
+            if r is None:
+                raise Parou("Cancelado, senhor.")
+            valores[i] = r.strip()
+    return valores
+
+
+def executar(skill, falar, perguntar, teste=False, frase=""):
+    """Repete os passos gravados. perguntar(pergunta) -> resposta (texto) ou None (cancelado).
+    frase: o pedido original ("relatório de faturamento do mês passado"), de onde saem as datas."""
     import pyautogui
     from pynput import keyboard as kb
 
@@ -446,21 +557,29 @@ def executar(skill, falar, perguntar, teste=False):
     pasta = os.path.join(PASTA, skill.get("pasta", "")) if skill.get("pasta") else PASTA_RASCUNHO
     passos = skill["passos"]
     try:
-        # as respostas variáveis são pedidas ANTES de começar (para não parar no meio da tela)
-        valores = {}
-        for i, p in enumerate(passos):
-            if p["acao"] == "digitar" and p.get("variavel"):
-                r = perguntar(f"Qual {p['variavel']}, senhor?")
-                if r is None:
-                    raise Parou("Cancelado, senhor.")
-                valores[i] = r
+        # as respostas variáveis são resolvidas ANTES de começar (para não parar no meio da tela)
+        valores = valores_das_variaveis(passos, frase, perguntar)
+        datas = [valores[i] for i, p in enumerate(passos) if i in valores and p.get("tipo") == "data"]
+        if datas:
+            falar(f"Período de {datas[0]}" + (f" até {datas[-1]}" if len(datas) > 1 else "") + ", senhor.")
         janela = None
         for i, p in enumerate(passos, 1):
             if _abortar.is_set():
                 raise Parou("Parei: o senhor apertou F10.")
             if teste:
                 print(f"\n[SKILL TESTE]: {i}. {descrever(p)}")
-            if p["acao"] == "clicar":
+            if p["acao"] == "clicar" and p.get("popup") and janela is not None:
+                limite = time.time() + ESPERA_MIN_S
+                ponto = None
+                while ponto is None:
+                    ponto = _localizar(p, janela, pasta)
+                    if ponto is None:
+                        if time.time() > limite:
+                            alvo = p["ancora"]["texto"] if p.get("ancora") else "a opção da lista"
+                            raise Parou(f"Parei no passo {i}: a lista não mostrou “{alvo}”. Nada mais foi feito.")
+                        _esperar(0.6)
+                pyautogui.click(int(ponto[0]), int(ponto[1]))
+            elif p["acao"] == "clicar":
                 if p.get("nova_janela") or janela is None or not olho.achar_janela(janela["exe"], olho.nome_base(janela["titulo"])):
                     janela = _janela_do_passo(p, falar)
                     olho.focar(janela["hwnd"])
@@ -483,8 +602,15 @@ def executar(skill, falar, perguntar, teste=False):
                     r = perguntar("Senhor, digite a senha agora e diga continuar.")
                     if r is None:
                         raise Parou("Cancelado, senhor.")
+                elif (i - 1) in valores:                     # variável: apaga o que havia no campo e digita
+                    pyautogui.hotkey("ctrl", "a")
+                    _esperar(0.1)
+                    if p.get("tipo") == "data":
+                        pyautogui.write(valores[i - 1], interval=0.03)   # campo com máscara: tecla por tecla
+                    else:
+                        automacoes._colar(valores[i - 1])
                 else:
-                    automacoes._colar(valores.get(i - 1, p.get("texto", "")))
+                    automacoes._colar(p.get("texto", ""))
             elif p["acao"] == "tecla":
                 pyautogui.hotkey(*[t.replace("win", "winleft") for t in p["combo"].split("+")])
             elif p["acao"] == "rolar":

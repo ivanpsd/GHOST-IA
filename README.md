@@ -33,7 +33,7 @@ Assistente pessoal para Windows, em Python: você diz **"Ghost, …"** (ou segur
 | Memória | Aprende fatos e padrões de comportamento automaticamente (`dados\memoria_aprendizado.json`) |
 | Conversa contínua | Lembra as últimas 12 trocas (inclusive comandos executados); recomeça após 45 min parado |
 | Skills por voz | "aprenda uma nova skill": a IA monta os passos com as ferramentas existentes e só salva com o seu "sim" |
-| Skills pela tela | "aprenda uma skill pela tela": o senhor faz a tarefa (Protheus, Excel, qualquer programa), diz "parar de gravar" e revisa no painel. Ele repete achando os botões pelo **texto** (OCR do Windows, sem internet) e pela imagem; para se não achar; senha nunca é gravada; valores que mudam viram pergunta |
+| Skills pela tela | "aprenda uma skill pela tela": o senhor faz a tarefa (Protheus, Excel, qualquer programa), diz "parar de gravar" e revisa no painel. Ele repete achando os botões pelo **texto** (OCR do Windows, sem internet) e pela imagem; para se não achar; senha nunca é gravada; valores que mudam viram pergunta; **datas digitadas viram campos de período**: "faturamento por cliente do mês passado", "… de 1 a 15 de outubro" |
 | Rotina | Observa só o programa/janela em foco (sem captura de tela), resume padrões e sugere skills |
 | Visão | "o que é isso na minha mão?": tira uma foto sob demanda e descreve o objeto (Gemini; detector local de reserva). Não identifica pessoas |
 | Saudação | Frase de cumprimento configurável por voz (`dados\preferencias.json`) |

@@ -430,9 +430,11 @@ class _Rotas(BaseHTTPRequestHandler):
                 if not r:
                     return self._responder(200, {"rascunho": None, "gravando": demo.gravando()})
                 passos = [{"n": i, "texto": demo.descrever(p), "acao": p["acao"], "imagem": bool(p.get("recorte")),
-                           "variavel": bool(p.get("variavel")), "segredo": bool(p.get("segredo"))}
+                           "variavel": bool(p.get("variavel")), "segredo": bool(p.get("segredo")),
+                           "data": p.get("tipo") == "data"}
                           for i, p in enumerate(r["passos"], 1)]
-                return self._responder(200, {"rascunho": {"nome": r["nome"], "gatilho": r["gatilho"], "passos": passos},
+                return self._responder(200, {"rascunho": {"nome": r["nome"], "gatilho": r["gatilho"], "passos": passos,
+                                                          "avisos": demo.avisos(r["passos"])},
                                              "gravando": demo.gravando()})
             if rota == "skill/imagem":
                 from ghost.automacao import demonstracao as demo
@@ -467,6 +469,8 @@ class _Rotas(BaseHTTPRequestHandler):
                     demo.remover_passo(k)
                 elif acao == "variavel":
                     demo.marcar_variavel(k)
+                elif acao == "fixo":
+                    demo.marcar_variavel(k, ligar=False)
                 elif acao == "nome":
                     demo.definir_nome(str(j.get("nome") or ""), str(j.get("gatilho") or "") or None)
                 elif acao == "descartar":
