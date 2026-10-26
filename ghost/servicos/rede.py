@@ -79,7 +79,7 @@ def normalizar(texto):
 
 
 def nome_exibicao(a):
-    return a.get("apelido") or a.get("nome") or a.get("ip") or a.get("mac")
+    return a.get("apelido") or a.get("nome") or "aparelho sem nome"
 
 
 def procurar(inventario, termo):
