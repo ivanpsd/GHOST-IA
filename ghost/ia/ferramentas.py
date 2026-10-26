@@ -148,6 +148,15 @@ TOOLS = [
             "termo": {"type": "string", "description": "o que procurar (só para acao=procurar)"}},
             "required": ["acao"]}}},
     {"type": "function", "function": {
+        "name": "consultar_maquinas",
+        "description": ("Máquinas com agente MeshCentral (SOMENTE LEITURA): quem está logado, se está ligada e desde "
+                        "quando, sistema, antivírus, firewall, atualizações, reinício pendente. acao: listar (todas), "
+                        "procurar (por nome, IP, usuário, apelido ou responsável), alertas (só as com problema). Use para "
+                        "'quem está logado no PC do X', 'alguma máquina sem antivírus'. Não controla as máquinas."),
+        "parameters": {"type": "object", "properties": {
+            "acao": {"type": "string", "enum": ["listar", "procurar", "alertas"]},
+            "termo": {"type": "string"}}, "required": ["acao"]}}},
+    {"type": "function", "function": {
         "name": "nomear_maquina",
         "description": ("Anota no inventário do Ghost quem usa um aparelho da rede (apelido, responsável, departamento) "
                         "e marca/desmarca como crítico (vigiado a cada minuto, avisa se cair). 'alvo' = IP, MAC ou nome "
@@ -220,7 +229,7 @@ def _consulta(item):
 # Ferramentas que trazem texto escrito por OUTRAS pessoas / de fora do Ghost
 EXTERNAS = {"consultar_emails", "consultar_agenda", "ver_planilha", "calcular_planilha", "olhar_camera",
             "olhar_tela", "listar_notificacoes", "buscar_memoria", "listar_tarefas",
-            "consultar_sistema", "resumo_do_dia", "consultar_rede"}   # nomes de máquinas vêm de fora
+            "consultar_sistema", "resumo_do_dia", "consultar_rede", "consultar_maquinas"}   # nomes de máquinas vêm de fora
 # Ferramentas que AGEM (depois de ler algo externo, só com confirmação por voz)
 ACOES = {"abrir_aplicativo", "fechar_aplicativo", "abrir_site", "pesquisar_web", "digitar_texto",
          "pressionar_teclas", "comando_ghost", "criar_skill", "definir_saudacao",
@@ -243,7 +252,8 @@ GRUPOS = [
     (r"sauda|cumpriment|me chame|me chama", {"definir_saudacao"}),
     (r"notifica|whats|mensage|quem (me )?(mandou|escreveu)", {"listar_notificacoes", "configurar_notificacoes"}),
     (r"\brede\b|maquina|computador|\bpcs?\b|\bips?\b|online|ligad|servidor|internet|wi.?fi|roteador|aparelho|"
-     r"impressora|conexao|lento|ping|caiu|queda|critic|inventario|camera", {"consultar_rede", "nomear_maquina"}),
+     r"impressora|conexao|lento|ping|caiu|queda|critic|inventario|camera|logad|antivirus|firewall|reinici|"
+     r"atualizac|agente|meshcentral|ligada desde", {"consultar_rede", "nomear_maquina", "consultar_maquinas"}),
     (r"segundo plano|tarefa|enquanto|monitor|acompanh|fique de olho|verifique a cada", {"tarefa_segundo_plano",
                                                                                        "listar_tarefas"}),
 ]
@@ -467,6 +477,10 @@ def executar(nome, args, falar, pedir_confirmacao):
                 caminho = rede.exportar()
                 return f"Excel salvo em Documentos, Ghost, Relatórios: {os.path.basename(caminho)}", True
             return rede.consultar(acao, args.get("termo", "")), True
+
+        if nome == "consultar_maquinas":
+            from ghost.servicos import meshcentral
+            return meshcentral.consultar(args.get("acao", "listar"), args.get("termo", "")), True
 
         if nome == "nomear_maquina":
             from ghost.servicos import rede
