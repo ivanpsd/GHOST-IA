@@ -332,6 +332,8 @@ main {
 (() => {
   "use strict";
   const TOKEN = "__GHOST_TOKEN__";
+  // F9 é o "falar" do Ghost, mas no Edge ele abre o Leitor Imersivo: aqui na janela do painel o Edge não recebe o F9
+  window.addEventListener("keydown", (e) => { if (e.key === "F9") { e.preventDefault(); e.stopImmediatePropagation(); } }, true);
   const DEMO = TOKEN.startsWith("__");          // aberto fora do Ghost (ex.: demonstração): dados de exemplo
   const $ = (id) => document.getElementById(id);
 
