@@ -57,6 +57,16 @@ def achar_texto(palavras, alvo, perto=None):
         for p in palavras:
             if alvo_n[0] in normalizar(p["texto"]).split() or normalizar(p["texto"]).endswith(alvo_n[0]):
                 achados.append(_caixa([p]))
+    if not achados:                               # OCR errou uma letra ("Manutatura"): aceita texto bem parecido
+        import difflib
+        alvo_s = " ".join(alvo_n)
+        for i in range(len(palavras)):
+            for tam in {max(1, len(alvo_n) - 1), len(alvo_n), len(alvo_n) + 1}:
+                trecho = palavras[i:i + tam]
+                if len(trecho) < tam or len({p["linha"] for p in trecho}) > 1:
+                    continue
+                if difflib.SequenceMatcher(None, " ".join(normalizar(p["texto"]) for p in trecho), alvo_s).ratio() >= 0.86:
+                    achados.append(_caixa(trecho))
     if perto:
         achados.sort(key=lambda c: (_centro(c)[0] - perto[0]) ** 2 + (_centro(c)[1] - perto[1]) ** 2)
     return achados

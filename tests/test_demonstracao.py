@@ -111,3 +111,10 @@ def test_skill_descrita_com_senha_e_recusada(monkeypatch):
     monkeypatch.setattr(skills, "_groq", lambda: Cliente)
     with pytest.raises(ValueError, match="senha"):
         skills.criar_por_descricao("abrir o protheus e digitar usuario e senha")
+
+
+def test_ocr_com_letra_errada_ainda_acha():
+    pal = [{"texto": "TOTVS", "x": 10, "y": 10, "w": 40, "h": 12, "linha": 0},
+           {"texto": "Manutatura", "x": 55, "y": 10, "w": 80, "h": 12, "linha": 0}]
+    assert olho.achar_texto(pal, "TOTVS Manufatura")
+    assert not olho.achar_texto(pal, "Faturamento")
