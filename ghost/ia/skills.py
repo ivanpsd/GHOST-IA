@@ -132,6 +132,10 @@ def criar_por_descricao(descricao):
         temperature=0, max_tokens=1500, reasoning_effort="medium", response_format={"type": "json_object"})
     s = json.loads(r.choices[0].message.content)
     passos = [p for p in s.get("passos", []) if p.get("ferramenta") in PERMITIDAS]
+    if any(re.search(r"\b(senha|password|pin)\b", json.dumps(p, ensure_ascii=False).lower()) for p in passos) or \
+            re.search(r"\b(senha|password)\b", descricao.lower()):
+        raise ValueError("skills não podem guardar senha. Para telas com login, grave a skill pela tela: "
+                         "na hora da senha eu peço para o senhor digitar")
     if not passos or not s.get("gatilhos"):
         raise ValueError("não consegui montar passos válidos para essa skill")
     return {"id": "s_" + uuid.uuid4().hex[:8], "nome": s.get("nome", "skill"),
@@ -145,6 +149,9 @@ def _segundos(valor, padrao=2.0):
 
 
 def executar(skill, falar, pedir_confirmacao):
+    if skill.get("tipo") == "demonstracao":            # gravada na tela: repete os cliques/digitação
+        from ghost.automacao import automacoes, demonstracao
+        return demonstracao.executar(skill, falar, lambda q: automacoes.perguntar(q, falar))
     from ghost.ia import ferramentas
     sid = skill.get("id") or skill.get("nome")
     with _trava_rodando:

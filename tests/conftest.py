@@ -25,3 +25,8 @@ def _dados_isolados(tmp_path, monkeypatch):
     monkeypatch.setattr(painel, "PASTA_EXPORTAR", str(tmp_path / "relatorios"))
     monkeypatch.setattr(painel, "PASTA_DEMO", str(tmp_path / "demo"))
     monkeypatch.setattr(painel, "_clima", lambda: "")
+    from ghost.automacao import demonstracao
+    from ghost.ia import skills
+    monkeypatch.setattr(skills, "ARQUIVO", str(tmp_path / "skills.json"))
+    monkeypatch.setattr(demonstracao, "PASTA", str(tmp_path / "skills"))
+    monkeypatch.setattr(demonstracao, "PASTA_RASCUNHO", str(tmp_path / "skills" / "rascunho"))

@@ -879,7 +879,7 @@ def _ligar(nome, funcao, *args):
 
 def iniciar_ghost():
     _ligar("faixa do topo", hud.iniciar)
-    _ligar("painel", painel.iniciar)                                          # tela de indicadores
+    _ligar("painel", painel.iniciar, None, falar_local)                       # tela de indicadores
     painel.evento("Ghost ligado")
     threading.Thread(target=gerador_de_audio, daemon=True, name="gerador-voz").start()
     threading.Thread(target=reprodutor_de_audio, daemon=True, name="reprodutor-voz").start()

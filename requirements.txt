@@ -29,9 +29,14 @@ livekit
 openwakeword
 fastembed
 scikit-learn
-winrt-runtime
-winrt-Windows.UI.Notifications
-winrt-Windows.UI.Notifications.Management
-winrt-Windows.Foundation
-winrt-Windows.Foundation.Collections
-winrt-Windows.ApplicationModel
+winrt-runtime==3.2.1
+winrt-Windows.UI.Notifications==3.2.1
+winrt-Windows.UI.Notifications.Management==3.2.1
+winrt-Windows.Foundation==3.2.1
+winrt-Windows.Foundation.Collections==3.2.1
+winrt-Windows.ApplicationModel==3.2.1
+# OCR do Windows (skills gravadas na tela) - mesma versão do winrt-runtime acima
+winrt-Windows.Media.Ocr==3.2.1
+winrt-Windows.Graphics.Imaging==3.2.1
+winrt-Windows.Storage.Streams==3.2.1
+winrt-Windows.Globalization==3.2.1

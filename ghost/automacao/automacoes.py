@@ -520,6 +520,80 @@ def _montar_skill(descricao, falar):
     falar("Montando a skill, um instante.")
     em_segundo_plano(_trabalho)
 
+def _ao_terminar_gravacao(falar):
+    def fim(r):
+        n = len(r["passos"])
+        if not n:
+            falar("Senhor, não gravei nenhum passo. Diga aprenda uma skill pela tela para tentar de novo.")
+            return
+        try:
+            from ghost.nucleo import painel
+            painel.abrir_janela(revisao=True)
+        except Exception:
+            pass
+        falar(f"Gravei {n} passo{'s' if n > 1 else ''}, senhor. A revisão está no painel. "
+              "Diga teste a skill, ou salve a skill como, e o nome.")
+    return fim
+
+
+def _numero(n):
+    m = re.search(r"\bpasso\s+(\d+|um|dois|tres|quatro|cinco|seis|sete|oito|nove|dez)\b", n)
+    if not m:
+        return None
+    v = m.group(1)
+    return int(v) if v.isdigit() else ["um", "dois", "tres", "quatro", "cinco", "seis", "sete", "oito", "nove", "dez"].index(v) + 1
+
+
+def _tratar_demonstracao(n, falar):
+    from ghost.automacao import demonstracao as demo
+    if tem(n, "pela tela", "olhando a tela", "vendo a tela", "por demonstracao", "vou te mostrar", "vou mostrar",
+           "grave uma skill", "gravar uma skill", "gravar skill", "grava uma skill") and \
+            re.search(r"\b(skill|habilidade|mostr\w*|grav\w*)\b", n):
+        demo.iniciar_gravacao(falar, _ao_terminar_gravacao(falar))
+        return True
+    if demo.gravando() and tem(n, "parar de gravar", "pare de gravar", "para de gravar", "terminei", "pode parar",
+                                 "fim da gravacao", "acabei"):
+        demo.parar_gravacao()
+        falar("Gravação encerrada. Montando os passos, um instante.")
+        return True
+    if not demo.rascunho():
+        return False
+    if tem(n, "teste a skill", "testar a skill", "testa a skill", "teste a gravacao", "testar skill"):
+        r = demo.rascunho()
+        falar("Testando, senhor. Não mexa no mouse; F10 interrompe.")
+        em_segundo_plano(lambda: demo.executar({"nome": "teste", "passos": r["passos"]}, falar,
+                                               lambda q: perguntar(q, falar), teste=True))
+        return True
+    m = re.search(r"\b(?:salv\w*|grav\w*)\s+(?:a\s+)?(?:skill|habilidade)\s+(?:como|com o nome(?: de)?|chamada)\s+(?P<nome>.+)$", n)
+    if m or tem(n, "salvar a skill", "salve a skill", "salva a skill"):
+        if m:
+            demo.definir_nome(m.group("nome"))
+        try:
+            s = demo.salvar()
+            falar(f"Skill {s['nome']} salva, senhor. Para usar, diga {s['gatilhos'][0]}.")
+        except ValueError as e:
+            falar(f"Senhor, {e}.")
+        return True
+    if tem(n, "descarte a skill", "descartar a skill", "descarta a skill", "apague a gravacao", "jogue fora a skill"):
+        demo.descartar()
+        falar("Gravação descartada, senhor.")
+        return True
+    k = _numero(n)
+    if k and re.search(r"\b(remov\w*|apag\w*|tir\w*|exclu\w*)\b", n):
+        falar(f"Passo {k} removido, senhor." if demo.remover_passo(k) else f"Senhor, não há passo {k} que eu possa remover.")
+        return True
+    if k and re.search(r"\b(muda|variavel|varia|pergunt\w*)\b", n):
+        falar(f"Certo: o passo {k} será perguntado na hora." if demo.marcar_variavel(k)
+              else f"Senhor, o passo {k} não é de digitação.")
+        return True
+    if tem(n, "mostre a revisao", "abrir a revisao", "abra a revisao", "revisar a skill", "revisao da skill"):
+        from ghost.nucleo import painel
+        painel.abrir_janela(revisao=True)
+        falar("A revisão está no painel, senhor.")
+        return True
+    return False
+
+
 def _tratar_skills(texto, n, falar):
     global _aguardando_descricao
     from ghost.ia import skills
@@ -529,16 +603,46 @@ def _tratar_skills(texto, n, falar):
         _aguardando_descricao = 0.0
         _montar_skill(texto, falar)
         return True
-    m = re.search(r"^(?:ghost\s+)?(?:aprend\w*|cri\w*|ensin\w*|cadastr\w*)\s+(?:uma\s+)?(?:nova\s+)?"
+    m = re.search(r"^(?:ghost\s+)?(?:(?:eu\s+)?(?:quero|queria|gostaria)\s+(?:que\s+)?(?:voce\s+|vc\s+)?|vamos\s+|pode\s+)?"
+                  r"(?:aprend\w*|cri\w*|ensin\w*|cadastr\w*)\s+(?:uma\s+)?(?:nova\s+)?"
                   r"(?:skill|habilidade|rotina automatica)\b[\s,:]*(?P<desc>.*)$", n)
     if m:
         desc_original = re.split(r"(?i)\b(?:skill|habilidade|rotina autom[aá]tica)\b[\s,:]*", texto, maxsplit=1)
         desc = desc_original[1].strip() if len(desc_original) > 1 else ""
         if len(desc.split()) < 4:
-            _aguardando_descricao = time.time()
-            falar("Pode descrever, senhor: o nome, a frase que vai disparar e os passos.")
+            def _como():
+                r = perguntar("Prefere me mostrar na tela ou descrever os passos, senhor?", falar, tempo=60)
+                if r is None:
+                    falar("Tudo bem, senhor.")
+                    return
+                if re.search(r"\b(mostr\w*|tela|grav\w*|ver|veja)\b", normalizar(r)):
+                    from ghost.automacao import demonstracao
+                    demonstracao.iniciar_gravacao(falar, _ao_terminar_gravacao(falar))
+                elif len(r.split()) >= 6:                        # já veio a descrição
+                    _montar_skill(r, falar)
+                else:
+                    global _aguardando_descricao
+                    _aguardando_descricao = time.time()
+                    falar("Pode descrever, senhor: o nome, a frase que vai disparar e os passos.")
+            em_segundo_plano(_como)
         else:
             _montar_skill(desc, falar)
+        return True
+    m = re.search(r"^(?:ghost\s+)?(?:mostr\w*|descrev\w*|expliqu\w*|como funciona)\s+(?:a\s+)?(?:skill|habilidade)\s+(?P<nome>.+)$", n)
+    if m:
+        alvo = skills.normalizar(m.group("nome"))
+        s = next((x for x in skills.carregar() if skills.normalizar(x["nome"]) == alvo), None) or \
+            next((x for x in skills.carregar() if alvo in skills.normalizar(x["nome"])), None)
+        if not s:
+            falar("Senhor, não encontrei essa skill.")
+            return True
+        if s.get("tipo") == "demonstracao":
+            from ghost.automacao import demonstracao
+            passos = [demonstracao.descrever(p) for p in s["passos"]]
+        else:
+            passos = [f"{p.get('ferramenta')} {p.get('args', {})}" for p in s["passos"]]
+        falar(f"A skill {s['nome']} tem {len(passos)} passos: " + "; ".join(f"{i}, {d}" for i, d in enumerate(passos[:8], 1))
+              + ("; e outros." if len(passos) > 8 else "."))
         return True
     if tem(n, "quais skills", "que skills", "lista de skills", "minhas skills", "quais habilidades"):
         lista = skills.carregar()
@@ -886,11 +990,46 @@ def _tratar_apps(n, falar):
 # -------------------------------------------------------------
 # PONTO DE ENTRADA
 # -------------------------------------------------------------
+_pergunta = None    # {"evento", "resposta", "t"}: uma skill esperando uma resposta livre do senhor
+CANCELAR = {"cancela", "cancelar", "pare", "parar", "esquece", "deixa", "deixa pra la", "nao"}
+
+
+def perguntar(pergunta, falar, tempo=120):
+    """Faz uma pergunta e ESPERA a próxima fala (voz, F9 ou celular). Devolve o texto ou None (cancelou/sem resposta)."""
+    global _pergunta
+    p = {"evento": threading.Event(), "resposta": None, "t": time.time()}
+    _pergunta = p
+    falar(pergunta)
+    try:
+        from ghost.voz import ativacao
+        ativacao.aguardar_comando(20)             # pode responder sem dizer "Ghost"
+    except Exception:
+        pass
+    p["evento"].wait(tempo)
+    if _pergunta is p:
+        _pergunta = None
+    return p["resposta"]
+
+
+def _tratar_pergunta(texto, n):
+    global _pergunta
+    p = _pergunta
+    if not p or p["evento"].is_set():
+        return False
+    _pergunta = None
+    curta = re.sub(r"\b(ghost|senhor)\b", "", n).strip()
+    p["resposta"] = None if curta in CANCELAR else texto.strip()
+    p["evento"].set()
+    return True
+
+
 def executar(texto, falar):
     """Tenta resolver o comando localmente. Retorna True se executou algo; False para mandar à IA."""
     n = normalizar(texto)
     return (
-        _tratar_confirmacao(n, falar)
+        _tratar_pergunta(texto, n)
+        or _tratar_confirmacao(n, falar)
+        or _tratar_demonstracao(n, falar)
         or _tratar_skills(texto, n, falar)
         or _tratar_pessoas(texto, n, falar)
         or _tratar_resumo(texto, n, falar)

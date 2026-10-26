@@ -63,6 +63,16 @@ Aberta fora do Ghost (sem a chave), a mesma página roda uma demonstração com 
   (`nucleo/canal.py`) para o celular; `automacoes.comando_sensivel()` faz WhatsApp, digitar, teclas, fechar, desligar e skills
   pedirem confirmação; e qualquer ferramenta de AÇÃO pedida pela IA também pede (mesma regra do conteúdo externo).
 
+## Skills gravadas na tela
+
+`automacao/demonstracao.py` grava cliques, digitação, teclas e rolagem (pynput) com uma foto da janela em cada clique
+(`visao/olho.py`, PrintWindow). Ao parar, o OCR do Windows lê cada foto e guarda o texto do clique ("Incluir") ou o
+rótulo do campo ("Cliente"), um recorte de imagem e a posição relativa. Na execução, para cada clique: acha/foca a janela
+(pelo programa e nome base do título; se não estiver aberta, tenta abrir pelo menu Iniciar), espera o texto aparecer
+(OCR a cada ~0,8 s, até 25 s), senão procura o recorte (OpenCV), senão a posição relativa (só se a janela tiver o mesmo
+tamanho). Não achou: para e avisa. Digitação depois de clicar perto de "Senha" não é gravada (o Ghost pede na hora);
+digitação marcada como variável vira pergunta antes de começar (`automacoes.perguntar`). Fotos em `dados/skills/<id>/`.
+
 ## Proteções
 
 | Risco | Proteção | Onde |

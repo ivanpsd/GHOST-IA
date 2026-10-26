@@ -38,6 +38,7 @@ _trava = threading.Lock()
 _token = secrets.token_urlsafe(16)    # outra página aberta no navegador não consegue chamar o painel
 _servidor = None
 _janela = None                        # processo do Edge
+_falar = None
 _inicio = time.time()
 
 _estado = {"nome": "espera", "texto": "", "desde": time.time()}
@@ -423,6 +424,25 @@ class _Rotas(BaseHTTPRequestHandler):
                 return self._responder(200, html, "text/html; charset=utf-8")
             if rota == "estado":
                 return self._responder(200, foto())
+            if rota == "skill/rascunho":
+                from ghost.automacao import demonstracao as demo
+                r = demo.rascunho()
+                if not r:
+                    return self._responder(200, {"rascunho": None, "gravando": demo.gravando()})
+                passos = [{"n": i, "texto": demo.descrever(p), "acao": p["acao"], "imagem": bool(p.get("recorte")),
+                           "variavel": bool(p.get("variavel")), "segredo": bool(p.get("segredo"))}
+                          for i, p in enumerate(r["passos"], 1)]
+                return self._responder(200, {"rascunho": {"nome": r["nome"], "gatilho": r["gatilho"], "passos": passos},
+                                             "gravando": demo.gravando()})
+            if rota == "skill/imagem":
+                from ghost.automacao import demonstracao as demo
+                r = demo.rascunho()
+                n = int((parse_qs(urlparse(self.path).query).get("n") or ["0"])[0])
+                if not r or not 1 <= n <= len(r["passos"]) or not r["passos"][n - 1].get("recorte"):
+                    return self._responder(404, {"erro": "sem imagem"})
+                nome = os.path.basename(r["passos"][n - 1]["recorte"])
+                with open(os.path.join(demo.PASTA_RASCUNHO, nome), "rb") as arq:
+                    return self._responder(200, arq.read(), "image/png")
             if rota == "celular/situacao":
                 from ghost.nucleo import celular
                 return self._responder(200, celular.situacao())
@@ -438,6 +458,37 @@ class _Rotas(BaseHTTPRequestHandler):
         try:
             if rota == "exportar":
                 return self._responder(200, {"arquivo": exportar()})
+            if rota == "skill/acao":
+                from ghost.automacao import demonstracao as demo
+                n = int(self.headers.get("Content-Length") or 0)
+                j = json.loads(self.rfile.read(min(n, 10_000)) or b"{}") if n else {}
+                acao, k = j.get("acao"), int(j.get("n") or 0)
+                if acao == "remover":
+                    demo.remover_passo(k)
+                elif acao == "variavel":
+                    demo.marcar_variavel(k)
+                elif acao == "nome":
+                    demo.definir_nome(str(j.get("nome") or ""), str(j.get("gatilho") or "") or None)
+                elif acao == "descartar":
+                    demo.descartar()
+                elif acao == "salvar":
+                    if j.get("nome"):
+                        demo.definir_nome(str(j["nome"]), str(j.get("gatilho") or "") or None)
+                    s = demo.salvar()
+                    evento(f"Skill gravada salva: {s['nome']}", "acao")
+                    return self._responder(200, {"ok": True, "nome": s["nome"], "gatilho": s["gatilhos"][0]})
+                elif acao == "testar":
+                    r = demo.rascunho()
+                    if not r:
+                        return self._responder(400, {"erro": "não há skill gravada"})
+                    if not _falar:
+                        return self._responder(503, {"erro": "o Ghost ainda está iniciando"})
+                    from ghost.automacao import automacoes
+                    automacoes.em_segundo_plano(lambda: demo.executar({"nome": "teste", "passos": r["passos"]}, _falar,
+                                                                      lambda q: automacoes.perguntar(q, _falar), teste=True))
+                else:
+                    return self._responder(400, {"erro": "ação desconhecida"})
+                return self._responder(200, {"ok": True})
             from ghost.nucleo import celular
             if rota == "celular/ativar":
                 return self._responder(200, celular.ativar())
@@ -451,6 +502,8 @@ class _Rotas(BaseHTTPRequestHandler):
         except Exception as e:
             from ghost.nucleo import celular
             if isinstance(e, celular.ErroCelular):
+                return self._responder(400, {"erro": str(e)})
+            if isinstance(e, ValueError):            # ex.: "falta o nome" ao salvar a skill
                 return self._responder(400, {"erro": str(e)})
             evento(f"Painel: {rota} falhou ({e})", "erro")
             return self._responder(500, {"erro": str(e)})
@@ -469,16 +522,17 @@ def _edge():
     return shutil.which("msedge")
 
 
-def abrir_janela(mostrar_qr=False):
-    """Abre a janela do painel (Edge em modo aplicativo). mostrar_qr=True já abre com o QR code do celular."""
+def abrir_janela(mostrar_qr=False, revisao=False):
+    """Abre a janela do painel (Edge em modo aplicativo). mostrar_qr: já com o QR do celular;
+    revisao: já com a revisão da skill gravada."""
     global _janela
     if not _servidor:
         return False
-    url = endereco() + ("&qr=1" if mostrar_qr else "")
+    url = endereco() + ("&qr=1" if mostrar_qr else "") + ("&revisao=1" if revisao else "")
     if _janela and _janela.poll() is None:
-        if not mostrar_qr:
+        if not (mostrar_qr or revisao):
             return True
-        _janela.terminate()                      # reabre já com o QR na tela
+        _janela.terminate()                      # reabre já com o QR / a revisão na tela
     exe = _edge()
     if not exe:
         import webbrowser
@@ -500,9 +554,12 @@ def fechar_janela():
     _janela = None
 
 
-def iniciar(abrir=None):
-    """Liga o servidor local e a coleta. abrir=None segue a preferência 'painel_ao_iniciar' (padrão: sim)."""
-    global _servidor
+def iniciar(abrir=None, falar=None):
+    """Liga o servidor local e a coleta. abrir=None segue a preferência 'painel_ao_iniciar' (padrão: sim).
+    falar: para o painel poder falar (ex.: testar uma skill gravada pelo botão)."""
+    global _servidor, _falar
+    if falar:
+        _falar = falar
     if _servidor:
         return
     try:

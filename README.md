@@ -33,6 +33,7 @@ Assistente pessoal para Windows, em Python: você diz **"Ghost, …"** (ou segur
 | Memória | Aprende fatos e padrões de comportamento automaticamente (`dados\memoria_aprendizado.json`) |
 | Conversa contínua | Lembra as últimas 12 trocas (inclusive comandos executados); recomeça após 45 min parado |
 | Skills por voz | "aprenda uma nova skill": a IA monta os passos com as ferramentas existentes e só salva com o seu "sim" |
+| Skills pela tela | "aprenda uma skill pela tela": o senhor faz a tarefa (Protheus, Excel, qualquer programa), diz "parar de gravar" e revisa no painel. Ele repete achando os botões pelo **texto** (OCR do Windows, sem internet) e pela imagem; para se não achar; senha nunca é gravada; valores que mudam viram pergunta |
 | Rotina | Observa só o programa/janela em foco (sem captura de tela), resume padrões e sugere skills |
 | Visão | "o que é isso na minha mão?": tira uma foto sob demanda e descreve o objeto (Gemini; detector local de reserva). Não identifica pessoas |
 | Saudação | Frase de cumprimento configurável por voz (`dados\preferencias.json`) |
@@ -77,7 +78,8 @@ na mesma resposta (digitar, apertar teclas, WhatsApp, abrir sites...) só aconte
 | "mande uma mensagem para Deborah dizendo bom dia" | WhatsApp |
 | "digite bom dia equipe" / "aperte enter" | Ditado e teclas |
 | "outro monitor" / "um monitor por vez" | Mouse em dois monitores |
-| "aprenda uma nova skill" / "quais skills você sabe?" / "esqueça a skill X" | Skills ensinadas por voz |
+| "aprenda uma nova skill" / "quais skills você sabe?" / "esqueça a skill X" / "mostre a skill X" | Skills ensinadas por voz |
+| "aprenda uma skill pela tela" → "parar de gravar" (ou F10) → "teste a skill" / "remova o passo 3" / "o passo 4 muda" / "salve a skill como …" | Skills gravadas na tela (F10 também interrompe a execução) |
 | "o que eu fiz hoje?" / "ativar/desativar observação da rotina" | Rotina de uso do PC |
 | "esta é a Deborah, minha líder..." / "o que você sabe sobre a Deborah?" | Fichas de pessoas |
 | "aqui é o Gustavo" / "aqui é o Ivan" | Quem está falando (por declaração) |

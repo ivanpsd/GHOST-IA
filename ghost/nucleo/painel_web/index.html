@@ -84,6 +84,24 @@ button.secundario:focus-visible { outline: 2px solid var(--brasa); outline-offse
 .codigo-par b { font: 600 30px var(--f-numero); letter-spacing: .18em; color: var(--ouro); }
 .codigo-par .validade { font: 12px var(--f-numero); color: var(--apagado); }
 #aparelhos button { justify-self: end; }
+.largo-modal { width: min(860px, 100%); }
+.nota-modal { margin: 0; color: var(--apagado); font-style: italic; }
+.passos-skill { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; max-height: 46vh; overflow-y: auto; }
+.passos-skill li { display: grid; grid-template-columns: 2em 132px minmax(0, 1fr) auto; gap: 12px; align-items: center;
+  padding: 8px; border: 1px solid var(--fio); border-radius: 6px; background: rgba(0,0,0,.18); }
+.passos-skill .num { font: 600 14px var(--f-numero); color: var(--ouro); text-align: right; }
+.passos-skill .mini { width: 132px; height: 58px; border-radius: 4px; background: #000; object-fit: contain; }
+.passos-skill .sem-mini { width: 132px; height: 58px; border-radius: 4px; border: 1px dashed var(--fio-forte); display: grid;
+  place-items: center; color: var(--apagado); font: 12px var(--f-numero); }
+.passos-skill .acoes { display: flex; gap: 6px; }
+.passos-skill .acoes button { padding: 5px 9px; font-size: 11px; }
+.passos-skill .tag { font: 600 10px var(--f-titulo); letter-spacing: .1em; color: var(--brasa); margin-left: 6px; }
+.campos-skill { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.campos-skill label { display: grid; gap: 4px; font-size: 13px; color: var(--apagado); }
+.campos-skill input { font: 15px var(--f-texto); color: var(--cinza-quente); background: var(--obsidiana); border: 1px solid var(--fio-forte);
+  border-radius: 4px; padding: 8px 10px; }
+@media (max-width: 640px) { .passos-skill li { grid-template-columns: 2em minmax(0, 1fr); } .passos-skill .mini, .passos-skill .sem-mini { display: none; }
+  .passos-skill .acoes { grid-column: 2; } .campos-skill { grid-template-columns: minmax(0, 1fr); } }
 #aparelhos li { grid-template-columns: minmax(0, 1fr) auto; }
 .endereco { margin: 0; font: 13px var(--f-numero); color: var(--apagado); overflow-wrap: anywhere; }
 .modal-botoes { display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
@@ -196,6 +214,7 @@ main {
     <span class="pilula" id="pilula-modo" style="color: var(--apagado)"><span>modo normal</span></span>
     <span class="cabeca-info">ligado há <b id="ligado">—</b></span>
     <span class="cabeca-info"><b id="relogio">--:--</b></span>
+    <button class="secundario" id="abrir-skill" type="button">Skills</button>
     <button class="secundario" id="abrir-celular" type="button">Celular</button>
     <button class="exportar" id="exportar" type="button">Exportar indicadores</button>
   </header>
@@ -297,6 +316,24 @@ main {
   </main>
 </div>
 <div class="brinde" id="brinde" role="status" hidden></div>
+
+<div class="modal" id="modal-skill" hidden role="dialog" aria-modal="true" aria-labelledby="titulo-skill">
+  <div class="modal-caixa tabua largo-modal">
+    <h2 id="titulo-skill">Skill gravada · revisão</h2>
+    <p class="nota-modal" id="skill-estado">Confira os passos. “Variável” faz o Ghost perguntar o valor na hora de rodar.</p>
+    <ol class="passos-skill" id="passos-skill"></ol>
+    <div class="campos-skill">
+      <label>Nome da skill<input id="skill-nome" maxlength="60" placeholder="Ex.: Relatório Débora"></label>
+      <label>Frase que dispara<input id="skill-gatilho" maxlength="80" placeholder="Igual ao nome se ficar vazio"></label>
+    </div>
+    <div class="modal-botoes">
+      <button class="secundario" id="skill-descartar" type="button">Descartar</button>
+      <button class="secundario" id="skill-testar" type="button">Testar agora</button>
+      <button class="exportar" id="skill-salvar" type="button">Salvar skill</button>
+      <button class="secundario" id="skill-fechar" type="button">Fechar</button>
+    </div>
+  </div>
+</div>
 
 <div class="modal" id="modal-celular" hidden role="dialog" aria-modal="true" aria-labelledby="titulo-celular">
   <div class="modal-caixa tabua">
@@ -571,8 +608,81 @@ main {
   });
   $("fechar-celular").addEventListener("click", () => { modal.hidden = true; });
   modal.addEventListener("click", (e) => { if (e.target === modal) modal.hidden = true; });
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape") modal.hidden = true; });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") { modal.hidden = true; if (typeof fecharSkill === "function") fecharSkill(); } });
   if (new URLSearchParams(location.search).get("qr") === "1") abrirCelular();
+
+  /* ---------- revisão da skill gravada na tela ---------- */
+  const modalSkill = $("modal-skill");
+  let timerSkill = null;
+  const DEMO_SKILL = { nome: "", gatilho: "", passos: [
+    { n: 1, texto: "Clicar em “Pedidos de Venda” (TOTVS Webapp)", acao: "clicar", imagem: false },
+    { n: 2, texto: "Clicar em “Incluir” (TOTVS Webapp)", acao: "clicar", imagem: false },
+    { n: 3, texto: "Clicar em “Cliente” (TOTVS Webapp)", acao: "clicar", imagem: false },
+    { n: 4, texto: "Digitar “000371”", acao: "digitar", imagem: false },
+    { n: 5, texto: "Apertar tab", acao: "tecla", imagem: false },
+    { n: 6, texto: "Clicar em “Salvar” (TOTVS Webapp)", acao: "clicar", imagem: false } ] };
+  async function skillAcao(corpo) {
+    if (DEMO) {
+      if (corpo.acao === "remover") DEMO_SKILL.passos = DEMO_SKILL.passos.filter((p) => p.n !== corpo.n).map((p, i) => ({ ...p, n: i + 1 }));
+      if (corpo.acao === "variavel") { const p = DEMO_SKILL.passos.find((x) => x.n === corpo.n); if (p) { p.variavel = true; p.texto = "Digitar “Cliente” (perguntado na hora)"; } }
+      if (corpo.acao === "salvar") return { ok: true, nome: corpo.nome || "Exemplo", gatilho: corpo.gatilho || corpo.nome || "Exemplo" };
+      if (corpo.acao === "testar") brinde("Demonstração: no Ghost, ele repete os passos na tela e para se não achar algo.");
+      return { ok: true };
+    }
+    const r = await fetch(`skill/acao?t=${encodeURIComponent(TOKEN)}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(corpo) });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.erro || r.status);
+    return j;
+  }
+  function desenharSkill(r) {
+    const ol = $("passos-skill"); ol.replaceChildren();
+    if (!r) { ol.append(el("li", "vazio", "Nenhuma skill gravada esperando revisão. Diga “Ghost, aprenda uma skill pela tela”.")); return; }
+    if (document.activeElement !== $("skill-nome") && !$("skill-nome").value) $("skill-nome").value = r.nome || "";
+    for (const p of r.passos) {
+      const li = document.createElement("li");
+      li.append(el("span", "num", `${p.n}.`));
+      if (p.imagem && !DEMO) { const img = document.createElement("img"); img.className = "mini"; img.alt = ""; img.src = `skill/imagem?t=${encodeURIComponent(TOKEN)}&n=${p.n}&v=${r.passos.length}`; li.append(img); }
+      else li.append(el("span", "sem-mini", p.acao));
+      const txt = el("span", "oque", p.texto);
+      if (p.segredo) txt.append(el("span", "tag", "SENHA"));
+      if (p.variavel) txt.append(el("span", "tag", "VARIÁVEL"));
+      li.append(txt);
+      const ac = document.createElement("span"); ac.className = "acoes";
+      if (p.acao === "digitar" && !p.segredo && !p.variavel) {
+        const bv = el("button", "secundario", "Variável"); bv.type = "button";
+        bv.addEventListener("click", async () => { await skillAcao({ acao: "variavel", n: p.n }); atualizarSkill(); });
+        ac.append(bv);
+      }
+      const br = el("button", "secundario", "Remover"); br.type = "button";
+      br.addEventListener("click", async () => { await skillAcao({ acao: "remover", n: p.n }); atualizarSkill(); });
+      ac.append(br); li.append(ac); ol.append(li);
+    }
+  }
+  async function atualizarSkill() {
+    if (DEMO) { desenharSkill(DEMO_SKILL); return; }
+    try {
+      const r = await (await fetch(`skill/rascunho?t=${encodeURIComponent(TOKEN)}`, { cache: "no-store" })).json();
+      $("skill-estado").textContent = r.gravando ? "Gravando… faça a tarefa e diga “parar de gravar” (ou F10)."
+        : "Confira os passos. “Variável” faz o Ghost perguntar o valor na hora de rodar.";
+      desenharSkill(r.rascunho);
+    } catch (e) { $("skill-estado").textContent = `Não consegui ler a revisão: ${e.message}`; }
+  }
+  function abrirSkill() { modalSkill.hidden = false; atualizarSkill(); clearInterval(timerSkill); timerSkill = setInterval(atualizarSkill, 2500); }
+  function fecharSkill() { modalSkill.hidden = true; clearInterval(timerSkill); }
+  $("skill-fechar").addEventListener("click", fecharSkill);
+  $("abrir-skill").addEventListener("click", abrirSkill);
+  $("skill-testar").addEventListener("click", async () => {
+    try { await skillAcao({ acao: "testar" }); brinde("Testando: não mexa no mouse. F10 interrompe."); } catch (e) { brinde(`Não consegui testar: ${e.message}`); }
+  });
+  $("skill-salvar").addEventListener("click", async () => {
+    try {
+      const j = await skillAcao({ acao: "salvar", nome: $("skill-nome").value.trim(), gatilho: $("skill-gatilho").value.trim() });
+      fecharSkill(); brinde(`Skill “${j.nome}” salva. Para usar, diga “${j.gatilho}”.`, 9000);
+    } catch (e) { brinde(`Não salvei: ${e.message}`); }
+  });
+  $("skill-descartar").addEventListener("click", async () => { await skillAcao({ acao: "descartar" }); fecharSkill(); brinde("Gravação descartada."); });
+  modalSkill.addEventListener("click", (e) => { if (e.target === modalSkill) fecharSkill(); });
+  if (new URLSearchParams(location.search).get("revisao") === "1") abrirSkill();
 
   if (!DEMO) { buscar(); setInterval(buscar, 1000); return; }
 
