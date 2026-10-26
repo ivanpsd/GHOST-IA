@@ -603,7 +603,7 @@ def _tratar_demonstracao(texto, n, falar):
 def _quer_mostrar(n):
     """Resposta a 'mostrar na tela ou descrever?' que escolhe a tela. Aceita 'tela' grudada em outra palavra
     (a voz já transcreveu 'na tela' como 'Renatella')."""
-    return bool(re.search(r"\b(mostr\w*|grav\w*|ver|veja|olh\w*|observ\w*|assist\w*)\b", n) or "tela" in n)
+    return bool(re.search(r"\b(mostr\w*|grav\w*|ver|veja|olh\w*|observ\w*|assist\w*)\b|tel+a", n))
 
 
 def _tratar_skills(texto, n, falar):
