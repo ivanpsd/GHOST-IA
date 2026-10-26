@@ -29,6 +29,8 @@ _falar = _ocupado = None
 _silencio_ate = 0.0
 _fonte = None                          # "winrt" ou "banco"
 _erro_avisado = False
+REPETIR_APOS_S = 180                   # mesmo app e mesmo remetente: não repete o aviso antes disso
+_ultimo_anuncio = {}
 
 
 def _pref(chave, padrao):
@@ -161,10 +163,30 @@ def _anunciar():
         return
     if _ocupado and _ocupado():
         return                                     # espera você terminar de falar com ele
+    agora, novos = time.time(), []
     while _pendentes:
         item = _pendentes.popleft()
-        if time.time() - item["t"] < 120 and _falar:
-            _falar(_frase(item["app"], item["textos"]))
+        if agora - item["t"] >= 120:
+            continue
+        chave = (item["app"], (item["textos"] or [""])[0])
+        if agora - _ultimo_anuncio.get(chave, 0) < REPETIR_APOS_S:
+            _ultimo_anuncio[chave] = agora           # conversa animada no mesmo grupo: não fala de novo
+            continue
+        _ultimo_anuncio[chave] = agora
+        novos.append(item)
+    if not novos or not _falar:
+        return
+    if len(novos) == 1:
+        _falar(_frase(novos[0]["app"], novos[0]["textos"]))
+        return
+    grupos = {}
+    for item in novos:                             # várias de uma vez: uma frase só
+        quem = (item["textos"] or [""])[0]
+        grupos.setdefault(item["app"], [])
+        if quem and quem not in grupos[item["app"]]:
+            grupos[item["app"]].append(quem)
+    partes = [f"{app}: {', '.join(q[:3])}" + (" e outros" if len(q) > 3 else "") if q else app for app, q in grupos.items()]
+    _falar(f"Senhor, {len(novos)} notificações. " + "; ".join(partes) + ".")
 
 
 def listar(quantidade=5, app=""):

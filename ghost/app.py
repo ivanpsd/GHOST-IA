@@ -122,6 +122,7 @@ from groq import Groq
 
 from ghost.automacao import automacoes
 from ghost.ia import conversa, ferramentas, memoria, memoria_longa, pessoas, tarefas
+from ghost.ia.filtro_fala import FiltroFala
 from ghost.nucleo import canal, celular, hud, painel, preferencias, sistema
 from ghost.servicos import alertas, lembretes, notificacoes, resumo, rotina
 from ghost.voz import ativacao, palavra, som
@@ -438,6 +439,8 @@ SYSTEM_INSTRUCTION = (
     "Quando ele pedir uma ação (abrir ou fechar aplicativo, abrir site, pesquisar, digitar, apertar teclas, "
     "mandar mensagem, volume), CHAME A FERRAMENTA em vez de responder com texto; "
     "nunca diga que não é capaz de algo que uma ferramenta faz. "
+    "'Painel' sem outro nome é o painel do próprio Ghost: chame comando_ghost com a frase 'abrir painel'. "
+    "Faça no máximo UMA pergunta por resposta e nunca repita a mesma pergunta com outras palavras. "
     "Para informações do computador (disco, memória, IP, programas abertos, data e hora) use consultar_sistema. "
     "Você LÊ as agendas e os e-mails do usuário, de trabalho e pessoais (somente leitura), com consultar_agenda e "
     "consultar_emails; se ele disser 'pessoal' ou 'do trabalho', passe isso em 'conta'; "
@@ -518,7 +521,8 @@ def _stream_groq(modelo, mensagens, ao_receber_frase, estado, usar_ferramentas):
         print()
     return estado["completo"].strip(), [chamadas[k] for k in sorted(chamadas)]
 
-RODADAS_FERRAMENTAS = 4   # ex.: ver a estrutura da planilha -> calcular -> responder
+RODADAS_FERRAMENTAS = 4
+MAX_FRASES_FALADAS = 8     # resposta falada nunca passa disso (o resto fica no log)   # ex.: ver a estrutura da planilha -> calcular -> responder
 
 def _executar_ferramentas(modelo, mensagens, chamadas, ao_receber_frase, turno):
     """Executa as ferramentas pedidas pela IA. Se alguma devolver dados (ex.: estrutura de planilha,
@@ -650,8 +654,12 @@ def processar_resposta_em_tempo_real(comando, t_inicio=None):
     # IA em streaming: cada frase vai para a voz assim que fica pronta
     t0 = t_inicio or time.perf_counter()
     primeira = []
+    filtro = FiltroFala(MAX_FRASES_FALADAS)      # trava contra a IA "em loop" (mesma pergunta várias vezes)
 
     def ao_receber_frase(frase):
+        frase = filtro.aceitar(frase)
+        if not frase:
+            return
         if not primeira:
             primeira.append(time.perf_counter() - t0)
         falar_frase_assincrona(frase)
@@ -778,7 +786,7 @@ def _tratar_modo(texto, item):
         return True                                # dormindo: ignora o resto
     return False
 
-NOME_NO_INICIO = re.compile(r"^\W*(?:ei|hey|oi|ô|o)?\W*(?:ghost|gost|ghosts|gosti|góst)\b", re.IGNORECASE)
+NOME_NO_INICIO = re.compile(r"^\W*(?:ei|hey|oi|ô|o)?\W*(?:ghost|gost|ghosts|gosti|goste|góst)\b", re.IGNORECASE)
 fila_comandos = queue.Queue()   # comandos de voz vindos do F9 ou da ativação por voz
 
 def _escutar_f9():
@@ -935,7 +943,7 @@ def iniciar_ghost():
             parar_fala()
 
             # Remove o nome "Ghost" da frase, mantendo maiúsculas/acentos (usados no WhatsApp)
-            comando = re.sub(r'\b(ghost|gost)\b[,.!?]?', '', texto, flags=re.IGNORECASE).strip(" ,.!?")
+            comando = re.sub(r'\b(ghost|gost|goste)\b[,.!?]?', '', texto, flags=re.IGNORECASE).strip(" ,.!?")
 
             if not comando:
                 falar_imediato("Sim, senhor?")

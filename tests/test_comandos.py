@@ -81,7 +81,7 @@ def test_confirmacao_sim_nao(auto):
 
 @pytest.mark.parametrize("frase,esperado", [
     ("ghost abrir painel", "abrir"), ("mostra o painel", "abrir"), ("fecha o painel", "fechar"),
-    ("abre seus indicadores", "abrir"), ("exportar indicadores", "exportar"),
+    ("abre seus indicadores", "abrir"), ("exportar indicadores", "exportar"), ("eu falei abrir painel", "abrir"),
     ("abra o painel de controle", None), ("me mostra os indicadores de produção da planilha de outubro", None),
 ])
 def test_comandos_do_painel(auto, monkeypatch, frase, esperado):

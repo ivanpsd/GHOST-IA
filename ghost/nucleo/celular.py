@@ -252,8 +252,17 @@ def sair(token):
 # 3. CAMINHO DE REDE: TAILSCALE OU REDE LOCAL
 # =============================================================
 def _rodar(args, timeout=15):
-    r = subprocess.run(args, capture_output=True, timeout=timeout, creationflags=CREATE_NO_WINDOW if os.name == "nt" else 0)
-    return r.returncode, (r.stdout + r.stderr).decode("utf-8", "replace")
+    """(código, saída). Se o programa ficar esperando (ex.: "tailscale serve" aguardando você ativar o recurso
+    no site), encerra depois de `timeout` e devolve (None, o que ele escreveu até ali)."""
+    p = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                         creationflags=CREATE_NO_WINDOW if os.name == "nt" else 0)
+    try:
+        saida, _ = p.communicate(timeout=timeout)
+        return p.returncode, (saida or b"").decode("utf-8", "replace")
+    except subprocess.TimeoutExpired:
+        p.kill()
+        saida, _ = p.communicate()
+        return None, (saida or b"").decode("utf-8", "replace")
 
 
 def tailscale_exe():
@@ -287,15 +296,18 @@ def tailscale_nome():
 def _tailscale_publicar(porta):
     """Publica 127.0.0.1:<porta> em https://<nome>.ts.net (só para a sua rede Tailscale)."""
     exe = tailscale_exe()
+    saida = ""
     for args in ([exe, "serve", "--bg", "--https=443", f"http://127.0.0.1:{porta}"], [exe, "serve", "--bg", str(porta)]):
-        codigo, saida = _rodar(args, timeout=30)
+        codigo, saida = _rodar(args, timeout=12)
         if codigo == 0:
             return True, ""
-        if "login.tailscale.com" in saida or "https://" in saida:
-            link = next((p for p in saida.split() if p.startswith("https://")), "")
-            return False, ("O Tailscale pede para ligar os certificados HTTPS na sua conta (uma vez só): "
-                           f"abra {link} e clique em Enable, depois peça o QR de novo.")
-    return False, f"O Tailscale não aceitou publicar o Ghost: {saida.strip()[:200]}"
+        link = next((p for p in saida.split() if p.startswith("https://login.tailscale.com")), "")
+        if link:          # 1ª vez: o recurso "Serve"/HTTPS precisa ser ligado na conta (o comando fica esperando)
+            return False, ("falta ligar o recurso de acesso seguro do Tailscale, uma vez só. "
+                           f"Abra {link} , clique em Enable e depois peça o QR de novo.")
+        if codigo is None:
+            break
+    return False, f"o Tailscale não aceitou publicar o Ghost ({' '.join(saida.split())[:160] or 'sem resposta'})."
 
 
 def _tailscale_despublicar():

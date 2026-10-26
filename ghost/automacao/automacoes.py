@@ -717,9 +717,12 @@ def _tratar_hud(n, falar):
             hud.mostrar(True); falar("Faixa visível, senhor."); return True
     # a TELA de indicadores (só a DO GHOST: "abra o painel de controle" é do Windows)
     outro_painel = re.search(r"\bpainel d[aeo]s?\b(?!\s+ghost)", n)          # "painel de controle", "painel da produção"
-    if not outro_painel and (tem(n, "painel do ghost", "seu painel", "tela de indicadores", "seus indicadores",
-                                 "indicadores do ghost")
-                             or (len(n.split()) <= 4 and tem(n, "painel", "indicadores"))):
+    n_painel = re.sub(r"^(?:(?:eu|ja|so)\s+)*(?:falei|disse|pedi|mandei)\s+(?:para\s+|pra\s+)?", "", n)  # "eu falei abrir painel"
+    if not outro_painel and (tem(n_painel, "painel do ghost", "seu painel", "tela de indicadores", "seus indicadores",
+                                 "indicadores do ghost", "abrir painel", "abrir o painel", "abre o painel", "abra o painel",
+                                 "abre painel", "abra painel", "mostrar o painel", "mostra o painel", "fechar o painel",
+                                 "fecha o painel", "fechar painel")
+                             or (len(n_painel.split()) <= 4 and tem(n_painel, "painel", "indicadores"))):
         from ghost.nucleo import painel
         if re.search(r"\b(escond\w*|ocult\w*|deslig\w*|fech\w*)\b", n):
             painel.fechar_janela(); falar("Painel fechado, senhor."); return True
