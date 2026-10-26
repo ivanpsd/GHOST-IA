@@ -121,7 +121,7 @@ from google import genai
 from groq import Groq
 
 from ghost.automacao import automacoes
-from ghost.ia import contexto, conversa, ferramentas, memoria, memoria_longa, pessoas, tarefas
+from ghost.ia import contexto, conversa, ferramentas, memoria, memoria_longa, pessoas, provedores, tarefas
 from ghost.ia.filtro_fala import FiltroFala
 from ghost.nucleo import canal, celular, hud, painel, preferencias, sistema
 from ghost.servicos import alertas, lembretes, notificacoes, resumo, rotina
@@ -401,6 +401,8 @@ def _iniciar_clientes():
     # se o Groq travar (já medimos 14 s), desiste em 6 s sem resposta e passa para o modelo reserva
     client_groq = Groq(api_key=groq_key, timeout=httpx.Timeout(6.0, connect=3.0), max_retries=0)
     client_groq_fundo = Groq(api_key=groq_key, timeout=60.0)   # memória/rotina/padrões: sem pressa
+    ativos = provedores.iniciar(client_groq)
+    print(f"[IA]: provedores ligados: {', '.join(ativos)}")
 
 
 def _contar_requisicao():
@@ -493,13 +495,16 @@ def _separar_frases(buffer, primeira=False):
         frases.append(buffer[:m.end()].strip())
         buffer = buffer[m.end():]
 
-def _stream_groq(modelo, mensagens, ao_receber_frase, estado, usar_ferramentas):
-    """Uma chamada em streaming. Fala o texto frase a frase e junta as chamadas de ferramenta.
-    Retorna (texto, chamadas)."""
-    extra = {"tools": ferramentas.TOOLS, "tool_choice": "auto"} if usar_ferramentas else {}
-    stream = client_groq.chat.completions.create(
-        model=modelo, messages=mensagens, temperature=0.1, max_tokens=1024,
-        reasoning_effort=ESFORCO_RACIOCINIO, stream=True, **extra)
+def _stream_groq(rota, mensagens, ao_receber_frase, estado, usar_ferramentas):
+    """Uma chamada em streaming. rota = (provedor, modelo). usar_ferramentas: lista de ferramentas (ou vazio).
+    Fala o texto frase a frase e junta as chamadas de ferramenta. Retorna (texto, chamadas)."""
+    prov, modelo = rota
+    if usar_ferramentas is True:
+        usar_ferramentas = ferramentas.TOOLS
+    extra = {"tools": usar_ferramentas, "tool_choice": "auto"} if usar_ferramentas else {}
+    extra.update(provedores.parametros(prov, modelo, ESFORCO_RACIOCINIO))
+    stream = provedores.cliente(prov).chat.completions.create(
+        model=modelo, messages=mensagens, temperature=0.1, max_tokens=1024, stream=True, **extra)
     chamadas = {}
     for chunk in stream:
         if not chunk.choices:
@@ -536,7 +541,7 @@ def _stream_groq(modelo, mensagens, ao_receber_frase, estado, usar_ferramentas):
 RODADAS_FERRAMENTAS = 4
 MAX_FRASES_FALADAS = 8     # resposta falada nunca passa disso (o resto fica no log)   # ex.: ver a estrutura da planilha -> calcular -> responder
 
-def _executar_ferramentas(modelo, mensagens, chamadas, ao_receber_frase, turno):
+def _executar_ferramentas(rota, mensagens, chamadas, ao_receber_frase, turno):
     """Executa as ferramentas pedidas pela IA. Se alguma devolver dados (ex.: estrutura de planilha,
     espaço em disco), devolve à IA, que pode pedir outra ferramenta ou responder em voz.
     Proteção: depois que a IA leu conteúdo de FORA (e-mail, agenda, planilha, câmera...), qualquer
@@ -575,22 +580,25 @@ def _executar_ferramentas(modelo, mensagens, chamadas, ao_receber_frase, turno):
         msgs += [{"role": "tool", "tool_call_id": c["id"] or f"call_{rodada}_{i}", "content": r}
                  for i, (c, r) in enumerate(resultados)]
         ultima = rodada == RODADAS_FERRAMENTAS - 1
-        texto, chamadas, modelo = _continuar(modelo, msgs, ao_receber_frase, usar_ferramentas=not ultima)
+        texto, chamadas, rota = _continuar(rota, msgs, ao_receber_frase,
+                                           usar_ferramentas=False if ultima else turno.get("tools", True))
         if not chamadas:
             return texto or f"[ações executadas] {resumo}"
     return f"[ações executadas] {resumo}"
 
-def _continuar(modelo, msgs, ao_receber_frase, usar_ferramentas):
-    """Resposta depois das ferramentas. O plano gratuito do Groq limita TOKENS POR MINUTO por modelo e esta é a 2ª
-    chamada do mesmo pedido: se o modelo estourar o limite (429) ou falhar, usa o outro modelo do Groq e, por fim,
+def _continuar(rota, msgs, ao_receber_frase, usar_ferramentas):
+    """Resposta depois das ferramentas. Os planos gratuitos limitam TOKENS POR MINUTO por modelo e esta é a 2ª
+    chamada do mesmo pedido: se o modelo estourar o limite (429) ou falhar, usa o próximo da fila e, por fim,
     o Gemini (sem ferramentas, só para explicar o resultado). As ações NÃO são repetidas."""
     erro = None
-    for m in [modelo] + [x for x in MODELOS_GROQ if x != modelo]:
+    modelo = rota
+    for m in [rota] + [x for x in provedores.rotas() if x != rota]:
         estado = {"completo": "", "buffer": ""}
         try:
             texto, chamadas = _stream_groq(m, msgs, ao_receber_frase, estado, usar_ferramentas)
-            if m != modelo:
-                print(f"\n[SISTEMA]: resposta final pelo {m} ({erro!r:.120}).")
+            if m != rota:
+                print(f"\n[SISTEMA]: resposta final pelo {provedores.nome(m)} ({erro!r:.120}).")
+                painel.ia(provedores.nome(m))
             return texto, chamadas, m
         except Exception as e:
             if estado["completo"].strip():
@@ -631,11 +639,15 @@ def consultar_ia_streaming(prompt_usuario, ao_receber_frase, turno=None):
     )
     ultimo_erro = None
 
-    # 1. GROQ (streaming, com ferramentas para agir no PC)
-    for modelo in MODELOS_GROQ:
+    # só as ferramentas que combinam com o pedido (a lista inteira gastava ~2.500 tokens por chamada)
+    anterior = conversa.recentes()[-1]["usuario"] if conversa.recentes() else ""
+    turno["tools"] = ferramentas.escolher(prompt_usuario, anterior)
+
+    # 1. FILA DE MODELOS (Groq, Cerebras, ...; streaming, com ferramentas para agir no PC)
+    for modelo in provedores.rotas():
         estado = {"completo": "", "buffer": ""}
         try:
-            texto, chamadas = _stream_groq(modelo, mensagens, ao_receber_frase, estado, usar_ferramentas=True)
+            texto, chamadas = _stream_groq(modelo, mensagens, ao_receber_frase, estado, usar_ferramentas=turno["tools"])
         except Exception as e:
             if estado["completo"].strip():   # já falou parte: não troca de modelo no meio
                 if estado["buffer"].strip():
@@ -643,9 +655,10 @@ def consultar_ia_streaming(prompt_usuario, ao_receber_frase, turno=None):
                 print()
                 return estado["completo"].strip()
             ultimo_erro = e
+            print(f"\n[SISTEMA]: {provedores.nome(modelo)} falhou ({e!r:.160}); tentando o próximo.")
             continue
         if chamadas or texto:
-            painel.ia(modelo)
+            painel.ia(provedores.nome(modelo))
         if chamadas:
             # Depois de executar ferramentas NUNCA tenta outro modelo: ele repetiria as ações (abrir 2x, enviar 2x)
             try:
@@ -656,10 +669,11 @@ def consultar_ia_streaming(prompt_usuario, ao_receber_frase, turno=None):
                 return f"[ações executadas; resposta final falhou: {e}]"
         if texto:
             return texto
-        ultimo_erro = RuntimeError(f"resposta vazia do modelo {modelo}")
+        ultimo_erro = RuntimeError(f"resposta vazia do modelo {provedores.nome(modelo)}")
+        print(f"\n[SISTEMA]: {provedores.nome(modelo)} falhou ({ultimo_erro!r:.160}); tentando o próximo.")
 
-    print(f"\n[SISTEMA]: Groq indisponível ({ultimo_erro}). Alternando para Gemini...")
-    painel.evento("Groq indisponível: usando o Gemini", "alerta")
+    print(f"\n[SISTEMA]: fila de modelos indisponível ({ultimo_erro}). Alternando para Gemini...")
+    painel.evento("Modelos principais indisponíveis: usando o Gemini", "alerta")
 
     # 2. GEMINI (reserva, sem streaming)
     try:

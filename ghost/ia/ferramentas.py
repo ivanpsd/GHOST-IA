@@ -205,6 +205,42 @@ ACOES = {"abrir_aplicativo", "fechar_aplicativo", "abrir_site", "pesquisar_web",
          "criar_lembrete", "cancelar_lembrete", "configurar_notificacoes", "tarefa_segundo_plano"}
 
 
+# Ferramentas enviadas em TODO pedido; as outras só quando a frase combina (economiza tokens do plano gratuito)
+SEMPRE = {"abrir_aplicativo", "fechar_aplicativo", "abrir_site", "pesquisar_web", "digitar_texto", "pressionar_teclas",
+          "comando_ghost", "consultar_sistema", "olhar_tela", "buscar_memoria"}
+GRUPOS = [
+    (r"planilh|excel|csv|xlsx|tabela|coluna|soma|total|quant[oa]s?|media|produ[cz]|vend|estoque|calcul",
+     {"ver_planilha", "calcular_planilha"}),
+    (r"tempo|clima|chov|chuv|temperatura|frio|calor|sol\b|guarda.chuva", {"previsao_do_tempo"}),
+    (r"resumo|meu dia|bom dia|hoje", {"resumo_do_dia"}),
+    (r"agenda|reuni|compromisso|evento|calendario|e.?mail|caixa de entrada|inbox", {"consultar_agenda", "consultar_emails"}),
+    (r"lembr|alarme|despert|me (cham|avis)|avise|daqui a|as \d", {"criar_lembrete", "listar_lembretes", "cancelar_lembrete"}),
+    (r"camera|webcam|olha isso|ve isso|o que (e|eh) isso|na minha mao|segurando|mostrando|estou vestindo",
+     {"olhar_camera"}),
+    (r"skill|habilidade|automatiz|rotina", {"criar_skill"}),
+    (r"sauda|cumpriment|me chame|me chama", {"definir_saudacao"}),
+    (r"notifica|whats|mensage|quem (me )?(mandou|escreveu)", {"listar_notificacoes", "configurar_notificacoes"}),
+    (r"segundo plano|tarefa|enquanto|monitor|acompanh|fique de olho|verifique a cada", {"tarefa_segundo_plano",
+                                                                                       "listar_tarefas"}),
+]
+
+
+def escolher(texto, anterior=""):
+    """Ferramentas para este pedido: as de SEMPRE + os grupos que a frase (ou a anterior, para 'e o de ontem?')
+    pede. Frase curta e vaga demais: manda todas."""
+    import re
+    import unicodedata
+    t = unicodedata.normalize("NFD", f"{texto} {anterior}".lower())
+    t = "".join(c for c in t if unicodedata.category(c) != "Mn")
+    nomes = set(SEMPRE)
+    for padrao, grupo in GRUPOS:
+        if re.search(padrao, t):
+            nomes |= grupo
+    if len(texto.split()) <= 2 and nomes == SEMPRE and not anterior:
+        return TOOLS
+    return [x for x in TOOLS if x["function"]["name"] in nomes]
+
+
 def descrever(nome, args):
     """Frase curta do que a ação vai fazer (para a pergunta de confirmação)."""
     v = lambda k: str(args.get(k, ""))[:60]

@@ -40,3 +40,4 @@ winrt-Windows.Media.Ocr==3.2.1
 winrt-Windows.Graphics.Imaging==3.2.1
 winrt-Windows.Storage.Streams==3.2.1
 winrt-Windows.Globalization==3.2.1
+openai>=1.40            # provedores extras compatíveis (Cerebras, OpenRouter, Mistral, GitHub Models)
