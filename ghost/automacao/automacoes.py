@@ -405,11 +405,8 @@ def _tratar_sistema(n, falar):
         pyautogui.press("prevtrack")
         return True
 
-    if tem(n, "tirar print", "tira um print", "capturar tela", "captura de tela"):
-        os.makedirs(PASTA_PRINTS, exist_ok=True)
-        arquivo = os.path.join(PASTA_PRINTS, f"print_{datetime.now():%Y%m%d_%H%M%S}.png")
-        pyautogui.screenshot().save(arquivo)
-        falar("Captura realizada, senhor.")
+    if _pedido_de_print(n):
+        _tirar_print(n, falar)
         return True
 
     if tem(n, "onde estou", "onde estamos", "minha localizacao", "qual a localizacao"):
@@ -604,6 +601,43 @@ def _quer_mostrar(n):
     """Resposta a 'mostrar na tela ou descrever?' que escolhe a tela. Aceita 'tela' grudada em outra palavra
     (a voz já transcreveu 'na tela' como 'Renatella')."""
     return bool(re.search(r"\b(mostr\w*|grav\w*|ver|veja|olh\w*|observ\w*|assist\w*)\b|tel+a", n))
+
+
+NUMEROS = {"um": 1, "uma": 1, "primeiro": 1, "dois": 2, "segundo": 2, "tres": 3, "terceiro": 3}
+
+
+def _pedido_de_print(n):
+    return bool(re.search(r"\b(print|printa|printe|screenshot|captura de tela|capturar a tela|capturar tela)\b", n)) \
+        and not re.search(r"\b(impress\w*|imprim\w*)\b", n) and not n.startswith(("como ", "o que ", "qual "))
+
+
+def _tirar_print(n, falar):
+    """Salva o print em prints/. Pedido do celular: manda a imagem para o app (um por monitor, ou o monitor pedido)."""
+    from ghost.visao import olho
+    m = re.search(r"\b(?:monitor|tela)\s+(\d|um|uma|dois|tres|primeiro|segundo|terceiro)\b", n)
+    qual = (int(m.group(1)) if m.group(1).isdigit() else NUMEROS[m.group(1)]) if m else None
+    try:
+        total = len(olho.monitores())
+    except Exception:
+        total = 1
+    if qual and qual > total:
+        falar(f"Senhor, só há {total} monitor{'es' if total > 1 else ''}.")
+        return
+    numeros = [qual] if qual else list(range(1, total + 1))
+    os.makedirs(PASTA_PRINTS, exist_ok=True)
+    pedido_do_celular = canal.atual() is not None
+    for k in numeros:
+        img = olho.capturar_monitor(k) if total > 1 or qual else pyautogui.screenshot()
+        if img is None:
+            continue
+        img.save(os.path.join(PASTA_PRINTS, f"print_{datetime.now():%Y%m%d_%H%M%S}_m{k}.png"))
+        if pedido_do_celular:
+            from ghost.nucleo import painel
+            painel.imagem_celular(img, f"Monitor {k}" if total > 1 else "Tela")
+    if pedido_do_celular:
+        falar("Aqui está, senhor." if len(numeros) == 1 else f"Aqui estão os {len(numeros)} monitores, senhor.")
+    else:
+        falar("Captura realizada, senhor.")
 
 
 def _tratar_skills(texto, n, falar):

@@ -71,6 +71,7 @@ input { font: 16px var(--f-texto); color: var(--cinza-quente); background: var(-
 .medidas b { color: var(--cinza-quente); font-weight: 600; }
 .conversa { overflow-y: auto; padding-block: 14px; display: flex; flex-direction: column; gap: 10px; }
 .msg { max-width: 86%; padding: 9px 13px; border-radius: 12px; overflow-wrap: anywhere; }
+.msg img { display: block; max-width: 100%; margin-top: 7px; border-radius: 8px; border: 1px solid var(--fio); cursor: zoom-in; }
 .msg small { display: block; font: 11px var(--f-numero); color: var(--apagado); margin-top: 3px; }
 .msg.voce { align-self: flex-end; background: #3a2414; border: 1px solid rgba(255,106,26,.35); border-bottom-right-radius: 4px; }
 .msg.ghost { align-self: flex-start; background: var(--tabua-2); border: 1px solid var(--fio); border-bottom-left-radius: 4px; color: #f0d9a8; }
@@ -258,8 +259,18 @@ input { font: 16px var(--f-texto); color: var(--cinza-quente); background: var(-
   const conversa = $("conversa");
   let vistos = 0, esperando = false, timer = null;
   const hora = (seg) => new Date(seg * 1000).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
-  function adicionar(quem, texto, t) {
+  async function carregarImagem(img, id) {
+    try {
+      const r = await fetch(`api/imagem?id=${encodeURIComponent(id)}`, { headers: { Authorization: `Bearer ${guardar.ler("ghost_sessao")}` }, cache: "no-store" });
+      if (!r.ok) { img.replaceWith(document.createTextNode(" (imagem não está mais disponível)")); return; }
+      const url = URL.createObjectURL(await r.blob());
+      img.src = url; img.onclick = () => window.open(url, "_blank");
+      img.onload = () => { conversa.scrollTop = conversa.scrollHeight; };
+    } catch (e) { img.alt = "imagem não carregou"; }
+  }
+  function adicionar(quem, texto, t, imagem) {
     const d = document.createElement("div"); d.className = `msg ${quem}`; d.textContent = texto;
+    if (imagem && !DEMO) { const img = document.createElement("img"); img.alt = "imagem"; d.append(img); carregarImagem(img, imagem); }
     if (t) { const s = document.createElement("small"); s.textContent = hora(t); d.append(s); }
     conversa.querySelector(".digitando")?.remove(); conversa.append(d);
     if (quem === "ghost") esperando = false;
@@ -285,7 +296,7 @@ input { font: 16px var(--f-texto); color: var(--cinza-quente); background: var(-
     $("confirmar").hidden = !d.confirmacao_pendente;
     const msgs = d.celular || [];
     if (msgs.length < vistos) vistos = 0;
-    for (const m of msgs.slice(vistos)) adicionar(m.quem, m.texto, m.t);
+    for (const m of msgs.slice(vistos)) adicionar(m.quem, m.texto, m.t, m.imagem);
     vistos = msgs.length;
   }
   async function buscar() {

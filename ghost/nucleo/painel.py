@@ -53,6 +53,8 @@ _sistema = {"cpu": None, "ram": None, "disco_livre_gb": None, "disco_livre_pct":
             "bateria": None, "na_tomada": None, "internet": None, "latencia_ms": None}
 _requisicoes = {"n": 0, "limite": 0}
 _celular = deque(maxlen=60)           # conversa do app do celular
+_imagens = {}                         # id -> JPEG das imagens mandadas ao celular (só em memória)
+MAX_IMAGENS = 8
 PASTA_DEMO = os.path.join(os.path.expanduser("~"), "Documents", "Ghost", "Demonstracao")
 ESTATICOS = {"nucleo.js": "text/javascript; charset=utf-8", "icone-192.png": "image/png", "icone-512.png": "image/png"}
 
@@ -103,6 +105,28 @@ def mensagem_celular(quem, texto):
     """Conversa mostrada no app do celular. quem: 'voce' ou 'ghost'."""
     with _trava:
         _celular.append({"t": time.time(), "quem": quem, "texto": (texto or "")[:2000]})
+
+
+def imagem_celular(img, legenda):
+    """Manda uma imagem (PIL) para a conversa do app do celular. Fica só na memória (últimas MAX_IMAGENS)."""
+    import io
+    img = img.convert("RGB")
+    if img.width > 1920:
+        img = img.resize((1920, round(img.height * 1920 / img.width)))
+    buf = io.BytesIO()
+    img.save(buf, "JPEG", quality=80)
+    ident = secrets.token_hex(8)
+    with _trava:
+        _imagens[ident] = buf.getvalue()
+        for velho in list(_imagens)[:-MAX_IMAGENS]:
+            del _imagens[velho]
+        _celular.append({"t": time.time(), "quem": "ghost", "texto": (legenda or "")[:300], "imagem": ident})
+    return ident
+
+
+def imagem(ident):
+    with _trava:
+        return _imagens.get(ident)
 
 
 def evento(texto, tipo="info"):

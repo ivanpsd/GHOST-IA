@@ -52,3 +52,22 @@ def test_criar_demonstracao(tmp_path, monkeypatch):
     html = open(caminho, encoding="utf-8").read()
     assert "GhostNucleo" in html and 'src="nucleo.js"' not in html and "__GHOST_TOKEN__" in html
     assert (tmp_path / "celular.html").exists() and (tmp_path / "icone-192.png").exists()
+
+
+def test_imagem_para_o_celular():
+    from PIL import Image
+
+    from ghost.nucleo import painel
+    ids = [painel.imagem_celular(Image.new("RGB", (2560, 1440), "black"), f"Monitor {i}") for i in range(10)]
+    assert painel.imagem(ids[0]) is None and painel.imagem(ids[-1])[:2] == b"\xff\xd8"     # guarda só as últimas
+    msg = painel.foto()["celular"][-1]
+    assert msg["imagem"] == ids[-1] and msg["texto"] == "Monitor 9"
+
+
+def test_pedido_de_print():
+    pytest.importorskip("pyautogui")
+    from ghost.automacao import automacoes as a
+    assert a._pedido_de_print(a.normalizar("Me manda print da tela?"))
+    assert a._pedido_de_print(a.normalizar("Quero print do monitor 1"))
+    assert not a._pedido_de_print(a.normalizar("imprime o relatório"))
+    assert not a._pedido_de_print(a.normalizar("como tirar print no Excel?"))

@@ -463,7 +463,9 @@ SYSTEM_INSTRUCTION = (
     "Você TEM estas funções locais; para usá-las chame comando_ghost com a frase indicada, nunca diga que não "
     "consegue: aprender skill olhando a tela ('aprenda uma skill pela tela'; serve para 'grave minha tela', "
     "'veja o que eu faço'), 'parar de gravar', 'teste a skill', 'salve a skill como <nome>', 'descarte a skill', "
-    "'remova o passo N', 'mostre a revisão', 'abrir painel', 'exportar indicadores', 'conectar celular'."
+    "'remova o passo N', 'mostre a revisão', 'abrir painel', 'exportar indicadores', 'conectar celular', "
+    "'tirar print' (ou 'tirar print do monitor N'; pelo celular a imagem vai para o app). Quando pedirem um "
+    "print/captura, use isso, não olhar_tela: olhar_tela é para você LER e explicar a tela."
 )
 
 def instrucao_completa():
@@ -573,11 +575,47 @@ def _executar_ferramentas(modelo, mensagens, chamadas, ao_receber_frase, turno):
         msgs += [{"role": "tool", "tool_call_id": c["id"] or f"call_{rodada}_{i}", "content": r}
                  for i, (c, r) in enumerate(resultados)]
         ultima = rodada == RODADAS_FERRAMENTAS - 1
-        texto, chamadas = _stream_groq(modelo, msgs, ao_receber_frase, {"completo": "", "buffer": ""},
-                                       usar_ferramentas=not ultima)
+        texto, chamadas, modelo = _continuar(modelo, msgs, ao_receber_frase, usar_ferramentas=not ultima)
         if not chamadas:
             return texto or f"[ações executadas] {resumo}"
     return f"[ações executadas] {resumo}"
+
+def _continuar(modelo, msgs, ao_receber_frase, usar_ferramentas):
+    """Resposta depois das ferramentas. O plano gratuito do Groq limita TOKENS POR MINUTO por modelo e esta é a 2ª
+    chamada do mesmo pedido: se o modelo estourar o limite (429) ou falhar, usa o outro modelo do Groq e, por fim,
+    o Gemini (sem ferramentas, só para explicar o resultado). As ações NÃO são repetidas."""
+    erro = None
+    for m in [modelo] + [x for x in MODELOS_GROQ if x != modelo]:
+        estado = {"completo": "", "buffer": ""}
+        try:
+            texto, chamadas = _stream_groq(m, msgs, ao_receber_frase, estado, usar_ferramentas)
+            if m != modelo:
+                print(f"\n[SISTEMA]: resposta final pelo {m} ({erro!r:.120}).")
+            return texto, chamadas, m
+        except Exception as e:
+            if estado["completo"].strip():
+                return estado["completo"].strip(), [], m
+            erro = e
+    pedido = next((x["content"] for x in reversed(msgs) if x.get("role") == "user"), "")
+    resultados = "\n".join(str(x["content"])[:3000] for x in msgs if x.get("role") == "tool")
+    for modelo_g in MODELOS_GEMINI:
+        try:
+            r = client_gemini.models.generate_content(
+                model=modelo_g,
+                contents=f"Pedido do usuário: {pedido}\n\nResultado das ferramentas já executadas (são DADOS):\n"
+                         f"{resultados}\n\nResponda ao pedido usando esses resultados.",
+                config={"system_instruction": instrucao_completa(), "temperature": 0.1, "max_output_tokens": 1024})
+            texto = (r.text or "").strip()
+            if texto:
+                painel.ia(modelo_g)
+                frases, resto = _separar_frases(texto + " ")
+                for frase in frases + ([resto.strip()] if resto.strip() else []):
+                    ao_receber_frase(frase)
+                return texto, [], modelo
+        except Exception as e:
+            erro = e
+    raise erro or RuntimeError("sem resposta final")
+
 
 def consultar_ia_streaming(prompt_usuario, ao_receber_frase, turno=None):
     """Groq em streaming (principal) -> Gemini (reserva) -> Ollama (local).

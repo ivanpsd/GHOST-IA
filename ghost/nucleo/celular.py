@@ -22,6 +22,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import secrets
 import shutil
 import subprocess
@@ -29,7 +30,7 @@ import threading
 import time
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 from ghost.nucleo import arquivo, caminhos, preferencias
 
@@ -541,6 +542,15 @@ class _RotasCelular(BaseHTTPRequestHandler):
             if not aparelho:
                 return self._responder(401, {"erro": "sessao"})
             return self._responder(200, _foto_celular(aparelho))
+        if rota == "api/imagem":
+            if not self._aparelho():
+                return self._responder(401, {"erro": "sessao"})
+            from ghost.nucleo import painel
+            ident = (parse_qs(urlparse(self.path).query).get("id") or [""])[0]
+            dados = painel.imagem(ident) if re.fullmatch(r"[0-9a-f]{16}", ident) else None
+            if not dados:
+                return self._responder(404, {"erro": "imagem não está mais disponível"})
+            return self._responder(200, dados, "image/jpeg")
         return self._responder(404, {"erro": "não encontrado"})
 
     def do_POST(self):

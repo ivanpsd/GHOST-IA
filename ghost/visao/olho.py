@@ -270,6 +270,37 @@ def capturar_tela():
     return img
 
 
+def monitores():
+    """Retângulos (x1, y1, x2, y2) dos monitores: o principal é o 1; os outros da esquerda para a direita."""
+    wt = _wt()
+    lista = []
+
+    class _Info(ctypes.Structure):
+        _fields_ = [("cbSize", wt.DWORD), ("rcMonitor", wt.RECT), ("rcWork", wt.RECT), ("dwFlags", wt.DWORD)]
+
+    def cb(hmon, _hdc, _rect, _dado):
+        info = _Info()
+        info.cbSize = ctypes.sizeof(_Info)
+        ctypes.windll.user32.GetMonitorInfoW(hmon, ctypes.byref(info))
+        r = info.rcMonitor
+        lista.append(((r.left, r.top, r.right, r.bottom), bool(info.dwFlags & 1)))
+        return True
+
+    tipo = ctypes.WINFUNCTYPE(ctypes.c_int, ctypes.c_void_p, ctypes.c_void_p, ctypes.POINTER(wt.RECT), ctypes.c_void_p)
+    ctypes.windll.user32.EnumDisplayMonitors(None, None, tipo(cb), None)
+    lista.sort(key=lambda m: (not m[1], m[0][0]))
+    return [m[0] for m in lista]
+
+
+def capturar_monitor(n):
+    """Foto do monitor n (1 = principal). None se não existir."""
+    from PIL import ImageGrab
+    mons = monitores()
+    if not 1 <= n <= len(mons):
+        return None
+    return ImageGrab.grab(bbox=mons[n - 1], all_screens=True)
+
+
 async def _ocr_async(img):
     from winrt.windows.globalization import Language
     from winrt.windows.graphics.imaging import BitmapDecoder
