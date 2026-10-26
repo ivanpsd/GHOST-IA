@@ -75,7 +75,8 @@ digitação marcada como variável vira pergunta antes de começar (`automacoes.
 Datas digitadas na gravação (ex.: `01/10/2026`) viram campos de data com papel início/fim pelo rótulo ("Da Data", "Até a
 Data"); na execução, `automacao/periodo.py` tira o período do próprio pedido ("mês passado", "de 1 a 15 de outubro",
 "semana passada", "últimos 7 dias"…), pergunta uma vez se não houver, e usa a IA só como último recurso. A skill com campo
-variável aceita o gatilho seguido do período. Listas que abrem fora da janela (sem título) são procuradas na tela toda.
+variável aceita o gatilho seguido do período. Data escolhida no calendário (clique no botão do
+calendário e depois no dia) é trocada na gravação por "clicar no campo ao lado do rótulo" + "digitar a data". Listas que abrem fora da janela (sem título) são procuradas na tela toda.
 
 ## Proteções
 

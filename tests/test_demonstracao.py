@@ -185,3 +185,35 @@ def test_skill_com_datas_aceita_o_periodo_no_pedido(monkeypatch):
                    "passos": [{"acao": "tecla", "combo": "enter"}]})
     assert skills.encontrar("faturamento por cliente do mes passado")["id"] == "d_1"
     assert skills.encontrar("abrir pedidos de ontem") is None          # sem campo variável: só a frase exata
+
+
+def test_data_escolhida_no_calendario_vira_digitacao():
+    """Gravou clicando no botão do calendário e no dia: vira 'clicar no campo' + 'digitar a data do pedido'."""
+    from datetime import date
+
+    def w(texto, x, y, linha):
+        return {"texto": texto, "x": x, "y": y, "w": len(texto) * 8, "h": 14, "linha": linha}
+    tela = [w("Da", 40, 100, 0), w("Data", 62, 100, 0), w("?", 98, 100, 0), w("01/10/2026", 300, 100, 1),
+            w("Até", 40, 140, 2), w("a", 72, 140, 2), w("Data", 84, 140, 2), w("?", 120, 140, 2), w("24/10/2026", 300, 140, 3)]
+    cal = [w("12", 500, 200, 0), w("24", 560, 260, 1)]
+    j = {"exe": "chrome.exe", "titulo": "TOTVS Webapp - Parâmetros", "rect": [0, 0, 800, 600]}
+    foto = Image.new("RGB", (800, 600), "white")
+    evs = [
+        {"tipo": "clique", "t": 0, "x": 410, "y": 107, "botao": "left", "janela": j, "foto": foto},   # botão do calendário
+        {"tipo": "clique", "t": 1, "x": 508, "y": 207, "botao": "left", "janela": j, "foto": foto},   # dia 12
+        {"tipo": "clique", "t": 2, "x": 410, "y": 147, "botao": "left", "janela": j, "foto": foto},
+        {"tipo": "clique", "t": 3, "x": 568, "y": 267, "botao": "left", "janela": j, "foto": foto},   # dia 24
+        {"tipo": "clique", "t": 4, "x": 50, "y": 400, "botao": "left", "janela": j, "foto": foto},
+    ]
+    leituras = iter([tela, cal, tela, cal, [w("OK", 40, 395, 0)]])
+    passos = demo.montar_passos(evs, ler=lambda f: next(leituras))
+    assert [p["acao"] for p in passos] == ["clicar", "digitar", "clicar", "digitar", "clicar"]
+    c1, d1, c2, d2 = passos[:4]
+    assert c1["ancora"]["texto"] == "Da Data" and c1["ancora"]["dx"] > 200        # clica no campo, não no botão
+    assert abs(c1["abs"][0] - 340) < 2 and c1["abs"][1] == 107
+    assert d1["papel"] == "inicio" and d2["papel"] == "fim" and d1["formato"] == "%d/%m/%Y"
+    assert c2["ancora"]["texto"] == "Até a Data"
+    assert not any("calendário" in a for a in demo.avisos(passos))
+    assert not any("_palavras" in p for p in passos)
+    v = demo.valores_das_variaveis(passos, "do mês passado", perguntar=lambda q: None, hoje=date(2026, 10, 27))
+    assert v == {1: "01/09/2026", 3: "30/09/2026"}

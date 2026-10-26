@@ -218,6 +218,7 @@ def montar_passos(eventos, ler=None, pasta=None):
                 p["recorte_centro"] = [x - caixa[0], y - caixa[1]]
             if not p["popup"]:
                 janela_ant = (j["exe"], olho.nome_base(j["titulo"]))
+            p["_palavras"], p["_xy"] = palavras, (x, y)       # só para trocar o calendário pelo campo (apagado no fim)
             passos.append(p)
         elif ev["tipo"] == "digitar":
             if senha_pendente:
@@ -238,8 +239,84 @@ def montar_passos(eventos, ler=None, pasta=None):
     # tempo entre um passo e outro (ajuda a decidir quanto esperar a tela na execução)
     for i, ev in enumerate(eventos[:len(passos)]):
         passos[i]["pausa"] = round(min(30.0, ev["t"] - eventos[i - 1]["t"]), 1) if i else 0.0
+    passos = _calendario_vira_digitacao(passos)
+    for p in passos:
+        p.pop("_palavras", None)
+        p.pop("_xy", None)
     _papeis_das_datas(passos)
     return passos
+
+
+def _e_dia(p):
+    return p["acao"] == "clicar" and p.get("ancora") and re.fullmatch(r"\d{1,2}", p["ancora"]["texto"].strip())
+
+
+def _campo_do_calendario(palavras, x, y):
+    """O botão do calendário fica à direita do campo de data. Devolve (centro do campo, data escrita nele, rótulo)."""
+    from ghost.visao import olho
+    linha = [w for w in palavras if abs(w["y"] + w["h"] / 2 - y) <= max(14, w["h"]) and w["x"] + w["w"] <= x + 4]
+    data = None
+    for w in sorted(linha, key=lambda w: -w["x"]):            # a data mais perto à esquerda do botão
+        t = w["texto"].strip()
+        if x - (w["x"] + w["w"]) < 250 and re.fullmatch(r"\d{1,2}/\d{1,2}/\d{2,4}|\d{6,8}", t):
+            data = w
+            break
+    if data:
+        campo = (data["x"] + data["w"] / 2, data["y"] + data["h"] / 2)
+        limite_x = data["x"] - 4
+    else:                                                      # OCR não leu a data: o campo encosta no botão
+        campo = (x - 45, y)
+        limite_x = x - 90
+    rot = sorted([w for w in linha if w["x"] + w["w"] <= limite_x and re.search(r"[A-Za-zÀ-ú]", w["texto"])],
+                 key=lambda w: w["x"])
+    rotulo = None
+    if rot:                                                    # bloco de texto mais perto à esquerda do campo
+        bloco = [rot[-1]]
+        for w in reversed(rot[:-1]):
+            if bloco[0]["x"] - (w["x"] + w["w"]) > max(25, w["h"] * 1.6):
+                break
+            bloco.insert(0, w)
+        c = olho._caixa(bloco)
+        rotulo = {"texto": " ".join(w["texto"] for w in bloco).strip(), "dx": round(campo[0] - (c["x"] + c["w"] / 2)),
+                  "dy": round(campo[1] - (c["y"] + c["h"] / 2))}
+    return campo, (data["texto"].strip() if data else None), rotulo
+
+
+def _calendario_vira_digitacao(passos):
+    """Data escolhida no calendário (clique no botão do calendário e depois no dia) não repete: no outro mês o dia
+    está em outro lugar. Troca por: clicar no campo de data + digitar a data (vinda do período do pedido)."""
+    saida = []
+    i = 0
+    while i < len(passos):
+        p = passos[i]
+        icone = (p["acao"] == "clicar" and not p.get("popup")
+                 and (not p.get("ancora") or periodo.parece_data(p["ancora"]["texto"].strip())))
+        if icone:
+            # depois do botão: cliques sem texto (setas do mês) e então o dia
+            k = i + 1
+            while k < len(passos) and passos[k]["acao"] == "clicar" and not passos[k].get("ancora") and not _e_dia(passos[k]):
+                k += 1
+            if k < len(passos) and _e_dia(passos[k]) and k - i <= 4:
+                x, y = p.get("_xy") or (p["rel"][0] * p["tamanho"][0], p["rel"][1] * p["tamanho"][1])
+                campo, escrita, rotulo = _campo_do_calendario(p.get("_palavras") or [], x, y)
+                c = dict(p)
+                c["ancora"] = rotulo
+                c["rel"] = [round(campo[0] / max(1, p["tamanho"][0]), 4), round(campo[1] / max(1, p["tamanho"][1]), 4)]
+                c["abs"] = [round(p["abs"][0] + campo[0] - x), round(p["abs"][1] + campo[1] - y)]
+                if p.get("recorte_centro"):
+                    c["recorte_centro"] = [round(p["recorte_centro"][0] + campo[0] - x), round(p["recorte_centro"][1] + campo[1] - y)]
+                c["calendario"] = True
+                saida.append(c)
+                exemplo = escrita if escrita and periodo.parece_data(escrita) else ""
+                saida.append({"acao": "digitar", "texto": "", "segredo": False,
+                              "variavel": (rotulo or {}).get("texto") or "a data", "tipo": "data",
+                              "formato": periodo.formato_de(exemplo) if exemplo else "%d/%m/%Y",
+                              "exemplo": exemplo, "pausa": 0.3})
+                i = k + 1
+                continue
+        saida.append(p)
+        i += 1
+    return saida
 
 
 def _papeis_das_datas(passos):
