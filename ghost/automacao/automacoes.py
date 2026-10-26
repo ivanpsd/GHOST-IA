@@ -600,6 +600,12 @@ def _tratar_demonstracao(texto, n, falar):
     return False
 
 
+def _quer_mostrar(n):
+    """Resposta a 'mostrar na tela ou descrever?' que escolhe a tela. Aceita 'tela' grudada em outra palavra
+    (a voz já transcreveu 'na tela' como 'Renatella')."""
+    return bool(re.search(r"\b(mostr\w*|grav\w*|ver|veja|olh\w*|observ\w*|assist\w*)\b", n) or "tela" in n)
+
+
 def _tratar_skills(texto, n, falar):
     global _aguardando_descricao
     from ghost.ia import skills
@@ -607,6 +613,10 @@ def _tratar_skills(texto, n, falar):
     # resposta ao "descreva a skill"
     if _aguardando_descricao and time.time() - _aguardando_descricao < 120:
         _aguardando_descricao = 0.0
+        if re.search(r"\b(na|pela|minha) tela\b|\bmostr\w*|\bveja\b", n) and len(n.split()) < 14:      # mudou de ideia: "eu falei que quero que você veja na tela"
+            from ghost.automacao import demonstracao
+            demonstracao.iniciar_gravacao(falar, _ao_terminar_gravacao(falar))
+            return True
         _montar_skill(texto, falar)
         return True
     m = re.search(r"^(?:ghost\s+)?(?:(?:eu\s+)?(?:quero|queria|gostaria)\s+(?:que\s+)?(?:voce\s+|vc\s+)?|vamos\s+|pode\s+)?"
@@ -618,10 +628,14 @@ def _tratar_skills(texto, n, falar):
         if len(desc.split()) < 4:
             def _como():
                 r = perguntar("Prefere me mostrar na tela ou descrever os passos, senhor?", falar, tempo=60)
+                if r is not None and not _quer_mostrar(normalizar(r)) and len(r.split()) < 6 \
+                        and not re.search(r"\b(descrev\w*|falar|explic\w*|ditar|dito)\b", normalizar(r)):
+                    # resposta que não deu para entender (voz trocou as palavras): pergunta de novo, curto
+                    r = perguntar("Na tela ou descrevendo, senhor?", falar, tempo=45)
                 if r is None:
                     falar("Tudo bem, senhor.")
                     return
-                if re.search(r"\b(mostr\w*|tela|grav\w*|ver|veja)\b", normalizar(r)):
+                if _quer_mostrar(normalizar(r)):
                     from ghost.automacao import demonstracao
                     demonstracao.iniciar_gravacao(falar, _ao_terminar_gravacao(falar))
                 elif len(r.split()) >= 6:                        # já veio a descrição

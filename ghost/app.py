@@ -121,7 +121,7 @@ from google import genai
 from groq import Groq
 
 from ghost.automacao import automacoes
-from ghost.ia import conversa, ferramentas, memoria, memoria_longa, pessoas, tarefas
+from ghost.ia import contexto, conversa, ferramentas, memoria, memoria_longa, pessoas, tarefas
 from ghost.ia.filtro_fala import FiltroFala
 from ghost.nucleo import canal, celular, hud, painel, preferencias, sistema
 from ghost.servicos import alertas, lembretes, notificacoes, resumo, rotina
@@ -338,6 +338,7 @@ def falar_imediato(texto):
 def falar_local(texto):
     """Usada pelas automações: mostra no terminal/log e fala sem travar."""
     print(f"\n[GHOST]: {texto}")
+    contexto.anotar_fala(texto)          # a IA fica sabendo o que o Ghost disse fora da conversa
     falar_frase_assincrona(texto)
 
 
@@ -453,7 +454,16 @@ SYSTEM_INSTRUCTION = (
     "é/o que você vê, use-a em vez de pedir que ele descreva. "
     "Você não tem acesso a dados em tempo real na internet: para notícias, cotações ou clima, use pesquisar_web. "
     "Se o pedido estiver ambíguo ou você ficar em dúvida sobre o que executar, pergunte ao usuário o propósito "
-    "em uma frase curta antes de agir. Se nenhuma ferramenta cobre o pedido, diga isso com clareza."
+    "em uma frase curta antes de agir. Se nenhuma ferramenta cobre o pedido, diga isso com clareza. "
+    "ENTENDIMENTO: a fala chega por reconhecimento de voz e pode vir com palavras trocadas por outras de som "
+    "parecido ('Nossa Renatella' = 'na tela', 'goste' = 'Ghost'); interprete pela intenção e pelo contexto, sem "
+    "comentar o erro. Use a SITUAÇÃO ATUAL abaixo (o que você falou por último, janelas em uso, estado do Ghost) "
+    "para entender frases curtas como 'e aí?', 'deu certo?', 'por que parou?', 'faz de novo': responda sobre ESSA "
+    "situação, sem pedir que ele repita. Para ver o conteúdo da tela, use olhar_tela. "
+    "Você TEM estas funções locais; para usá-las chame comando_ghost com a frase indicada, nunca diga que não "
+    "consegue: aprender skill olhando a tela ('aprenda uma skill pela tela'; serve para 'grave minha tela', "
+    "'veja o que eu faço'), 'parar de gravar', 'teste a skill', 'salve a skill como <nome>', 'descarte a skill', "
+    "'remova o passo N', 'mostre a revisão', 'abrir painel', 'exportar indicadores', 'conectar celular'."
 )
 
 def instrucao_completa():
@@ -462,7 +472,7 @@ def instrucao_completa():
     dias = ["segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta-feira", "sábado", "domingo"]
     estilo = PERSONALIDADES.get(preferencias.carregar().get("personalidade", "jarvis"), PERSONALIDADES["jarvis"])
     return (estilo + SYSTEM_INSTRUCTION + f"\n\nAGORA: {dias[agora.weekday()]}, {agora:%d/%m/%Y %H:%M} (horário de Brasília)."
-            + memoria.texto_para_prompt() + pessoas.texto_para_prompt())
+            + memoria.texto_para_prompt() + pessoas.texto_para_prompt() + contexto.texto_para_prompt())
 
 FIM_DE_FRASE = re.compile(r'[.!?…](?=\s)')
 
@@ -879,6 +889,7 @@ def _ligar(nome, funcao, *args):
 
 def iniciar_ghost():
     _ligar("faixa do topo", hud.iniciar)
+    _ligar("contexto", contexto.iniciar)                                      # janelas em uso (para a IA)
     _ligar("painel", painel.iniciar, None, falar_local)                       # tela de indicadores
     painel.evento("Ghost ligado")
     threading.Thread(target=gerador_de_audio, daemon=True, name="gerador-voz").start()
@@ -960,8 +971,10 @@ def iniciar_ghost():
             # 1º ações locais (instantâneas, sem gastar cota); 2º IA
             pessoas.renovar_falante()
             painel.contar("comandos")
+            t_cmd = time.time()
             if automacoes.executar(comando, falar_local):
-                conversa.registrar(comando, "[comando executado localmente pelo Ghost]")
+                # guarda o que o Ghost respondeu de fato: na próxima pergunta a IA sabe do que se trata
+                conversa.registrar(comando, contexto.falas_desde(t_cmd) or "[comando executado localmente pelo Ghost]")
                 painel.contar("comandos_locais")
                 painel.evento(f"Comando: {comando[:80]}", "acao")
             else:

@@ -45,7 +45,9 @@ TOOLS = [
     {"type": "function", "function": {
         "name": "comando_ghost",
         "description": ("Executa um comando local do Ghost escrito como o usuário falaria. Use para: enviar mensagem "
-                        "no WhatsApp ('mande mensagem para X dizendo Y'), volume, mídia, print de tela."),
+                        "no WhatsApp ('mande mensagem para X dizendo Y'), volume, mídia, print de tela, painel, celular e "
+                        "skills pela tela ('aprenda uma skill pela tela', 'parar de gravar', 'teste a skill', "
+                        "'salve a skill como X', 'mostre a revisão')."),
         "parameters": {"type": "object", "properties": {"frase": {"type": "string"}}, "required": ["frase"]}}},
     {"type": "function", "function": {
         "name": "ver_planilha",
