@@ -19,9 +19,10 @@ def test_migrar_move_sem_sobrescrever(tmp_path, monkeypatch):
     (tmp_path / "pessoas.json").write_text("antigo", encoding="utf-8")
     (tmp_path / "dados" / "pessoas.json").write_text("novo", encoding="utf-8")
 
-    assert caminhos.migrar() == 2
+    assert caminhos.migrar() == 3
     assert (tmp_path / "dados" / "memoria_ghost.json").read_text(encoding="utf-8") == "antigo"
     assert (tmp_path / "logs" / "ghost.log").exists()
-    assert (tmp_path / "dados" / "pessoas.json").read_text(encoding="utf-8") == "novo"   # não sobrescreve
-    assert (tmp_path / "pessoas.json").exists()                                           # nem apaga
-    assert caminhos.migrar() == 0                                                         # idempotente
+    assert (tmp_path / "dados" / "pessoas.json").read_text(encoding="utf-8") == "novo"            # não sobrescreve
+    assert (tmp_path / "dados" / "pessoas.json.antigo").read_text(encoding="utf-8") == "antigo"   # nem perde
+    assert not (tmp_path / "pessoas.json").exists()                                                # raiz limpa
+    assert caminhos.migrar() == 0                                                                  # idempotente

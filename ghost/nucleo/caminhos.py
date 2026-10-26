@@ -44,11 +44,19 @@ def modelo(*partes):
 
 
 def _mover(origem, destino):
-    if os.path.exists(origem) and not os.path.exists(destino):
-        os.makedirs(os.path.dirname(destino), exist_ok=True)
-        shutil.move(origem, destino)
+    if not os.path.exists(origem):
+        return False
+    os.makedirs(os.path.dirname(destino), exist_ok=True)
+    if os.path.exists(destino):
+        # os dois existem: não sobrescreve nada; o antigo vai para dados/ com outro nome (o senhor decide depois)
+        antigo = destino + ".antigo"
+        if os.path.exists(antigo):
+            return False
+        shutil.move(origem, antigo)
+        print(f"[SISTEMA]: {os.path.basename(origem)} existia na raiz e em dados/; o da raiz ficou como {antigo}.")
         return True
-    return False
+    shutil.move(origem, destino)
+    return True
 
 
 def migrar():
