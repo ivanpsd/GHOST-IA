@@ -47,3 +47,47 @@ def test_inventario_novos_procura_e_apelido(monkeypatch, tmp_path):
     assert rede.procurar(rede.carregar(), "gustavo")[0]["apelido"] == "PC do Gustavo"
     assert rede.nomear("nao-existe")[0] is None
     assert rede.online(a, agora=2000 + 60) and not rede.online(a, agora=2000 + rede.ONLINE_S + 1)
+
+
+def test_ip_exato_nao_pega_vizinhos():
+    inv = {"a": {"ip": "192.168.50.1", "mac": "a"}, "b": {"ip": "192.168.50.10", "mac": "b"}}
+    assert [x["mac"] for x in rede.procurar(inv, "192.168.50.1")] == ["a"]
+
+
+def test_alerta_so_depois_de_2_falhas_e_aviso_de_volta():
+    from ghost.servicos import monitor_rede as mon
+    e = {}
+    assert mon.registrar_teste("srv", False, 0, e) == (None, None)          # 1 falha: ainda não avisa
+    assert mon.registrar_teste("srv", False, 60, e) == ("caiu", None)
+    assert mon.registrar_teste("srv", False, 120, e) == (None, None)        # não repete
+    assert mon.registrar_teste("srv", True, 300, e) == ("voltou", 5)
+    assert mon.registrar_teste("srv", False, 360, e) == (None, None)        # oscilou 1 vez: sem alarme
+    assert mon.registrar_teste("srv", True, 420, e) == (None, None)
+
+
+def test_historico_da_internet_separa_provedor_de_rede_interna():
+    from ghost.servicos import monitor_rede as mon
+    linhas = [{"t": 0, "gw_ms": 1, "net_ms": 5}, {"t": 60, "gw_ms": 1, "net_ms": None}, {"t": 120, "gw_ms": 1, "net_ms": None},
+              {"t": 180, "gw_ms": 1, "net_ms": 7}, {"t": 240, "gw_ms": None, "net_ms": None}, {"t": 300, "gw_ms": 2, "net_ms": 6}]
+    r = mon.resumir_internet(linhas, 0, 300)
+    assert r["disponibilidade"] == 50.0 and r["latencia_media"] == 6 and r["latencia_max"] == 7
+    assert [(q["min"], q["causa"]) for q in r["quedas"]] == [(2, "provedor de internet"), (1, "rede interna/roteador")]
+
+
+def test_exportar_excel(monkeypatch, tmp_path):
+    import pytest
+    openpyxl = pytest.importorskip("openpyxl")
+    from ghost.nucleo import arquivo
+    from ghost.servicos import monitor_rede as mon
+    monkeypatch.setattr(rede, "ARQUIVO", str(tmp_path / "rede.json"))
+    monkeypatch.setattr(rede, "PASTA_EXPORTAR", str(tmp_path / "rel"))
+    monkeypatch.setattr(mon, "ARQ_INTERNET", str(tmp_path / "internet.jsonl"))
+    monkeypatch.setattr(mon, "ARQ_EVENTOS", str(tmp_path / "eventos.jsonl"))
+    rede._salvar({"m1": {"mac": "m1", "ip": "192.168.50.120", "nome": "SERVIDOR-SADIN", "critico": True,
+                         "primeira_vez": 1, "ultima_vez": 2}})
+    arquivo.acrescentar_jsonl(mon.ARQ_INTERNET, {"t": 1_800_000_000, "gw_ms": 1, "net_ms": 5})
+    arquivo.acrescentar_jsonl(mon.ARQ_EVENTOS, {"t": 1_800_000_000, "nome": "SERVIDOR-SADIN", "tipo": "caiu", "min": None})
+    wb = openpyxl.load_workbook(rede.exportar())
+    assert wb.sheetnames == ["Inventário", "Quedas", "Internet por dia"]
+    assert wb["Inventário"]["D2"].value == "SERVIDOR-SADIN" and wb["Inventário"]["H2"].value == "sim"
+    assert wb["Internet por dia"]["B2"].value == 100.0

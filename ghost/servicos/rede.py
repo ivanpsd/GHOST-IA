@@ -87,6 +87,9 @@ def procurar(inventario, termo):
     t = normalizar(termo)
     if not t:
         return []
+    exato = [a for mac, a in inventario.items() if t in (a.get("ip"), mac, normalizar(a.get("nome")), normalizar(a.get("apelido")))]
+    if exato:                                  # "192.168.50.1" não pode pegar também o .10, .11...
+        return exato
     achados = []
     for mac, a in inventario.items():
         campos = [a.get("apelido"), a.get("responsavel"), a.get("departamento"), a.get("nome"), a.get("ip"), mac]
@@ -125,8 +128,9 @@ def mesclar(inv, achados, agora=None):
     return novos
 
 
-def nomear(alvo, apelido=None, responsavel=None, departamento=None):
-    """Dá apelido/responsável/departamento a um aparelho (procurado por IP, MAC ou nome). Só muda o inventário."""
+def nomear(alvo, apelido=None, responsavel=None, departamento=None, critico=None):
+    """Dá apelido/responsável/departamento a um aparelho (procurado por IP, MAC ou nome) e marca/desmarca como
+    crítico (vigiado a cada minuto). Só muda o inventário do Ghost."""
     with _trava:
         inv = carregar()
         achados = procurar(inv, alvo)
@@ -136,6 +140,8 @@ def nomear(alvo, apelido=None, responsavel=None, departamento=None):
         for campo, valor in (("apelido", apelido), ("responsavel", responsavel), ("departamento", departamento)):
             if valor:
                 a[campo] = valor.strip()
+        if critico is not None:
+            a["critico"] = bool(critico)
         _salvar(inv)
         return a, 1
 
@@ -205,7 +211,7 @@ def varrer():
 # 4. RESPOSTAS (para a IA e para os comandos de voz)
 # =============================================================
 def _linha(a, agora):
-    extra = ", ".join(x for x in (a.get("responsavel"), a.get("departamento")) if x)
+    extra = ", ".join(x for x in (a.get("responsavel"), a.get("departamento"), "crítico" if a.get("critico") else None) if x)
     visto = "ligado" if online(a, agora) else f"visto por último {datetime.fromtimestamp(a.get('ultima_vez', 0)):%d/%m %H:%M}"
     return f"{nome_exibicao(a)} ({a.get('ip')}{', ' + extra if extra else ''}): {visto}"
 
@@ -254,7 +260,65 @@ def internet():
 
 
 # =============================================================
-# 5. VARREDURA AUTOMÁTICA
+# 5. EXPORTAR PARA EXCEL
+# =============================================================
+PASTA_EXPORTAR = os.path.join(os.path.expanduser("~"), "Documents", "Ghost", "Relatorios")
+
+
+def exportar():
+    """Excel com o inventário, as quedas dos aparelhos críticos e o histórico diário da internet. Devolve o caminho."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill
+
+    from ghost.servicos import monitor_rede as mon
+    inv, agora = carregar(), time.time()
+    os.makedirs(PASTA_EXPORTAR, exist_ok=True)
+    caminho = os.path.join(PASTA_EXPORTAR, f"Rede_{datetime.now():%Y-%m-%d_%H%M}.xlsx")
+    wb = Workbook()
+    cab, fundo = Font(bold=True, color="FFF4E6"), PatternFill("solid", fgColor="7A2E0E")
+
+    def aba(ws, titulo, colunas, linhas, larguras):
+        ws.title = titulo
+        ws.append(colunas)
+        for c in ws[1]:
+            c.font, c.fill = cab, fundo
+        for linha in linhas:
+            ws.append(linha)
+        for i, w in enumerate(larguras):
+            ws.column_dimensions[chr(65 + i)].width = w
+        ws.freeze_panes = "A2"
+        ws.auto_filter.ref = ws.dimensions
+
+    data = lambda t: datetime.fromtimestamp(t) if t else None  # noqa: E731
+    ordem = sorted(inv.values(), key=lambda a: ipaddress.ip_address(a.get("ip", "0.0.0.0")))
+    aba(wb.active, "Inventário",
+        ["Apelido", "Responsável", "Departamento", "Nome na rede", "Grupo", "IP", "MAC", "Crítico", "Situação",
+         "Primeira vez", "Última vez"],
+        [[a.get("apelido"), a.get("responsavel"), a.get("departamento"), a.get("nome"), a.get("grupo"), a.get("ip"),
+          a.get("mac"), "sim" if a.get("critico") else "", "ligado" if online(a, agora) else "desligado",
+          data(a.get("primeira_vez")), data(a.get("ultima_vez"))] for a in ordem],
+        [22, 18, 18, 20, 12, 15, 19, 8, 11, 17, 17])
+    eventos = arquivo.ler_jsonl(mon.ARQ_EVENTOS)
+    aba(wb.create_sheet(), "Quedas", ["Quando", "Aparelho", "Evento", "Minutos fora"],
+        [[data(e["t"]), e.get("nome"), e.get("tipo"), e.get("min")] for e in reversed(eventos)], [17, 26, 10, 12])
+    linhas = arquivo.ler_jsonl(mon.ARQ_INTERNET)
+    dias = sorted({datetime.fromtimestamp(r["t"]).date() for r in linhas}, reverse=True)
+    diario = []
+    for d in dias:
+        ini = datetime.combine(d, datetime.min.time()).timestamp()
+        r = mon.resumir_internet(linhas, ini, ini + 86400 - 1)
+        if r:
+            diario.append([d, r["disponibilidade"], r["latencia_media"], r["latencia_max"], len(r["quedas"]),
+                           sum(q["min"] for q in r["quedas"]), r["testes"]])
+    aba(wb.create_sheet(), "Internet por dia",
+        ["Dia", "No ar (%)", "Latência média (ms)", "Latência máx. (ms)", "Quedas", "Minutos fora", "Testes"],
+        diario, [12, 10, 18, 17, 8, 13, 8])
+    wb.save(caminho)
+    return caminho
+
+
+# =============================================================
+# 6. VARREDURA AUTOMÁTICA
 # =============================================================
 def iniciar(falar=None, ocupado=None):
     def laco():

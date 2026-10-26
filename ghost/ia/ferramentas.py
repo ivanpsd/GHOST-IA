@@ -135,20 +135,26 @@ TOOLS = [
             "required": ["item"]}}},
     {"type": "function", "function": {
         "name": "consultar_rede",
-        "description": ("Rede da empresa, SOMENTE LEITURA: aparelhos ligados, procurar uma máquina (por apelido, "
-                        "responsável, departamento, nome, IP), aparelhos novos nas últimas 24 h, ou qualidade da internet. "
+        "description": ("Rede da empresa, SOMENTE LEITURA: aparelhos ligados (listar), procurar uma máquina (por "
+                        "apelido, responsável, departamento, nome, IP), aparelhos novos nas últimas 24 h, internet agora, "
+                        "historico_internet (disponibilidade, latência e quedas no período), quedas (aparelhos críticos "
+                        "que caíram e voltaram, 7 dias), exportar (Excel com inventário, quedas e internet por dia). "
                         "Nunca liga, desliga ou altera máquinas."),
         "parameters": {"type": "object", "properties": {
-            "acao": {"type": "string", "enum": ["listar", "procurar", "novos", "internet"]},
+            "acao": {"type": "string", "enum": ["listar", "procurar", "novos", "internet", "historico_internet",
+                                                 "quedas", "exportar"]},
+            "periodo": {"type": "string", "enum": ["hoje", "24h", "semana", "mes"],
+                        "description": "só para historico_internet"},
             "termo": {"type": "string", "description": "o que procurar (só para acao=procurar)"}},
             "required": ["acao"]}}},
     {"type": "function", "function": {
         "name": "nomear_maquina",
-        "description": ("Anota no inventário do Ghost quem usa um aparelho da rede (apelido, responsável, departamento). "
-                        "'alvo' = IP, MAC ou nome atual. Não altera a máquina."),
+        "description": ("Anota no inventário do Ghost quem usa um aparelho da rede (apelido, responsável, departamento) "
+                        "e marca/desmarca como crítico (vigiado a cada minuto, avisa se cair). 'alvo' = IP, MAC ou nome "
+                        "atual. Não altera a máquina."),
         "parameters": {"type": "object", "properties": {
             "alvo": {"type": "string"}, "apelido": {"type": "string"}, "responsavel": {"type": "string"},
-            "departamento": {"type": "string"}}, "required": ["alvo"]}}},
+            "departamento": {"type": "string"}, "critico": {"type": "boolean"}}, "required": ["alvo"]}}},
     {"type": "function", "function": {
         "name": "olhar_tela",
         "description": ("Captura a tela do usuário NESTE momento e analisa. Use quando ele pedir para você ver/ler/"
@@ -237,7 +243,7 @@ GRUPOS = [
     (r"sauda|cumpriment|me chame|me chama", {"definir_saudacao"}),
     (r"notifica|whats|mensage|quem (me )?(mandou|escreveu)", {"listar_notificacoes", "configurar_notificacoes"}),
     (r"\brede\b|maquina|computador|\bpcs?\b|\bips?\b|online|ligad|servidor|internet|wi.?fi|roteador|aparelho|"
-     r"impressora|conexao|lento|ping", {"consultar_rede", "nomear_maquina"}),
+     r"impressora|conexao|lento|ping|caiu|queda|critic|inventario|camera", {"consultar_rede", "nomear_maquina"}),
     (r"segundo plano|tarefa|enquanto|monitor|acompanh|fique de olho|verifique a cada", {"tarefa_segundo_plano",
                                                                                        "listar_tarefas"}),
 ]
@@ -450,15 +456,32 @@ def executar(nome, args, falar, pedir_confirmacao):
 
         if nome == "consultar_rede":
             from ghost.servicos import rede
-            return rede.consultar(args.get("acao", "listar"), args.get("termo", "")), True
+            acao = args.get("acao", "listar")
+            if acao in ("historico_internet", "quedas", "exportar"):
+                from ghost.servicos import monitor_rede as mon
+                if acao == "historico_internet":
+                    return mon.texto_internet(args.get("periodo", "hoje")), True
+                if acao == "quedas":
+                    return mon.eventos_recentes(7), True
+                import os
+                caminho = rede.exportar()
+                return f"Excel salvo em Documentos, Ghost, Relatórios: {os.path.basename(caminho)}", True
+            return rede.consultar(acao, args.get("termo", "")), True
 
         if nome == "nomear_maquina":
             from ghost.servicos import rede
-            a, n = rede.nomear(args.get("alvo", ""), args.get("apelido"), args.get("responsavel"), args.get("departamento"))
+            a, n = rede.nomear(args.get("alvo", ""), args.get("apelido"), args.get("responsavel"), args.get("departamento"),
+                               args.get("critico"))
             if not a:
                 return (f"não achei '{args.get('alvo')}' no inventário" if n == 0
                         else f"'{args.get('alvo')}' corresponde a {n} aparelhos; peça o IP"), True
-            return f"anotado: {rede.nome_exibicao(a)} ({a.get('ip')}), {a.get('responsavel') or ''} {a.get('departamento') or ''}", True
+            if args.get("critico") and a.get("ip"):
+                from ghost.servicos import monitor_rede as mon
+                if not mon.ligado(a["ip"]):
+                    return (f"marcado como crítico: {rede.nome_exibicao(a)} ({a.get('ip')}), MAS ele não respondeu agora "
+                            "nem a ping nem às portas comuns; vai aparecer como fora do ar"), True
+            return (f"anotado: {rede.nome_exibicao(a)} ({a.get('ip')}), {a.get('responsavel') or ''} "
+                    f"{a.get('departamento') or ''}{', crítico' if a.get('critico') else ''}"), True
 
         if nome == "consultar_sistema":
             item = args.get("item", "")
