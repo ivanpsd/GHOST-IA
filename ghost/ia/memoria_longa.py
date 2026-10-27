@@ -1,95 +1,55 @@
 """
-GHOST - Memória de longo prazo pesquisável pelo SENTIDO (local e gratuita).
+GHOST - Memória de longo prazo pesquisável (local, gratuita e LEVE).
 
-Toda conversa fica guardada com data e hora em dados/historico_completo.jsonl, junto com um
-"vetor de sentido" (modelo multilíngue rodando no PC, sem internet depois de baixado).
-Assim a IA pode buscar: "o que eu te falei semana passada sobre o fornecedor X?",
-mesmo que você não use as mesmas palavras. Arquivos pessoais, fora do Git.
-
-Desempenho: o histórico fica em memória e só as linhas novas são lidas e vetorizadas.
-A busca usa os vetores já prontos (não espera a indexação nem o modelo carregar na hora).
+Toda conversa fica guardada com data e hora em dados/historico_completo.jsonl. A busca é por PALAVRAS
+(sem acento, sem maiúscula, aproximando variações: "fornecedor"/"fornecedores", "estoque"/"estocar"),
+com peso maior para palavras raras (BM25). Antes usava um modelo de "sentido" que ocupava ~500 MB de RAM;
+foi trocado em 27/10/2026 para economizar memória neste PC.
 """
+import math
 import os
+import re
 import threading
 import time
+import unicodedata
+from collections import Counter
 from datetime import datetime
-
-import numpy as np
 
 from ghost.nucleo import arquivo, caminhos
 
 ARQ_TEXTO = caminhos.dado("historico_completo.jsonl")
-ARQ_VETORES = caminhos.dado("historico_vetores.npy")
-MODELO = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
-PASTA_MODELO = caminhos.modelo("embeddings")
-DIM = 384
-SIMILARIDADE_MINIMA = 0.25
+RAIZ = 5                 # "fornecedores" e "fornecedor" viram "forne": aproxima plural, gênero e verbo
+PARAR = set("a o e de da do das dos em no na nos nas um uma para por com que se ao aos the eu voce vc me te ele ela "
+            "isso esse essa este esta foi sao ser era ter tem mais muito como qual quais quando onde ja nao sim "
+            "senhor ghost ivan".split())
+K1, B = 1.4, 0.75
 
-_trava = threading.RLock()           # protege _itens/_vetores
-_trava_modelo = threading.Lock()     # carregar o modelo (lento) não bloqueia quem só lê
-_trava_sync = threading.Lock()       # uma sincronização por vez
-_modelo = None
-_itens = None                        # lista de trocas (cache)
-_vetores = None                      # np.ndarray (n, DIM), alinhado com _itens[:n]
+_trava = threading.RLock()
+_itens = None            # lista das trocas (em memória, só texto)
+_termos = None           # Counter de palavras por troca, alinhado com _itens
 
 
-def _embed(textos):
-    global _modelo
-    with _trava_modelo:
-        if _modelo is None:
-            from fastembed import TextEmbedding
-            _modelo = TextEmbedding(MODELO, cache_dir=PASTA_MODELO)
-        v = np.array(list(_modelo.embed(textos)), dtype=np.float32)
-    return v / (np.linalg.norm(v, axis=1, keepdims=True) + 1e-9)
+def normalizar(texto):
+    t = unicodedata.normalize("NFD", (texto or "").lower())
+    t = "".join(c for c in t if unicodedata.category(c) != "Mn")
+    return [p[:RAIZ] for p in re.findall(r"[a-z0-9]+", t) if p not in PARAR and len(p) > 1]
 
 
-def _texto(item):
-    return f"Ivan: {item['usuario']}\nGhost: {item['ghost']}"
+def _termos_de(item):
+    return Counter(normalizar(f"{item['usuario']} {item['ghost']}"))
 
 
 def _garantir_cache():
-    global _itens, _vetores
+    global _itens, _termos
     with _trava:
         if _itens is None:
             _itens = [i for i in arquivo.ler_jsonl(ARQ_TEXTO) if i.get("usuario") and i.get("ghost")]
-            try:
-                v = np.load(ARQ_VETORES)
-                _vetores = v[: len(_itens)] if v.ndim == 2 and v.shape[1] == DIM else np.zeros((0, DIM), np.float32)
-            except (FileNotFoundError, ValueError, OSError):
-                _vetores = np.zeros((0, DIM), np.float32)
-        return _itens, _vetores
-
-
-def _sincronizar():
-    """Calcula os vetores que faltam (só os novos) e grava."""
-    global _vetores
-    with _trava_sync:
-        itens, vet = _garantir_cache()
-        with _trava:
-            faltam = itens[len(vet):]
-            ini = len(vet)
-        if not faltam:
-            return
-        novos = _embed([_texto(i) for i in faltam])
-        with _trava:
-            if len(_vetores) != ini:          # alguém mudou no meio (não deveria): recomeça na próxima
-                return
-            _vetores = np.vstack([_vetores, novos]) if len(_vetores) else novos
-            copia = _vetores.copy()
-        tmp = ARQ_VETORES + ".tmp.npy"
-        np.save(tmp, copia)
-        os.replace(tmp, ARQ_VETORES)
-
-
-def _sincronizar_seguro():
-    try:
-        _sincronizar()
-    except Exception as e:
-        print(f"\n[MEMÓRIA LONGA]: não consegui indexar ({e}).")
+            _termos = [_termos_de(i) for i in _itens]
+        return _itens, _termos
 
 
 def adicionar(usuario, ghost, quando=None):
-    """Guarda uma troca (o vetor é calculado em segundo plano)."""
+    """Guarda uma troca (rápido: só texto, sem modelo e sem thread)."""
     if not usuario or not ghost:
         return
     item = {"t": quando or time.time(), "usuario": str(usuario)[:1500], "ghost": str(ghost)[:1500]}
@@ -97,7 +57,27 @@ def adicionar(usuario, ghost, quando=None):
     with _trava:
         if _itens is not None:
             _itens.append(item)
-    threading.Thread(target=_sincronizar_seguro, daemon=True, name="memoria-longa").start()
+            _termos.append(_termos_de(item))
+
+
+def pontuar(consulta, termos_docs):
+    """BM25: nota de cada documento para a consulta (função pura)."""
+    q = set(normalizar(consulta))
+    n = len(termos_docs)
+    if not q or not n:
+        return [0.0] * n
+    media = sum(sum(t.values()) for t in termos_docs) / n or 1
+    df = Counter(p for t in termos_docs for p in q if p in t)
+    notas = []
+    for t in termos_docs:
+        tam, s = sum(t.values()), 0.0
+        for p in q:
+            f = t.get(p, 0)
+            if f:
+                idf = math.log(1 + (n - df[p] + 0.5) / (df[p] + 0.5))
+                s += idf * f * (K1 + 1) / (f + K1 * (1 - B + B * tam / media))
+        notas.append(s)
+    return notas
 
 
 def _data(s):
@@ -105,12 +85,10 @@ def _data(s):
 
 
 def buscar(pergunta, data_inicio="", data_fim="", quantidade=6):
-    """Trocas mais parecidas com a pergunta (opcionalmente dentro de um período AAAA-MM-DD)."""
-    itens, _ = _garantir_cache()
-    threading.Thread(target=_sincronizar_seguro, daemon=True).start()     # indexa o atraso em segundo plano
+    """Trocas que mais combinam com a pergunta (opcionalmente dentro de um período AAAA-MM-DD)."""
+    itens, termos = _garantir_cache()
     with _trava:
-        itens = list(itens)
-        vet = _vetores.copy()
+        itens, termos = list(itens), list(termos)
     if not itens:
         return "Ainda não há conversas guardadas na memória de longo prazo."
     try:
@@ -123,15 +101,12 @@ def buscar(pergunta, data_inicio="", data_fim="", quantidade=6):
         return "Nenhuma conversa guardada nesse período."
     quantidade = max(1, min(int(quantidade or 6), 20))
     if (pergunta or "").strip():
-        com_vetor = [i for i in idx if i < len(vet)]
-        if not com_vetor:
-            return "Ainda estou indexando as conversas; tente de novo em alguns segundos."
-        notas = vet[com_vetor] @ _embed([pergunta])[0]
-        ordem = [com_vetor[i] for i in np.argsort(-notas)[:quantidade] if notas[i] > SIMILARIDADE_MINIMA]
+        notas = pontuar(pergunta, [termos[i] for i in idx])
+        ordem = [idx[k] for k in sorted(range(len(idx)), key=lambda k: -notas[k])[:quantidade] if notas[k] > 0]
     else:
         ordem = idx[-quantidade:]
     if not ordem:
-        return "Não encontrei nada parecido nas conversas guardadas."
+        return "Não encontrei nada com essas palavras nas conversas guardadas."
     ordem.sort(key=lambda i: itens[i]["t"])
     return "\n".join(f"[{datetime.fromtimestamp(itens[i]['t']):%d/%m/%Y %H:%M}] Ivan: {itens[i]['usuario'][:300]} | "
                      f"Ghost: {itens[i]['ghost'][:300]}" for i in ordem)
@@ -147,5 +122,4 @@ def importar_antigos(lista):
             arquivo.acrescentar_jsonl(ARQ_TEXTO, {"t": it.get("t", time.time()), "usuario": it["usuario"],
                                                   "ghost": it["ghost"]})
             n += 1
-    threading.Thread(target=_sincronizar_seguro, daemon=True).start()
     return n

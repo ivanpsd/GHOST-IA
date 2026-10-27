@@ -21,23 +21,23 @@ Windows (atalho GHOST.lnk)  ->  pythonw -m ghost.vigia  ->  python -m ghost  -> 
 ## O caminho de um pedido
 
 ```
-microfone ─► voz/ativacao ──┐
-F9 ─────────────────────────┴─► fila_comandos ─► app (laço principal)
+F9 (segurar e falar) ────────► fila_comandos ─► app (laço principal)
                                                     │
                                                     ├─ transcrever (Groq Whisper → Google)
-                                                    ├─ confere "Ghost" no começo (só ativação por voz)
-                                                    ├─ modos: "oi Ghost" / "tchau Ghost"
+                                                    ├─ "tchau Ghost" = não perturbe
                                                     ├─ automacao/automacoes.executar  (comandos locais, sem IA)
-                                                    └─ IA: Groq → Gemini (com ferramentas de ia/ferramentas)
+                                                    └─ IA: fila de provedores (ia/provedores.py) com ferramentas
                                                                 │
                               texto_queue ─► gerador de voz (edge-tts, com cache) ─► audio_queue ─► voz/som
 ```
 
-- **Ativação** (`voz/ativacao.py`): um único fluxo do microfone (`voz/som.py`) alimenta o Vosk e o detector treinado
-  (`voz/palavra.py`). Modos: `normal`, `conversa` (fala sem dizer "Ghost" por 5 min) e `dormindo` (ignora tudo até
-  "oi Ghost" ou "Ghost, ..."). Se o microfone travar (fone tirado, suspensão), reabre sozinho.
-- **Fala**: cada frase recebe a "geração" atual; interromper (`parar_fala`) muda a geração e as frases velhas são descartadas
-  em vez de tocar atrasadas. `voz/eco.py` tira o som do próprio Ghost do microfone para você poder interrompê-lo falando.
+- **Ativação**: só pelo **F9** (`voz/ativacao.py`): o microfone abre apenas enquanto o F9 está apertado. A palavra
+  "Ghost" (detector treinado, Vosk, cancelamento de eco) foi retirada em 27/10/2026 para economizar ~130 MB e CPU.
+  "Tchau Ghost" liga o não perturbe (avisos esperam até o próximo F9).
+- **Fala**: cada frase recebe a "geração" atual; interromper (`parar_fala`, F9) muda a geração e as frases velhas
+  são descartadas em vez de tocar atrasadas.
+- **Avisos** (`nucleo/avisos.py`): tudo o que o Ghost fala sem ser perguntado (mensagens, rede, lembretes) entra numa
+  fila única com prioridade; só sai quando ninguém está usando o Ghost e não há pergunta pendente.
 
 ## Painel de indicadores
 
@@ -90,7 +90,7 @@ calendário e depois no dia) é trocada na gravação por "clicar no campo ao la
 | Queda em biblioteca nativa | `faulthandler` + vigia | `app.py`, `vigia.py` |
 | IA travada | Tempo limite em cada modelo e troca automática (Groq → Gemini) | `app.consultar_ia_streaming` |
 | Sem internet | Avisa "Senhor, estou sem internet" (frase guardada no cache de voz); comandos voltam sozinhos com a rede | `app.SemInternet` |
-| Comando por engano (conversa da sala) | Detector treinado na sua voz + conferência do "Ghost" pelo Whisper + volume mínimo da sua voz | `voz/palavra.py`, `voz/ativacao.py`, `app.py` |
+| Comando por engano (conversa da sala) | Só o F9 ativa (microfone fechado no resto do tempo) | `voz/ativacao.py`, `app.py` |
 | Mensagem do WhatsApp para a pessoa errada | Contato só é trocado pela ficha quando há UMA correspondência exata | `ia/pessoas.resolver_contato` |
 
 ## Onde mexer
@@ -100,7 +100,6 @@ calendário e depois no dia) é trocada na gravação por "clicar no campo ao la
 | Personalidade, instruções da IA, modelos usados | `ghost/app.py` (`PERSONALIDADES`, `SYSTEM_INSTRUCTION`, `MODELOS_GROQ`, `MODELOS_GEMINI`) |
 | Um comando local novo ("Ghost, faça X" sem IA) | `ghost/automacao/automacoes.py` (uma função `_tratar_...` e a chamada em `executar`) |
 | Uma ferramenta nova para a IA | `ghost/ia/ferramentas.py` (`TOOLS`, `executar` e classificar em `EXTERNAS`/`ACOES`) |
-| Sensibilidade do microfone / da palavra "Ghost" | `ghost/voz/ativacao.py` (`FATOR_DONO`, `FATOR_INTERRUPCAO`), `ghost/voz/palavra.py` (`LIMIAR_MINIMO`) |
 | Alertas (disco, bateria, pausa, chuva) | `ghost/servicos/alertas.py` |
 | Religar gestos e macros | `ghost/automacao/automacoes.py` (`GESTOS_ATIVOS = True`) |
 | Onde ficam os arquivos | `ghost/nucleo/caminhos.py` |
@@ -111,7 +110,7 @@ calendário e depois no dia) é trocada na gravação por "clicar no campo ao la
 |---|---|---|
 | `dados/` | memória, conversa, fichas, skills, lembretes, preferências, rotina, histórico, treino da voz, `credentials.json`, `token_google.json` | não |
 | `logs/` | `ghost.log` (2 MB + 1 anterior), `travamentos.log` | não |
-| `modelos/` | Vosk, MediaPipe, base do detector, cache de voz | não |
+| `modelos/` | MediaPipe (câmera/gestos), cache de voz | não |
 | `prints/` | capturas de tela pedidas por voz | não |
 
 ## Testes

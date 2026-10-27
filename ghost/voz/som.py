@@ -16,8 +16,6 @@ from contextlib import contextmanager
 import numpy as np
 import sounddevice as sd
 
-from ghost.voz import eco
-
 PA = threading.RLock()            # abrir/fechar streams: nunca em paralelo
 _saida = threading.Lock()         # uma fala por vez
 _parar = threading.Event()
@@ -65,14 +63,11 @@ def tocar(data, fs, gen=None):
         minha = _geracao
         try:
             stream = _saida_para(fs, data.shape[1])
-            ref = eco.reamostrar(data, fs)             # referência para o cancelamento de eco, 16 kHz
             passo = max(1, int(fs * BLOCO_S))
             for i in range(0, len(data), passo):
                 if _parar.is_set() or minha != _geracao:
                     break
                 bloco = np.ascontiguousarray(data[i:i + passo])
-                if ref is not None:                    # índices proporcionais: sem desvio acumulado
-                    eco.alimentar_ref(ref[i * eco.TAXA // fs:(i + passo) * eco.TAXA // fs])
                 stream.write(bloco)
         except Exception:
             with PA:                      # stream com problema: descarta e abre outro na próxima fala

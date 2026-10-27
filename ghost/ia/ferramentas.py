@@ -481,20 +481,19 @@ def executar(nome, args, falar, pedir_confirmacao):
         if nome == "consultar_rede":
             from ghost.servicos import rede
             acao = args.get("acao", "listar")
-            if acao in ("historico_internet", "quedas", "exportar"):
-                from ghost.servicos import monitor_rede as mon
-                if acao == "historico_internet":
-                    return mon.texto_internet(args.get("periodo", "hoje")), True
-                if acao == "quedas":
-                    return mon.eventos_recentes(7), True
+            if acao == "historico_internet":
+                return rede.texto_internet(args.get("periodo", "hoje")), True
+            if acao == "quedas":
+                return rede.eventos_recentes(7), True
+            if acao == "exportar":
                 import os
                 caminho = rede.exportar()
                 return f"Excel salvo em Documentos, Ghost, Relatórios: {os.path.basename(caminho)}", True
             return rede.consultar(acao, args.get("termo", "")), True
 
         if nome == "consultar_maquinas":
-            from ghost.servicos import meshcentral
-            return meshcentral.consultar(args.get("acao", "listar"), args.get("termo", "")), True
+            from ghost.servicos import rede
+            return rede.consultar_agentes(args.get("acao", "listar"), args.get("termo", "")), True
 
         if nome == "departamentos_rede":
             from ghost.servicos import rede
@@ -517,8 +516,7 @@ def executar(nome, args, falar, pedir_confirmacao):
                 return (f"não achei '{args.get('alvo')}' no inventário" if n == 0
                         else f"'{args.get('alvo')}' corresponde a {n} aparelhos; peça o IP"), True
             if args.get("critico") and a.get("ip"):
-                from ghost.servicos import monitor_rede as mon
-                if not mon.ligado(a["ip"]):
+                if not rede.responde(a["ip"]):
                     return (f"marcado como crítico: {rede.nome_exibicao(a)} ({a.get('ip')}), MAS ele não respondeu agora "
                             "nem a ping nem às portas comuns; vai aparecer como fora do ar"), True
             return (f"anotado: {rede.nome_exibicao(a)} ({a.get('ip')}), {a.get('responsavel') or ''} "

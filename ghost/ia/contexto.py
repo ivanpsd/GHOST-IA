@@ -11,13 +11,12 @@ from collections import deque
 FALAS_MAX = 12
 FALAS_MINUTOS = 15
 JANELAS_MINUTOS = 15
-AMOSTRA_S = 5
+AMOSTRA_S = 10            # quem amostra é a rotina (servicos/rotina.py), a cada 10 s: uma leitura só no Ghost todo
 IGNORAR = ("painel do ghost", "program manager", "")
 
 _trava = threading.Lock()
 _falas = deque(maxlen=FALAS_MAX)        # (t, texto)
 _janelas = deque(maxlen=JANELAS_MINUTOS * 60 // AMOSTRA_S)   # (t, exe, titulo)
-_thread = None
 
 
 # ------------------------------------------------------------- falas do Ghost
@@ -49,22 +48,6 @@ def amostrar(info=None):
         return
     with _trava:
         _janelas.append((time.time(), info.get("exe", ""), titulo))
-
-
-def _laco():
-    while True:
-        try:
-            amostrar()
-        except Exception:
-            pass
-        time.sleep(AMOSTRA_S)
-
-
-def iniciar():
-    global _thread
-    if _thread is None:
-        _thread = threading.Thread(target=_laco, daemon=True, name="contexto-janelas")
-        _thread.start()
 
 
 def _janelas_recentes(agora):

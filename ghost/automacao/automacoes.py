@@ -912,22 +912,10 @@ def _tratar_google(n, falar):
     return False
 
 def _tratar_ativacao(n, falar):
-    if tem(n, "treinar ativacao", "treinar a ativacao", "treinar palavra de ativacao", "treinar a palavra de ativacao",
-           "aprender minha voz", "treinar meu chamado", "treinar o chamado"):
-        from ghost.voz import palavra
-        em_segundo_plano(palavra.treinar_interativo, falar)
+    if tem(n, "treinar ativacao", "treinar a ativacao", "ativacao por voz", "palavra de ativacao", "ouvir meu chamado",
+           "me ouvir sem o f9", "aprender minha voz"):
+        falar("Senhor, a ativação pela voz foi retirada para economizar memória. Use o F9.")
         return True
-    if tem(n, "esquecer treino da ativacao", "apagar treino da ativacao", "esquecer o treino da ativacao"):
-        from ghost.voz import palavra
-        palavra.esquecer()
-        falar("Treino da ativação apagado, senhor. Voltei a usar o reconhecedor padrão.")
-        return True
-    if tem(n, "ativacao por voz", "palavra de ativacao", "ouvir meu chamado", "me ouvir sem o f9"):
-        from ghost.voz import ativacao
-        if re.search(VERBO_DESLIGAR, n):
-            ativacao.ligar(False, falar); return True
-        if re.search(VERBO_LIGAR, n):
-            ativacao.ligar(True, falar); return True
     return False
 
 def _tratar_ghost(n, falar):

@@ -111,7 +111,7 @@ def checar():
     no_horario = HORARIO[0] <= agora.hour < HORARIO[1]
     dia_util = agora.weekday() < 5
 
-    # internet: NÃO é checada aqui. O vigia da rede (servicos/monitor_rede.py) já testa a cada minuto e avisa;
+    # internet: NÃO é checada aqui. O vigia da rede (servicos/rede.py) já testa a cada minuto e avisa;
     # checar nos dois lugares dava aviso duplicado da mesma queda.
 
     # bateria (vale sempre)

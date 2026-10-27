@@ -1,5 +1,8 @@
 """
-GHOST - Rede da empresa, SOMENTE LEITURA.
+GHOST - Rede da empresa, SOMENTE LEITURA. Um arquivo só para tudo de rede:
+  1-4. inventário (varredura ARP/NetBIOS, apelidos, departamentos)   5. vigia (internet + aparelhos críticos)
+  6. agentes MeshCentral (quem está logado, antivírus...)            7. dados do mapa "link neural"
+  8. exportar para Excel                                               9. varredura automática
 
 O que faz: descobre os aparelhos da rede local (ping + tabela ARP + nome NetBIOS/DNS), guarda um inventário
 (dados/rede.json: MAC, IP, nome na rede, apelido, responsável, departamento, primeira e última vez visto) e
@@ -10,6 +13,7 @@ O que NÃO faz: nada que altere outra máquina (sem desligar, reiniciar, instala
 Nomear uma máquina ("a 192.168.50.7 é do Gustavo, do TI") muda só o inventário do Ghost.
 """
 import ipaddress
+import json
 import os
 import re
 import socket
@@ -232,12 +236,26 @@ def minha_rede():
         ip = s.getsockname()[0]
     finally:
         s.close()
-    prefixo = 24
-    texto = _rodar(["powershell", "-NoProfile", "-Command",
-                    f"(Get-NetIPAddress -IPAddress {ip} -ErrorAction SilentlyContinue).PrefixLength"], 15).strip()
-    if texto.isdigit():
-        prefixo = max(int(texto), 22)          # rede maior que /22: varre só a parte do próprio IP (até 1024)
-    return ip, ipaddress.ip_network(f"{ip}/{prefixo}", strict=False)
+    if _cache_rede.get("ip") != ip:            # o tamanho da rede só muda se o IP mudar: PowerShell 1 vez só
+        texto = _rodar(["powershell", "-NoProfile", "-Command",
+                        f"(Get-NetIPAddress -IPAddress {ip} -ErrorAction SilentlyContinue).PrefixLength"], 15).strip()
+        prefixo = max(int(texto), 22) if texto.isdigit() else 24   # maior que /22: varre só a parte do IP (até 1024)
+        _cache_rede.update(ip=ip, prefixo=prefixo)
+    return ip, ipaddress.ip_network(f"{ip}/{_cache_rede['prefixo']}", strict=False)
+
+
+_cache_rede = {}
+_cache_gw = {"ip": None, "t": 0.0}
+
+
+def gateway():
+    """IP do roteador. Lido com 'route print' (leve) no máximo a cada 10 min; usado por todo o Ghost."""
+    if _cache_gw["ip"] and time.time() - _cache_gw["t"] < 600:
+        return _cache_gw["ip"]
+    m = re.search(r"^\s*0\.0\.0\.0\s+0\.0\.0\.0\s+(\d+\.\d+\.\d+\.\d+)", _rodar(["route", "print", "-4", "0.0.0.0"], 5), re.M)
+    if m:
+        _cache_gw.update(ip=m.group(1), t=time.time())
+    return _cache_gw["ip"]
 
 
 def _ping(ip):
@@ -314,9 +332,7 @@ def internet():
         texto = _rodar(["ping", "-n", "3", "-w", "1000", ip], 8)
         tempos = [int(x) for x in re.findall(r"[=<](\d+)\s*ms", texto)]
         return (round(sum(tempos) / len(tempos)), len(tempos)) if tempos else (None, 0)
-    gw = _rodar(["powershell", "-NoProfile", "-Command",
-                 "(Get-NetIPConfiguration | Where-Object {$_.IPv4DefaultGateway} | Select-Object -First 1)"
-                 ".IPv4DefaultGateway.NextHop"], 15).strip()
+    gw = gateway()
     partes = []
     for nome, ip in (("roteador", gw), ("Google DNS", "8.8.8.8"), ("Cloudflare", "1.1.1.1")):
         if not ip:
@@ -327,7 +343,413 @@ def internet():
 
 
 # =============================================================
-# 5. EXPORTAR PARA EXCEL
+# 5. VIGIA: internet a cada minuto + aparelhos marcados como críticos (avisa queda e volta)
+# =============================================================
+ARQ_INTERNET = caminhos.dado("internet.jsonl")
+ARQ_EVENTOS = caminhos.dado("rede_eventos.jsonl")
+CICLO_S = 60
+FALHAS_PARA_ALERTA = 2        # 2 minutos fora do ar
+RETENCAO_DIAS = 90
+ALVOS_INTERNET = ("8.8.8.8", "1.1.1.1")
+PORTAS = (445, 80, 443, 9100, 554, 3389, 22, 8080)
+AVISO_SEM_INTERNET = "Senhor, estou sem internet no momento."   # igual a app.AVISO_SEM_INTERNET (cache de voz)
+
+_ultima_internet = {}         # último teste (o painel lê daqui em vez de medir de novo)
+_estado_vigia = {}                  # chave -> {"falhas", "fora_desde", "avisado"}
+_trava_vigia = threading.Lock()
+
+
+# =============================================================
+# 1. TESTES
+# =============================================================
+def _ping_ms(ip, tempo_ms=1000):
+    """Latência em ms (int) ou None."""
+    try:
+        r = subprocess.run(["ping", "-n", "1", "-w", str(tempo_ms), ip], capture_output=True, timeout=tempo_ms / 1000 + 3,
+                           creationflags=SEM_JANELA if os.name == "nt" else 0)
+        m = re.search(r"[=<](\d+)\s*ms", r.stdout.decode("cp850", errors="replace"))
+        return int(m.group(1)) if m and r.returncode == 0 else None
+    except Exception:
+        return None
+
+
+def _porta_responde(ip, porta, tempo=1.0):
+    """True se o aparelho respondeu na porta (aceitou OU recusou: os dois provam que está ligado)."""
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.settimeout(tempo)
+    try:
+        return s.connect_ex((ip, porta)) in (0, 10061, 111)      # 0 = aberta; 10061/111 = recusada
+    except OSError:
+        return False
+    finally:
+        s.close()
+
+
+def _tcp_ms(ip, porta, tempo=1.5):
+    """Latência de uma conexão TCP em ms (sem abrir processo, ao contrário do ping.exe), ou None."""
+    t0 = time.perf_counter()
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.settimeout(tempo)
+    try:
+        return round((time.perf_counter() - t0) * 1000) if s.connect_ex((ip, porta)) in (0, 10061, 111) else None
+    except OSError:
+        return None
+    finally:
+        s.close()
+
+
+def responde(ip):
+    """Ligado? Primeiro portas comuns (leve, sem processo); o ping.exe só se nenhuma responder."""
+    if any(_porta_responde(ip, p, 0.5) for p in PORTAS):
+        return True
+    return _ping_ms(ip) is not None
+
+
+# =============================================================
+# 2. TRANSIÇÕES (função pura: decide quando avisar)
+# =============================================================
+def registrar_teste(chave, ok, agora, estado=None):
+    """Atualiza o estado de um alvo. Devolve ('caiu', None) | ('voltou', minutos_fora) | (None, None)."""
+    estado = _estado_vigia if estado is None else estado
+    e = estado.setdefault(chave, {"falhas": 0, "fora_desde": None, "avisado": False})
+    if ok:
+        avisado, desde = e["avisado"], e["fora_desde"]
+        e.update(falhas=0, fora_desde=None, avisado=False)
+        if avisado:
+            return "voltou", round((agora - desde) / 60)
+        return None, None
+    e["falhas"] += 1
+    if e["fora_desde"] is None:
+        e["fora_desde"] = agora
+    if e["falhas"] >= FALHAS_PARA_ALERTA and not e["avisado"]:
+        e["avisado"] = True
+        return "caiu", None
+    return None, None
+
+
+# =============================================================
+# 3. RESUMO DO HISTÓRICO (função pura)
+# =============================================================
+def resumir_internet(linhas, desde, ate=None):
+    """linhas = registros de internet.jsonl. Devolve dict com disponibilidade, latência média e quedas."""
+    ate = ate or time.time()
+    reg = [r for r in linhas if desde <= r.get("t", 0) <= ate]
+    if not reg:
+        return None
+    ok = [r for r in reg if r.get("net_ms") is not None]
+    quedas, inicio, causa = [], None, None
+    for r in reg:
+        if r.get("net_ms") is None:
+            if inicio is None:
+                inicio = r["t"]
+                causa = "rede interna/roteador" if r.get("gw_ms") is None else "provedor de internet"
+        elif inicio is not None:
+            quedas.append({"inicio": inicio, "fim": r["t"], "min": max(1, round((r["t"] - inicio) / 60)), "causa": causa})
+            inicio = None
+    if inicio is not None:
+        quedas.append({"inicio": inicio, "fim": None, "min": max(1, round((reg[-1]["t"] - inicio) / 60)), "causa": causa})
+    lat = [r["net_ms"] for r in ok]
+    return {"testes": len(reg), "disponibilidade": round(100 * len(ok) / len(reg), 2),
+            "latencia_media": round(sum(lat) / len(lat)) if lat else None,
+            "latencia_max": max(lat) if lat else None, "quedas": quedas}
+
+
+def texto_internet(periodo="hoje"):
+    agora = time.time()
+    hoje = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
+    desde = {"hoje": hoje, "24h": agora - 86400, "semana": agora - 7 * 86400, "mes": agora - 30 * 86400}.get(periodo, hoje)
+    r = resumir_internet(arquivo.ler_jsonl(ARQ_INTERNET), desde, agora)
+    if not r:
+        return "Ainda não há histórico da internet para esse período (o Ghost registra a cada minuto enquanto está aberto)."
+    q = r["quedas"]
+    linhas = [f"Internet ({periodo}): {r['disponibilidade']}% do tempo no ar, latência média {r['latencia_media']} ms "
+              f"(máx. {r['latencia_max']} ms), {len(q)} queda(s) em {r['testes']} testes."]
+    for x in q[-8:]:
+        fim = f"{datetime.fromtimestamp(x['fim']):%H:%M}" if x["fim"] else "agora"
+        linhas.append(f"- {datetime.fromtimestamp(x['inicio']):%d/%m %H:%M} a {fim}: {x['min']} min ({x['causa']})")
+    return "\n".join(linhas)
+
+
+def eventos_recentes(dias=7):
+    desde = time.time() - dias * 86400
+    ev = [e for e in arquivo.ler_jsonl(ARQ_EVENTOS) if e.get("t", 0) >= desde]
+    if not ev:
+        return f"Nenhuma queda de aparelho crítico nos últimos {dias} dias."
+    return "\n".join(f"- {datetime.fromtimestamp(e['t']):%d/%m %H:%M}: {e['nome']} {e['tipo']}"
+                     + (f" ({e['min']} min fora)" if e.get("min") else "") for e in ev[-15:])
+
+
+# =============================================================
+# 4. LAÇO
+# =============================================================
+def _podar(caminho, dias):
+    """Mantém só os últimos `dias` dias (roda 1x por dia)."""
+    limite = time.time() - dias * 86400
+    itens = arquivo.ler_jsonl(caminho)
+    if itens and itens[0].get("t", 0) < limite:
+        manter = [i for i in itens if i.get("t", 0) >= limite]
+        tmp = caminho + ".tmp"
+        import json
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.writelines(json.dumps(i, ensure_ascii=False) + "\n" for i in manter)
+        os.replace(tmp, caminho)
+
+
+def ultima_internet():
+    return dict(_ultima_internet)
+
+
+def ciclo_vigia(falar=None):
+    """Um teste completo. Devolve o registro da internet."""
+    agora = time.time()
+    gw = gateway()
+    gw_ms = (_tcp_ms(gw, 80) or _ping_ms(gw)) if gw else None      # roteador: porta da página dele; senão ping
+    net_ok = [x for x in (_tcp_ms(ip, 443) for ip in ALVOS_INTERNET) if x is not None]
+    reg = {"t": round(agora), "gw_ms": gw_ms, "net_ms": min(net_ok) if net_ok else None}
+    _ultima_internet.update(reg)
+    arquivo.acrescentar_jsonl(ARQ_INTERNET, reg)
+
+    alvos = [("internet", "A internet", reg["net_ms"] is not None)]
+    if gw:
+        alvos.append(("roteador", "O roteador", gw_ms is not None))
+    for a in carregar().values():
+        if a.get("critico") and a.get("ip"):
+            alvos.append((a["mac"], nome_exibicao(a), responde(a["ip"])))
+    for chave, nome, ok in alvos:
+        with _trava_vigia:
+            tipo, minutos = registrar_teste(chave, ok, agora)
+        if not tipo:
+            continue
+        arquivo.acrescentar_jsonl(ARQ_EVENTOS, {"t": round(agora), "nome": nome, "tipo": tipo, "min": minutos})
+        msg = (f"Senhor, {nome.lower() if chave in ('internet', 'roteador') else nome} caiu: sem resposta há "
+               f"{FALHAS_PARA_ALERTA} minutos." if tipo == "caiu"
+               else f"Senhor, {nome.lower() if chave in ('internet', 'roteador') else nome} voltou, depois de {minutos} minutos fora.")
+        if chave == "internet" and tipo == "caiu":
+            msg = AVISO_SEM_INTERNET          # frase guardada no cache de voz: sem internet não dá para gerar outra
+        print(f"\n[REDE]: {msg}")
+        try:
+            from ghost.nucleo import painel
+            painel.evento(msg.replace("Senhor, ", ""), "alerta" if tipo == "caiu" else "info")
+        except Exception:
+            pass
+        if falar:
+            falar(msg)
+    return reg
+
+
+def iniciar_vigia(falar=None, ocupado=None):
+    def laco():
+        podado = 0.0
+        while True:
+            try:
+                ciclo_vigia(falar)
+                if time.time() - podado > 86400:
+                    _podar(ARQ_INTERNET, RETENCAO_DIAS)
+                    _podar(ARQ_EVENTOS, 365)
+                    podado = time.time()
+            except Exception as e:
+                print(f"\n[REDE]: vigia falhou ({e!r}).")
+            time.sleep(CICLO_S)
+    threading.Thread(target=laco, daemon=True, name="vigia-rede").start()
+
+
+# =============================================================
+# 6. AGENTES MESHCENTRAL (somente leitura, conta "ghost" sem controle remoto; dados no .env:
+#    MESH_URL, MESH_USUARIO, MESH_SENHA e, opcional, MESH_CTRL = caminho do meshctrl.js)
+# =============================================================
+MESHCTRL_PADRAO = r"C:\MeshCentral\node_modules\meshcentral\meshctrl.js"
+CACHE_MESH_S = 120              # o mapa atualiza a cada 30 s; o Node (meshctrl) só roda a cada 2 min
+
+_cache_mesh = {"t": 0.0, "dados": None, "erro": None, "t_erro": 0.0}
+ESPERA_APOS_ERRO_S = 60       # MeshCentral fora do ar: não tenta de novo a cada pedido (cada tentativa leva ~10 s)
+
+
+class SemMesh(Exception):
+    """MeshCentral não configurado ou fora do ar (mensagem pronta para o usuário)."""
+
+
+# =============================================================
+# 1. LEITURA
+# =============================================================
+def mesh_configurado():
+    return all(os.getenv(k) for k in ("MESH_URL", "MESH_USUARIO", "MESH_SENHA"))
+
+
+def listar_agentes(forcar=False):
+    """Lista crua de dispositivos (dicts do MeshCentral). Cache de CACHE_MESH_S segundos."""
+    if not forcar and _cache_mesh["dados"] is not None and time.time() - _cache_mesh["t"] < CACHE_MESH_S:
+        return _cache_mesh["dados"]
+    if not forcar and _cache_mesh["erro"] and time.time() - _cache_mesh["t_erro"] < ESPERA_APOS_ERRO_S:
+        raise SemMesh(_cache_mesh["erro"])
+    try:
+        return _ler_agentes()
+    except SemMesh as e:
+        _cache_mesh.update(erro=str(e), t_erro=time.time())
+        raise
+
+
+def _ler_agentes():
+    if not mesh_configurado():
+        raise SemMesh("o MeshCentral não está configurado no .env (MESH_URL, MESH_USUARIO, MESH_SENHA)")
+    ctrl = os.getenv("MESH_CTRL") or MESHCTRL_PADRAO
+    if not os.path.exists(ctrl):
+        raise SemMesh(f"não achei o meshctrl.js em {ctrl}")
+    cmd = ["node", ctrl, "ListDevices", "--json", "--url", os.environ["MESH_URL"],
+           "--loginuser", os.environ["MESH_USUARIO"], "--loginpass", os.environ["MESH_SENHA"]]
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=40,
+                           creationflags=SEM_JANELA if os.name == "nt" else 0)
+    except subprocess.TimeoutExpired as e:
+        raise SemMesh("o MeshCentral não respondeu (a janela dele está aberta?)") from e
+    try:
+        dados = json.loads(r.stdout)
+    except ValueError as e:
+        msg = (r.stdout + r.stderr).replace(os.environ["MESH_SENHA"], "***").strip().splitlines()
+        raise SemMesh("o MeshCentral recusou ou está fora do ar" + (f" ({msg[-1][:120]})" if msg else "")) from e
+    _cache_mesh.update(t=time.time(), dados=dados, erro=None)
+    return dados
+
+
+# =============================================================
+# 2. RESUMO (função pura)
+# =============================================================
+def resumo_agente(d):
+    """Dispositivo cru -> dict simples. Só campos de inventário e segurança."""
+    wsc = d.get("wsc") or {}
+    av = d.get("av") or []
+    boot = d.get("lastbootuptime")
+    return {
+        "nome": d.get("name") or d.get("rname"),
+        "ip": d.get("ip") or d.get("host"),
+        "ligado": bool((d.get("conn") or 0) & 1),
+        "usuarios": [u.split("\\")[-1] for u in (d.get("users") or [])],
+        "ligado_desde": datetime.fromtimestamp(boot / 1000) if boot else None,
+        "sistema": d.get("osdesc"),
+        "antivirus": ", ".join(f"{a.get('product')} {'ativo' if a.get('enabled') else 'DESLIGADO'}"
+                               f"{'' if a.get('updated', True) else ' (desatualizado)'}" for a in av) or None,
+        "antivirus_ok": wsc.get("antiVirus", "OK") == "OK" and all(a.get("enabled") for a in av),
+        "firewall_ok": wsc.get("firewall", "OK") == "OK",
+        "atualizacao_ok": wsc.get("autoUpdate", "OK") == "OK",
+        "reinicio_pendente": bool(d.get("pr")),
+        "grupo": d.get("groupname"),
+    }
+
+
+def problemas_agente(r):
+    """Lista de problemas de segurança/manutenção de uma máquina resumida."""
+    p = []
+    if not r["antivirus_ok"]:
+        p.append("antivírus com problema")
+    if not r["firewall_ok"]:
+        p.append("firewall com alerta")
+    if not r["atualizacao_ok"]:
+        p.append("atualização automática com problema")
+    if r["reinicio_pendente"]:
+        p.append("reinício pendente")
+    return p
+
+
+def _apelido_agente(r, inventario):
+    """Junta o apelido/responsável do inventário da rede (pelo IP)."""
+    a = next((x for x in inventario.values() if x.get("ip") == r["ip"]), None)
+    if not a:
+        return r["nome"]
+    extra = ", ".join(x for x in (a.get("responsavel"), a.get("departamento")) if x)
+    return f"{a.get('apelido') or r['nome']}" + (f" ({extra})" if extra else "")
+
+
+def texto_agentes(lista, inventario, acao="listar", termo=""):
+    rs = [resumo_agente(d) for d in lista]
+    if acao == "procurar":
+        t = (termo or "").lower()
+        rs = [r for r in rs if t in (r["nome"] or "").lower() or t in (r["ip"] or "") or t in " ".join(r["usuarios"]).lower()
+              or t in _apelido_agente(r, inventario).lower()]
+        if not rs:
+            return f"Nenhuma máquina com agente corresponde a '{termo}'."
+    if acao == "alertas":
+        com = [(r, problemas_agente(r)) for r in rs]
+        com = [(r, p) for r, p in com if p] + [(r, ["desligada"]) for r in rs if not r["ligado"]]
+        if not com:
+            return f"Nenhum alerta nas {len(rs)} máquinas com agente: antivírus, firewall e atualizações em ordem."
+        return "\n".join(f"{_apelido_agente(r, inventario)}: {', '.join(p)}" for r, p in com)
+    linhas = []
+    for r in rs:
+        if not r["ligado"]:
+            linhas.append(f"{_apelido_agente(r, inventario)} ({r['ip']}): desligada ou sem agente conectado")
+            continue
+        desde = f", ligada desde {r['ligado_desde']:%d/%m %H:%M}" if r["ligado_desde"] else ""
+        quem = f", logado: {', '.join(r['usuarios'])}" if r["usuarios"] else ", ninguém logado"
+        p = problemas_agente(r)
+        linhas.append(f"{_apelido_agente(r, inventario)} ({r['ip']}){quem}{desde}; {r['sistema']}; antivírus: {r['antivirus']}"
+                      + (f"; ATENÇÃO: {', '.join(p)}" if p else "; segurança em ordem"))
+    return f"{len(rs)} máquina(s) com agente:\n" + "\n".join(linhas)
+
+
+def consultar_agentes(acao="listar", termo=""):
+    try:
+        lista = listar_agentes()
+    except SemMesh as e:
+        return f"Não consegui consultar as máquinas: {e}."
+    return texto_agentes(lista, carregar(), acao, termo)
+
+
+# =============================================================
+# 7. DADOS DO MAPA "LINK NEURAL" (painel_web/hud_rede.html)
+# =============================================================
+def tipo_aparelho(a, gateway=None):
+    """Palpite do tipo pelo IP/nome (sem consultar nada): roteador, servidor, impressora, camera, computador, desconhecido."""
+    nome = f"{a.get('apelido') or ''} {a.get('nome') or ''}".upper()
+    if gateway and a.get("ip") == gateway:
+        return "roteador"
+    if re.search(r"SERVIDOR|SERVER|\bSRV|NAS\b", nome):
+        return "servidor"
+    if re.search(r"IMP|PRINT|NPI[0-9A-F]{6}|^ *SEC[0-9A-F]{12}|EPSON|BROTHER|HP[0-9A-F]{6}", nome):
+        return "impressora"
+    if re.search(r"CAM|DVR|NVR|INTELBRAS|HIKVISION", nome):
+        return "camera"
+    if nome.strip():
+        return "computador"
+    return "desconhecido"
+
+
+GRUPO_DO_TIPO = {"computador": "Sem departamento", "desconhecido": "Não identificados", "servidor": "Servidores",
+                 "impressora": "Impressoras", "camera": "Câmeras", "roteador": "Roteador"}
+def dados_mapa():
+    """Tudo o que o mapa da rede desenha: internet, roteador, aparelhos (com grupo, tipo, estado) e agentes."""
+    agora = time.time()
+    inv = carregar()
+    ultima = (arquivo.ler_jsonl(ARQ_INTERNET) or [{}])[-1]
+    gw = gateway()
+    agentes = {}
+    try:
+        if mesh_configurado():
+            for d in listar_agentes():
+                r = resumo_agente(d)
+                agentes[r["ip"]] = {"logado": r["usuarios"], "sistema": r["sistema"], "antivirus": r["antivirus"],
+                                    "problemas": problemas_agente(r), "ligado_desde": str(r["ligado_desde"] or "")}
+    except Exception:
+        pass
+    quedas = {k for k, e in _estado_vigia.items() if e.get("avisado")}
+    aparelhos = []
+    for mac, a in inv.items():
+        tipo = tipo_aparelho(a, gw)
+        aparelhos.append({
+            "id": mac, "nome": nome_exibicao(a), "nome_rede": a.get("nome"), "apelido": a.get("apelido"),
+            "responsavel": a.get("responsavel"), "departamento": a.get("departamento"), "ip": a.get("ip"), "mac": mac,
+            "grupo_trabalho": a.get("grupo"), "tipo": tipo,
+            "grupo": a.get("departamento") or GRUPO_DO_TIPO.get(tipo, "Outros"),
+            "ligado": online(a, agora), "critico": bool(a.get("critico")), "fora_do_ar": mac in quedas,
+            "novo": agora - a.get("primeira_vez", 0) < 86400, "primeira_vez": a.get("primeira_vez"),
+            "ultima_vez": a.get("ultima_vez"), "agente": agentes.get(a.get("ip")),
+        })
+    return {"gerado": agora, "gateway": gw, "departamentos": departamentos(),
+            "internet": {"ok": ultima.get("net_ms") is not None if ultima else None, "ms": ultima.get("net_ms"),
+                         "roteador_ms": ultima.get("gw_ms"), "quando": ultima.get("t"), "fora": "internet" in quedas},
+            "aparelhos": aparelhos}
+
+
+# =============================================================
+# 8. EXPORTAR PARA EXCEL
 # =============================================================
 PASTA_EXPORTAR = os.path.join(os.path.expanduser("~"), "Documents", "Ghost", "Relatorios")
 
@@ -337,7 +759,6 @@ def exportar():
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill
 
-    from ghost.servicos import monitor_rede as mon
     inv, agora = carregar(), time.time()
     os.makedirs(PASTA_EXPORTAR, exist_ok=True)
     caminho = os.path.join(PASTA_EXPORTAR, f"Rede_{datetime.now():%Y-%m-%d_%H%M}.xlsx")
@@ -365,15 +786,15 @@ def exportar():
           a.get("mac"), "sim" if a.get("critico") else "", "ligado" if online(a, agora) else "desligado",
           data(a.get("primeira_vez")), data(a.get("ultima_vez"))] for a in ordem],
         [22, 18, 18, 20, 12, 15, 19, 8, 11, 17, 17])
-    eventos = arquivo.ler_jsonl(mon.ARQ_EVENTOS)
+    eventos = arquivo.ler_jsonl(ARQ_EVENTOS)
     aba(wb.create_sheet(), "Quedas", ["Quando", "Aparelho", "Evento", "Minutos fora"],
         [[data(e["t"]), e.get("nome"), e.get("tipo"), e.get("min")] for e in reversed(eventos)], [17, 26, 10, 12])
-    linhas = arquivo.ler_jsonl(mon.ARQ_INTERNET)
+    linhas = arquivo.ler_jsonl(ARQ_INTERNET)
     dias = sorted({datetime.fromtimestamp(r["t"]).date() for r in linhas}, reverse=True)
     diario = []
     for d in dias:
         ini = datetime.combine(d, datetime.min.time()).timestamp()
-        r = mon.resumir_internet(linhas, ini, ini + 86400 - 1)
+        r = resumir_internet(linhas, ini, ini + 86400 - 1)
         if r:
             diario.append([d, r["disponibilidade"], r["latencia_media"], r["latencia_max"], len(r["quedas"]),
                            sum(q["min"] for q in r["quedas"]), r["testes"]])
@@ -385,11 +806,12 @@ def exportar():
 
 
 # =============================================================
-# 6. VARREDURA AUTOMÁTICA
+# 9. VARREDURA AUTOMÁTICA
 # =============================================================
 def iniciar(falar=None, ocupado=None):
     def laco():
         primeira = not carregar()            # 1ª vez: só aprende a rede, sem avisar 30 "novos"
+        ultimo_erro = None
         while True:
             try:
                 inv, novos = varrer()
@@ -406,6 +828,10 @@ def iniciar(falar=None, ocupado=None):
                     pass
                 primeira = False
             except Exception as e:
-                print(f"\n[REDE]: varredura falhou ({e!r}).")
+                if repr(e) != ultimo_erro:            # sem rede (PC suspenso): registra uma vez, não a cada 15 min
+                    print(f"\n[REDE]: varredura falhou ({e!r}).")
+                ultimo_erro = repr(e)
+            else:
+                ultimo_erro = None
             time.sleep(INTERVALO_MIN * 60)
     threading.Thread(target=laco, daemon=True, name="rede").start()

@@ -15,7 +15,6 @@ sounddevice==0.5.6
 soundfile==0.14.0
 SpeechRecognition==3.17.0
 pynput==1.8.2
-vosk
 google-api-python-client
 google-auth-oauthlib
 pandas
@@ -24,11 +23,7 @@ xlrd
 icalendar
 recurring-ical-events
 httpx
-# eco, palavra de ativação treinada, memória longa, notificações
-livekit
-openwakeword
-fastembed
-scikit-learn
+# notificações do Windows
 winrt-runtime==3.2.1
 winrt-Windows.UI.Notifications==3.2.1
 winrt-Windows.UI.Notifications.Management==3.2.1

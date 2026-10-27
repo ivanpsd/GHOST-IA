@@ -31,7 +31,7 @@ PASTA_WEB = os.path.join(os.path.dirname(os.path.abspath(__file__)), "painel_web
 PASTA_EXPORTAR = os.path.join(os.path.expanduser("~"), "Documents", "Ghost", "Relatorios")
 PORTA = 8765                      # se estiver ocupada, usa uma porta livre qualquer
 COLETA_S = 5                      # leitura de CPU/RAM/disco/bateria
-INTERNET_S = 30                   # medição da latência da internet
+MEMORIA_S = 600                   # registra no log a memória do próprio Ghost (para achar vazamento)
 TAMANHO_JANELA = (1280, 800)
 
 _trava = threading.Lock()
@@ -149,20 +149,11 @@ def _tempos_cpu():
     return v[0], v[1] + v[2]          # (ocioso, total): kernel já inclui o ocioso
 
 
-def _latencia_ms():
-    import socket
-    t0 = time.perf_counter()
-    try:
-        with socket.create_connection(("api.groq.com", 443), timeout=3):
-            return round((time.perf_counter() - t0) * 1000)
-    except OSError:
-        return None
-
-
 def _coletar():
-    from ghost.servicos import alertas
+    from ghost.nucleo import sistema
+    from ghost.servicos import alertas, rede
     anterior = None
-    ult_internet = ult_minuto = 0.0
+    ult_minuto = ult_memoria = 0.0
     while True:
         try:
             leitura = {}
@@ -177,10 +168,15 @@ def _coletar():
                 leitura["disco_livre_gb"], leitura["disco_livre_pct"] = round(gb, 1), round(pct)
                 bat, tomada = alertas._bateria()
                 leitura["bateria"], leitura["na_tomada"] = bat, tomada
-            if time.time() - ult_internet >= INTERNET_S:
-                ult_internet = time.time()
-                ms = _latencia_ms()
-                leitura["latencia_ms"], leitura["internet"] = ms, ms is not None
+            ultima = rede.ultima_internet()                 # o vigia da rede já mede a cada minuto: não mede de novo
+            if ultima:
+                leitura["latencia_ms"], leitura["internet"] = ultima.get("net_ms"), ultima.get("net_ms") is not None
+            if time.time() - ult_memoria >= MEMORIA_S:      # memória do próprio Ghost: mostra se há vazamento
+                ult_memoria = time.time()
+                uso, reservada = sistema.memoria_ghost_mb()
+                leitura["ghost_mb"] = uso
+                if uso is not None:
+                    print(f"\n[MEMÓRIA]: Ghost usando {uso} MB (reservado {reservada} MB).")
             with _trava:
                 _sistema.update(leitura)
                 amostra = {"t": time.time(), "cpu": _sistema["cpu"], "ram": _sistema["ram"],
@@ -212,8 +208,7 @@ def _modo():
 
 
 def _ativacao():
-    from ghost.voz import ativacao, palavra
-    return {"ligada": bool(ativacao._ativo), "treinada": palavra._modelo is not None}
+    return {"ligada": False, "treinada": False, "f9": True}       # ativação só pelo F9 (palavra "Ghost" retirada)
 
 
 def _lembretes():
@@ -469,14 +464,13 @@ class _Rotas(BaseHTTPRequestHandler):
                 nome = os.path.basename(r["passos"][n - 1]["recorte"])
                 with open(os.path.join(demo.PASTA_RASCUNHO, nome), "rb") as arq:
                     return self._responder(200, arq.read(), "image/png")
-            if rota.startswith("hud/"):                # telas de visualização (huds.py + painel_web/hud_<nome>.html)
-                from ghost.nucleo import huds
+            if rota.startswith("hud/"):                # telas de visualização (HUDS + painel_web/hud_<nome>.html)
                 partes = rota.split("/")
                 nome = partes[1] if len(partes) > 1 else ""
-                if nome not in huds.HUDS:
+                if nome not in HUDS:
                     return self._responder(404, {"erro": "HUD não existe"})
                 if len(partes) == 3 and partes[2] == "dados":
-                    return self._responder(200, huds.DADOS[nome]())
+                    return self._responder(200, HUDS[nome][1]())
                 html = self._arquivo(f"hud_{nome}.html").replace(b"__GHOST_TOKEN__", _token.encode())
                 return self._responder(200, html, "text/html; charset=utf-8")
             if rota == "celular/situacao":
@@ -599,13 +593,19 @@ def abrir_janela(mostrar_qr=False, revisao=False):
     return True
 
 
+def _dados_mapa_rede():
+    from ghost.servicos import rede
+    return rede.dados_mapa()
+
+
+# Telas de visualização: nome -> (título, função que monta os dados). O desenho fica em painel_web/hud_<nome>.html.
+HUDS = {"rede": ("Link neural da rede", _dados_mapa_rede)}
 _huds_abertos = {}
 
 
 def abrir_hud(nome):
     """Abre uma tela de visualização (ex.: 'rede') numa janela própria do Edge. False se não existir."""
-    from ghost.nucleo import huds
-    if not _servidor or nome not in huds.HUDS:
+    if not _servidor or nome not in HUDS:
         return False
     url = f"http://127.0.0.1:{_servidor.server_address[1]}/hud/{nome}?t={_token}"
     aberta = _huds_abertos.get(nome)
@@ -619,7 +619,7 @@ def abrir_hud(nome):
     _huds_abertos[nome] = subprocess.Popen([exe, f"--app={url}", f"--user-data-dir={caminhos.dado('painel_janela')}",
                                             "--window-size=1400,880", "--no-first-run", "--no-default-browser-check",
                                             "--disable-features=Translate"])
-    evento(f"HUD aberto: {huds.HUDS[nome]}", "info")
+    evento(f"HUD aberto: {HUDS[nome][0]}", "info")
     return True
 
 
@@ -631,7 +631,7 @@ def fechar_janela():
 
 
 def iniciar(abrir=None, falar=None):
-    """Liga o servidor local e a coleta. abrir=None segue a preferência 'painel_ao_iniciar' (padrão: sim).
+    """Liga o servidor local e a coleta. abrir=None segue a preferência 'painel_ao_iniciar' (padrão: não; abre por voz).
     falar: para o painel poder falar (ex.: testar uma skill gravada pelo botão)."""
     global _servidor, _falar
     if falar:
@@ -646,5 +646,5 @@ def iniciar(abrir=None, falar=None):
     threading.Thread(target=_servidor.serve_forever, daemon=True, name="painel-servidor").start()
     threading.Thread(target=_coletar, daemon=True, name="painel-coleta").start()
     print(f"\n[PAINEL]: pronto em {endereco()}")
-    if abrir if abrir is not None else preferencias.carregar().get("painel_ao_iniciar", True):
+    if abrir if abrir is not None else preferencias.carregar().get("painel_ao_iniciar", False):
         abrir_janela()

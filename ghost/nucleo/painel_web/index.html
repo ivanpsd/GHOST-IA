@@ -465,9 +465,7 @@ main {
     $("c-falsos").textContent = c.falsos_alarmes || 0; $("c-erros").textContent = c.erros || 0;
     $("c-naoentendi").textContent = c.nao_entendi || 0;
     const mk = $("marcas-escuta"); mk.replaceChildren();
-    const at = d.ativacao || {};
-    mk.append(el("span", "marca-estado " + (at.ligada ? "ok" : "mal"), at.ligada ? "escuta por voz ligada" : "escuta por voz desligada"));
-    mk.append(el("span", "marca-estado " + (at.treinada ? "ok" : ""), at.treinada ? "voz do senhor treinada" : "voz não treinada"));
+        mk.append(el("span", "marca-estado ok", "ativação pelo F9"));
     mk.append(el("span", "marca-estado", MODOS[d.modo] || d.modo));
 
     const m = d.memoria || {};

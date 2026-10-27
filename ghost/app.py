@@ -102,13 +102,6 @@ def _preparar_processo():
             print("[SISTEMA]: O GHOST já está em execução. Encerrando esta cópia.")
             sys.exit(0)
 
-    # As bibliotecas nativas (onnxruntime: detector do "Ghost" e memória longa) PRECISAM ser carregadas antes de
-    # câmera/microfone: carregadas depois, numa thread, derrubavam o Ghost (0xC0000005). Testado.
-    for modulo in ("onnxruntime", "fastembed", "openwakeword"):
-        try:
-            __import__(modulo)
-        except Exception as e:
-            print(f"[SISTEMA]: {modulo} indisponível ({e}); o recurso que depende dele fica desligado.")
     sistema.configurar_dpi()
 
 
@@ -124,8 +117,8 @@ from ghost.automacao import automacoes
 from ghost.ia import contexto, conversa, ferramentas, memoria, memoria_longa, pessoas, provedores, tarefas
 from ghost.ia.filtro_fala import FiltroFala
 from ghost.nucleo import avisos, canal, celular, hud, painel, preferencias, sistema
-from ghost.servicos import alertas, lembretes, monitor_rede, notificacoes, rede, resumo, rotina
-from ghost.voz import ativacao, palavra, som
+from ghost.servicos import alertas, lembretes, notificacoes, rede, resumo, rotina
+from ghost.voz import ativacao, som
 
 
 # -------------------------------------------------------------
@@ -263,13 +256,10 @@ def reprodutor_de_audio():
             continue
         try:
             with _Falando():
-                _tocando["aviso"] = tipo == "aviso"
                 hud.falando(texto)
                 som.tocar(data, fs, gen=gen)
         except Exception as e:
             print(f"\n[VOZ]: erro ao tocar: {e}")
-        finally:
-            _tocando["aviso"] = False
         if texto_queue.empty() and audio_queue.empty():
             hud.espera()
             # terminou de falar uma pergunta: a próxima frase vale como resposta, sem dizer "Ghost"
@@ -277,12 +267,11 @@ def reprodutor_de_audio():
                 ativacao.aguardar_comando(ESPERA_RESPOSTA_S)
 
 
-_tocando = {"aviso": False}
-ESPERA_RESPOSTA_S = 15      # depois de uma pergunta do Ghost, tempo para começar a responder sem dizer "Ghost"
+ESPERA_RESPOSTA_S = 15      # (só mostra "responda com o F9" na faixa; não há mais microfone aberto)
 
 
 def falar_aviso(texto):
-    """Fala vinda da central de avisos (mensagem, rede, lembrete...). Sempre no PC; não é cortada por voz alta."""
+    """Fala vinda da central de avisos (mensagem, rede, lembrete...). Sempre no PC. O F9 interrompe."""
     print(f"\n[GHOST - aviso]: {texto}")
     contexto.anotar_fala(texto)
     painel.fala("ghost", texto)
@@ -292,7 +281,7 @@ def falar_aviso(texto):
 
 
 def ghost_livre(silencio_s):
-    """Pode falar um aviso agora? Ninguém conversando com o Ghost, nada pendente e a sala em silêncio."""
+    """Pode falar um aviso agora? Ninguém usando o Ghost (F9, resposta, pergunta/confirmação pendente)."""
     return not (_ocupado.is_set() or _ocupado_fundo.is_set() or ghost_falando() or keyboard.is_pressed("f9")
                 or ativacao.modo() == "dormindo" or ativacao.janela_aberta() or automacoes.ha_pendencia()
                 or ativacao.segundos_sem_voz() < silencio_s)
@@ -853,23 +842,16 @@ def ghost_ocupado():
     return (_ocupado.is_set() or keyboard.is_pressed('f9') or ativacao.modo() == "dormindo"
             or not texto_queue.empty() or not audio_queue.empty())
 
-# "oi Ghost" liga a conversa contínua; "tchau / boa noite Ghost" faz ele dormir até ser chamado de novo
-FRASE_CONVERSA = re.compile(r"(?:(?:oi|ola|ei|e ai|opa|hey|fala)\s+(?:ghost|gost)|(?:ghost|gost)\s+(?:acorda|acorde|"
-                            r"modo conversa|vamos conversar))(?:\s+tudo bem)?")
+# "tchau / boa noite Ghost" = não perturbe: avisos esperam até o próximo F9 (que acorda e já atende o pedido)
 FRASE_DORMIR = re.compile(r"(?:(?:ghost|gost)\s+)?(?:tchau|boa noite|ate logo|ate mais|ate amanha|pode descansar|"
                           r"pode dormir|vai dormir|dorme|pode ir)(?:\s+(?:ghost|gost))?(?:\s+(?:obrigado|valeu))?")
 
 def _repouso_hud():
-    m = ativacao.modo()
-    if m == "conversa":
-        hud.repouso("conversa", "Pode falar sem dizer \"Ghost\" · \"tchau Ghost\" encerra")
-    elif m == "dormindo":
-        hud.repouso("dormindo", "Diga \"oi Ghost\" para me chamar")
-    else:
-        hud.repouso("espera", "")
+    hud.repouso("dormindo", "Não perturbe · segure o F9 para me chamar") if ativacao.modo() == "dormindo" \
+        else hud.repouso("espera", "")
 
 def _tratar_modo(texto, item):
-    """Liga/desliga a conversa contínua e o modo dormindo. Devolve True se a frase já foi tratada."""
+    """'Tchau Ghost' liga o não perturbe; qualquer F9 depois desliga. Devolve True se a frase já foi tratada."""
     n = automacoes.normalizar(texto).strip()
     if FRASE_DORMIR.fullmatch(n):
         ativacao.definir_modo("dormindo")
@@ -878,20 +860,11 @@ def _tratar_modo(texto, item):
                        else "Até logo, senhor. Fico quieto até o senhor me chamar.")
         _repouso_hud()
         return True
-    if FRASE_CONVERSA.fullmatch(n):
-        ativacao.definir_modo("conversa")
-        falar_imediato("Pois não, senhor. Estou ouvindo.")
-        _repouso_hud()
-        return True
     if ativacao.modo() == "dormindo":
-        if item.get("verificar_nome") or item.get("f9"):
-            ativacao.definir_modo("normal")       # "Ghost, ..." ou F9 acordam e o pedido segue
-            _repouso_hud()
-            return False
-        return True                                # dormindo: ignora o resto
+        ativacao.definir_modo("normal")
+        _repouso_hud()
     return False
 
-NOME_NO_INICIO = re.compile(r"^\W*(?:ei|hey|oi|ô|o)?\W*(?:ghost|gost|ghosts|gosti|goste|góst)\b", re.IGNORECASE)
 fila_comandos = queue.Queue()   # comandos de voz vindos do F9 ou da ativação por voz
 
 def _escutar_f9():
@@ -903,22 +876,13 @@ def _escutar_f9():
             hud.ouvindo("Pode falar… (solte o F9 ao terminar)")
             wav = gravar_enquanto_segurar()
             if wav:
-                fila_comandos.put({"wav": wav, "verificar_nome": False, "so_nome": False, "f9": True})
+                fila_comandos.put({"wav": wav, "f9": True})
             else:
                 hud.espera()
         except Exception as e:
             print(f"\n[F9]: erro na gravação ({e!r}).")
             hud.espera()
             time.sleep(0.5)
-
-def _registrar_exemplo_ativacao(item, confirmado):
-    """Treino contínuo da palavra "Ghost": acerto vira exemplo positivo, alarme falso vira negativo."""
-    clip = item.get("clip_ativacao")
-    if clip:
-        try:
-            palavra.registrar(clip, confirmado, recortar=item.get("recortar", False))
-        except Exception as e:
-            print(f"\n[PALAVRA]: não consegui guardar o exemplo ({e}).")
 
 def _atender_celular(item):
     """Pedido digitado no app do celular: mesmo cérebro do Ghost, resposta por escrito no celular
@@ -984,7 +948,6 @@ def _ligar(nome, funcao, *args):
 
 def iniciar_ghost():
     _ligar("faixa do topo", hud.iniciar)
-    _ligar("contexto", contexto.iniciar)                                      # janelas em uso (para a IA)
     _ligar("painel", painel.iniciar, None, falar_local)                       # tela de indicadores
     painel.evento("Ghost ligado")
     threading.Thread(target=gerador_de_audio, daemon=True, name="gerador-voz").start()
@@ -999,17 +962,16 @@ def iniciar_ghost():
     _ligar("rotina", rotina.iniciar, falar_local, ghost_ocupado, client_groq_fundo, automacoes.pedir_confirmacao)
     # tudo o que o Ghost fala sem ser perguntado passa pela central de avisos (fila única, espera silêncio)
     _ligar("central de avisos", avisos.iniciar, falar_aviso, ghost_livre, ghost_falando)
-    ativacao.definir_interrompivel(lambda: not _tocando["aviso"])
     _ligar("lembretes", lembretes.iniciar, avisos.para("alta"))
     _ligar("alertas", alertas.iniciar, avisos.para("normal"), ghost_ocupado)
     _ligar("rede", rede.iniciar, avisos.para("normal"), None)                # inventário da rede (só leitura)
-    _ligar("vigia da rede", monitor_rede.iniciar, avisos.para("critica"), None)  # críticos + histórico da internet            # disco, bateria, pausa, chuva...
+    _ligar("vigia da rede", rede.iniciar_vigia, avisos.para("critica"))  # críticos + histórico da internet            # disco, bateria, pausa, chuva...
     _ligar("notificações", notificacoes.iniciar, avisos.para("normal"), None)  # "Senhor, WhatsApp: Leonard"
     _ligar("tarefas", tarefas.iniciar, client_groq_fundo, MODELOS_GROQ[0], avisos.para("alta"))
     _ligar("memória longa", memoria_longa.importar_antigos, conversa.recentes())
     threading.Thread(target=_escutar_f9, daemon=True, name="f9").start()
     _ligar("app do celular", celular.iniciar, fila_comandos.put, falar_local)  # pareamento + PIN + Tailscale
-    _ligar("ativação por voz", ativacao.iniciar, fila_comandos.put, ghost_falando, parar_fala)
+    ativacao.iniciar()
 
     while True:
         item = fila_comandos.get()
@@ -1019,14 +981,7 @@ def iniciar_ghost():
                 _atender_celular(item)
                 continue
 
-            if not item.get("verificar_nome"):
-                hud.pensando("Entendendo…")   # chamado pelo nome: o painel só reage depois de confirmar que foi "Ghost"
-            # disse só "Ghost": mesmo assim passa pelo Whisper (abaixo) para confirmar que foi mesmo o nome.
-            # Antes o "Sim, senhor?" saía direto e qualquer conversa na sala fazia ele perguntar.
-            if item["so_nome"] and not item.get("verificar_nome"):
-                falar_imediato("Sim, senhor?")
-                ativacao.aguardar_comando()
-                continue
+            hud.pensando("Entendendo…")
 
             t0 = time.perf_counter()
             texto = transcrever(item["wav"])
@@ -1034,15 +989,6 @@ def iniciar_ghost():
             if MOSTRAR_TEMPOS:
                 print(f"  [tempo] voz -> texto em {time.perf_counter() - t0:.2f}s")
 
-            # 2ª conferência da ativação por voz: a frase precisa começar com "Ghost"
-            if item["verificar_nome"]:
-                confirmado = bool(NOME_NO_INICIO.search(texto))
-                _registrar_exemplo_ativacao(item, confirmado)
-                if not confirmado:
-                    print(f"\n[ATIVAÇÃO]: alarme falso ignorado ({texto[:40]!r})")
-                    painel.contar("falsos_alarmes")
-                    hud.espera()
-                    continue
             print(f"[Você]: {texto}")
             painel.fala("voce", texto)
             modo_antes = ativacao.modo()
@@ -1081,11 +1027,8 @@ def iniciar_ghost():
                 processar_resposta_em_tempo_real(comando, t0)
 
         except sr.UnknownValueError:
-            if item.get("verificar_nome"):
-                _registrar_exemplo_ativacao(item, False)   # nem deu para transcrever: provavelmente não era você
-            elif not item.get("conversa"):            # na conversa contínua, ruído não vira "não entendi"
-                painel.contar("nao_entendi")
-                falar_imediato("Desculpe, senhor. Não entendi.")
+            painel.contar("nao_entendi")
+            falar_imediato("Desculpe, senhor. Não entendi.")
             hud.espera()
         except SemInternet as e:
             print(f"\n[SISTEMA]: {e}")

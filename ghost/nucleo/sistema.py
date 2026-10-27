@@ -52,6 +52,29 @@ def segundos_ocioso():
     return ((k32.GetTickCount() - li.dwTime) & 0xFFFFFFFF) / 1000.0
 
 
+class _Memoria(ctypes.Structure):
+    _fields_ = [("cb", ctypes.c_ulong), ("PageFaultCount", ctypes.c_ulong), ("PeakWorkingSetSize", ctypes.c_size_t),
+                ("WorkingSetSize", ctypes.c_size_t), ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
+                ("QuotaPagedPoolUsage", ctypes.c_size_t), ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
+                ("QuotaNonPagedPoolUsage", ctypes.c_size_t), ("PagefileUsage", ctypes.c_size_t),
+                ("PeakPagefileUsage", ctypes.c_size_t), ("PrivateUsage", ctypes.c_size_t)]
+
+
+def memoria_ghost_mb():
+    """(memória em uso agora, memória reservada) do próprio Ghost, em MB. (None, None) fora do Windows."""
+    try:
+        k32 = ctypes.WinDLL("kernel32")
+        k32.GetCurrentProcess.restype = ctypes.c_void_p
+        k32.K32GetProcessMemoryInfo.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_ulong]
+        m = _Memoria()
+        m.cb = ctypes.sizeof(m)
+        if k32.K32GetProcessMemoryInfo(k32.GetCurrentProcess(), ctypes.byref(m), m.cb):
+            return round(m.WorkingSetSize / 2**20), round(m.PrivateUsage / 2**20)
+    except Exception:
+        pass
+    return None, None
+
+
 def configurar_dpi():
     """Coordenadas reais de tela em todos os monitores (escalas diferentes). Chamar uma vez, no início."""
     try:

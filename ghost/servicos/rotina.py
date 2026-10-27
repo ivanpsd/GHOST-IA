@@ -16,6 +16,7 @@ import threading
 import time
 from datetime import datetime
 
+from ghost.ia import contexto
 from ghost.nucleo import arquivo, caminhos, sistema
 
 ARQUIVO_LOG = caminhos.dado("rotina_log.jsonl")
@@ -81,7 +82,10 @@ def _loop_observar(geracao):
     while observando and geracao == _geracao:
         try:
             app, titulo = _janela_em_foco()
-            chave = ("ausente", "") if _ocioso() else (app, titulo if GUARDAR_TITULOS else "")
+            ocioso = _ocioso()
+            if not ocioso and app:            # a mesma leitura alimenta o contexto da IA (sem 2ª thread)
+                contexto.amostrar({"exe": app.lower(), "titulo": titulo or ""})
+            chave = ("ausente", "") if ocioso else (app, titulo if GUARDAR_TITULOS else "")
             if chave[0] and chave[0].lower() in IGNORAR:
                 chave = atual or chave
             if chave != atual:

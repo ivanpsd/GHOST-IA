@@ -55,21 +55,19 @@ def test_ip_exato_nao_pega_vizinhos():
 
 
 def test_alerta_so_depois_de_2_falhas_e_aviso_de_volta():
-    from ghost.servicos import monitor_rede as mon
     e = {}
-    assert mon.registrar_teste("srv", False, 0, e) == (None, None)          # 1 falha: ainda não avisa
-    assert mon.registrar_teste("srv", False, 60, e) == ("caiu", None)
-    assert mon.registrar_teste("srv", False, 120, e) == (None, None)        # não repete
-    assert mon.registrar_teste("srv", True, 300, e) == ("voltou", 5)
-    assert mon.registrar_teste("srv", False, 360, e) == (None, None)        # oscilou 1 vez: sem alarme
-    assert mon.registrar_teste("srv", True, 420, e) == (None, None)
+    assert rede.registrar_teste("srv", False, 0, e) == (None, None)          # 1 falha: ainda não avisa
+    assert rede.registrar_teste("srv", False, 60, e) == ("caiu", None)
+    assert rede.registrar_teste("srv", False, 120, e) == (None, None)        # não repete
+    assert rede.registrar_teste("srv", True, 300, e) == ("voltou", 5)
+    assert rede.registrar_teste("srv", False, 360, e) == (None, None)        # oscilou 1 vez: sem alarme
+    assert rede.registrar_teste("srv", True, 420, e) == (None, None)
 
 
 def test_historico_da_internet_separa_provedor_de_rede_interna():
-    from ghost.servicos import monitor_rede as mon
     linhas = [{"t": 0, "gw_ms": 1, "net_ms": 5}, {"t": 60, "gw_ms": 1, "net_ms": None}, {"t": 120, "gw_ms": 1, "net_ms": None},
               {"t": 180, "gw_ms": 1, "net_ms": 7}, {"t": 240, "gw_ms": None, "net_ms": None}, {"t": 300, "gw_ms": 2, "net_ms": 6}]
-    r = mon.resumir_internet(linhas, 0, 300)
+    r = rede.resumir_internet(linhas, 0, 300)
     assert r["disponibilidade"] == 50.0 and r["latencia_media"] == 6 and r["latencia_max"] == 7
     assert [(q["min"], q["causa"]) for q in r["quedas"]] == [(2, "provedor de internet"), (1, "rede interna/roteador")]
 
@@ -78,15 +76,14 @@ def test_exportar_excel(monkeypatch, tmp_path):
     import pytest
     openpyxl = pytest.importorskip("openpyxl")
     from ghost.nucleo import arquivo
-    from ghost.servicos import monitor_rede as mon
     monkeypatch.setattr(rede, "ARQUIVO", str(tmp_path / "rede.json"))
     monkeypatch.setattr(rede, "PASTA_EXPORTAR", str(tmp_path / "rel"))
-    monkeypatch.setattr(mon, "ARQ_INTERNET", str(tmp_path / "internet.jsonl"))
-    monkeypatch.setattr(mon, "ARQ_EVENTOS", str(tmp_path / "eventos.jsonl"))
+    monkeypatch.setattr(rede, "ARQ_INTERNET", str(tmp_path / "internet.jsonl"))
+    monkeypatch.setattr(rede, "ARQ_EVENTOS", str(tmp_path / "eventos.jsonl"))
     rede._salvar({"m1": {"mac": "m1", "ip": "192.168.50.120", "nome": "SERVIDOR-SADIN", "critico": True,
                          "primeira_vez": 1, "ultima_vez": 2}})
-    arquivo.acrescentar_jsonl(mon.ARQ_INTERNET, {"t": 1_800_000_000, "gw_ms": 1, "net_ms": 5})
-    arquivo.acrescentar_jsonl(mon.ARQ_EVENTOS, {"t": 1_800_000_000, "nome": "SERVIDOR-SADIN", "tipo": "caiu", "min": None})
+    arquivo.acrescentar_jsonl(rede.ARQ_INTERNET, {"t": 1_800_000_000, "gw_ms": 1, "net_ms": 5})
+    arquivo.acrescentar_jsonl(rede.ARQ_EVENTOS, {"t": 1_800_000_000, "nome": "SERVIDOR-SADIN", "tipo": "caiu", "min": None})
     wb = openpyxl.load_workbook(rede.exportar())
     assert wb.sheetnames == ["Inventário", "Quedas", "Internet por dia"]
     assert wb["Inventário"]["D2"].value == "SERVIDOR-SADIN" and wb["Inventário"]["H2"].value == "sim"
@@ -94,8 +91,7 @@ def test_exportar_excel(monkeypatch, tmp_path):
 
 
 def test_tipo_de_aparelho_para_o_mapa():
-    from ghost.nucleo import huds
-    t = lambda nome, ip="192.168.50.9": huds.tipo_aparelho({"nome": nome, "ip": ip}, "192.168.50.1")  # noqa: E731
+    t = lambda nome, ip="192.168.50.9": rede.tipo_aparelho({"nome": nome, "ip": ip}, "192.168.50.1")  # noqa: E731
     assert t("x", "192.168.50.1") == "roteador" and t("SERVIDOR-SADIN") == "servidor"
     assert t("IMP_FIN") == "impressora" and t("NPI3328AD") == "impressora" and t("SEC8425196B52B5") == "impressora"
     assert t("ADM-PAULA") == "computador" and t(None) == "desconhecido"
@@ -105,8 +101,8 @@ def test_hud_da_rede_servido_com_a_chave(monkeypatch, tmp_path):
     import json
     import urllib.request
 
-    from ghost.nucleo import huds, painel
-    monkeypatch.setattr(huds, "DADOS", {"rede": lambda: {"aparelhos": [], "internet": {}, "gerado": 1}})
+    from ghost.nucleo import painel
+    monkeypatch.setitem(painel.HUDS, "rede", ("Link neural da rede", lambda: {"aparelhos": [], "internet": {}, "gerado": 1}))
     painel.iniciar(abrir=False)
     base = f"http://127.0.0.1:{painel._servidor.server_address[1]}"
     html = urllib.request.urlopen(f"{base}/hud/rede?t={painel._token}").read().decode()
@@ -150,3 +146,37 @@ def test_frase_de_departamento_nao_reabre_o_mapa(monkeypatch):
                   "no link neural coloque a impressora no financeiro"):
         assert a._tratar_hud(a.normalizar(frase), lambda t: None) is not True
     assert abertos == ["rede"]
+
+
+# ---------------- agentes MeshCentral
+GUSTAVO = {"name": "Ti_Gustavo", "ip": "192.168.50.7", "conn": 1, "users": ["TI_GUSTAVO\\gusta"],
+           "lastbootuptime": 1792148496000, "osdesc": "Windows 11 Home", "idletime": 12,
+           "av": [{"product": "Windows Defender", "updated": True, "enabled": True}],
+           "wsc": {"antiVirus": "OK", "autoUpdate": "OK", "firewall": "OK"}, "pr": []}
+IVAN = {"name": "Ti-Ivan", "ip": "192.168.50.37", "conn": 1, "users": ["TI-IVAN\\TI-Ivan"],
+        "av": [{"product": "Windows Defender", "updated": True, "enabled": True}],
+        "wsc": {"antiVirus": "OK", "autoUpdate": "OK", "firewall": "WARNING"}, "pr": ["File Rename"]}
+INV = {"m": {"ip": "192.168.50.7", "apelido": "PC do Gustavo", "responsavel": "Gustavo", "departamento": "TI"}}
+
+
+def test_resumo_e_problemas():
+    r = rede.resumo_agente(IVAN)
+    assert r["usuarios"] == ["TI-Ivan"] and r["ligado"] and not r["firewall_ok"]
+    assert rede.problemas_agente(r) == ["firewall com alerta", "reinício pendente"]
+    assert rede.problemas_agente(rede.resumo_agente(GUSTAVO)) == []
+
+
+def test_texto_procura_alertas_e_sem_tempo_de_inatividade():
+    t = rede.texto_agentes([GUSTAVO, IVAN], INV, "procurar", "gustavo")
+    assert "PC do Gustavo (Gustavo, TI)" in t and "logado: gusta" in t and "segurança em ordem" in t
+    assert "inativ" not in t.lower()                                 # tempo ocioso da pessoa não é informado
+    a = rede.texto_agentes([GUSTAVO, IVAN], INV, "alertas")
+    assert "Ti-Ivan: firewall com alerta, reinício pendente" in a and "Gustavo" not in a
+    assert "Nenhuma máquina" in rede.texto_agentes([GUSTAVO], INV, "procurar", "paula")
+
+
+def test_sem_configuracao(monkeypatch):
+    for k in ("MESH_URL", "MESH_USUARIO", "MESH_SENHA"):
+        monkeypatch.delenv(k, raising=False)
+    rede._cache_mesh.update(t=0, dados=None, erro=None)
+    assert "não está configurado" in rede.consultar_agentes()
