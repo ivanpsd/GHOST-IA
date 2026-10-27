@@ -19,7 +19,8 @@ MESHCTRL_PADRAO = r"C:\MeshCentral\node_modules\meshcentral\meshctrl.js"
 CACHE_S = 30
 SEM_JANELA = 0x08000000
 
-_cache = {"t": 0.0, "dados": None}
+_cache = {"t": 0.0, "dados": None, "erro": None, "t_erro": 0.0}
+ESPERA_APOS_ERRO_S = 60       # MeshCentral fora do ar: não tenta de novo a cada pedido (cada tentativa leva ~10 s)
 
 
 class SemMesh(Exception):
@@ -37,6 +38,16 @@ def listar(forcar=False):
     """Lista crua de dispositivos (dicts do MeshCentral). Cache de CACHE_S segundos."""
     if not forcar and _cache["dados"] is not None and time.time() - _cache["t"] < CACHE_S:
         return _cache["dados"]
+    if not forcar and _cache["erro"] and time.time() - _cache["t_erro"] < ESPERA_APOS_ERRO_S:
+        raise SemMesh(_cache["erro"])
+    try:
+        return _ler()
+    except SemMesh as e:
+        _cache.update(erro=str(e), t_erro=time.time())
+        raise
+
+
+def _ler():
     if not configurado():
         raise SemMesh("o MeshCentral não está configurado no .env (MESH_URL, MESH_USUARIO, MESH_SENHA)")
     ctrl = os.getenv("MESH_CTRL") or MESHCTRL_PADRAO
@@ -54,7 +65,7 @@ def listar(forcar=False):
     except ValueError as e:
         msg = (r.stdout + r.stderr).replace(os.environ["MESH_SENHA"], "***").strip().splitlines()
         raise SemMesh("o MeshCentral recusou ou está fora do ar" + (f" ({msg[-1][:120]})" if msg else "")) from e
-    _cache.update(t=time.time(), dados=dados)
+    _cache.update(t=time.time(), dados=dados, erro=None)
     return dados
 
 

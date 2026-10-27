@@ -30,5 +30,5 @@ def test_texto_procura_alertas_e_sem_tempo_de_inatividade():
 def test_sem_configuracao(monkeypatch):
     for k in ("MESH_URL", "MESH_USUARIO", "MESH_SENHA"):
         monkeypatch.delenv(k, raising=False)
-    mc._cache.update(t=0, dados=None)
+    mc._cache.update(t=0, dados=None, erro=None)
     assert "não está configurado" in mc.consultar()
