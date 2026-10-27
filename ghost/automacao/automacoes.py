@@ -826,7 +826,7 @@ def _tratar_hud(n, falar):
             "visualizar a rede", "mostrar a rede", "mostre a rede", "mostra a rede", "desenhe a rede")
             and len(n.split()) <= 9
             and not re.search(r"\b(cri\w*|departament\w*|setor\w*|renome\w*|nome\w*|apelid\w*|coloc\w*|"
-                              r"mud\w*|troc\w*|remov\w*|adicion\w*|marc\w*)\b", n)):
+                              r"coloq\w*|ponha|poe|mud\w*|troc\w*|remov\w*|adicion\w*|marc\w*)\b", n)):
         from ghost.nucleo import painel
         if painel.abrir_hud("rede"):
             falar("Abrindo o link neural da rede, senhor.")
