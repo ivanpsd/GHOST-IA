@@ -123,7 +123,7 @@ from groq import Groq
 from ghost.automacao import automacoes
 from ghost.ia import contexto, conversa, ferramentas, memoria, memoria_longa, pessoas, provedores, tarefas
 from ghost.ia.filtro_fala import FiltroFala
-from ghost.nucleo import canal, celular, hud, painel, preferencias, sistema
+from ghost.nucleo import avisos, canal, celular, hud, painel, preferencias, sistema
 from ghost.servicos import alertas, lembretes, monitor_rede, notificacoes, rede, resumo, rotina
 from ghost.voz import ativacao, palavra, som
 
@@ -245,12 +245,12 @@ class _Falando:
 def gerador_de_audio():
     """Thread 1: transforma frases em áudio enquanto a anterior ainda está tocando."""
     while True:
-        texto_limpo, gen = texto_queue.get()
+        texto_limpo, gen, tipo = texto_queue.get()
         if gen != som.geracao():          # interrompido depois que a frase entrou na fila: descarta
             continue
         try:
             data, fs = _sintetizar(texto_limpo, "+5%")
-            audio_queue.put((data, fs, texto_limpo, gen))
+            audio_queue.put((data, fs, texto_limpo, gen, tipo))
         except Exception as e:
             print(f"\n[VOZ]: erro ao gerar voz: {e}")
 
@@ -258,20 +258,44 @@ def gerador_de_audio():
 def reprodutor_de_audio():
     """Thread 2: toca os áudios na ordem em que ficam prontos."""
     while True:
-        data, fs, texto, gen = audio_queue.get()
+        data, fs, texto, gen, tipo = audio_queue.get()
         if gen != som.geracao():
             continue
         try:
             with _Falando():
+                _tocando["aviso"] = tipo == "aviso"
                 hud.falando(texto)
                 som.tocar(data, fs, gen=gen)
         except Exception as e:
             print(f"\n[VOZ]: erro ao tocar: {e}")
+        finally:
+            _tocando["aviso"] = False
         if texto_queue.empty() and audio_queue.empty():
             hud.espera()
             # terminou de falar uma pergunta: a próxima frase vale como resposta, sem dizer "Ghost"
-            if texto.rstrip().endswith("?") and gen == som.geracao():
-                ativacao.aguardar_comando()
+            if texto.rstrip().endswith("?") and gen == som.geracao() and tipo != "aviso":
+                ativacao.aguardar_comando(ESPERA_RESPOSTA_S)
+
+
+_tocando = {"aviso": False}
+ESPERA_RESPOSTA_S = 15      # depois de uma pergunta do Ghost, tempo para começar a responder sem dizer "Ghost"
+
+
+def falar_aviso(texto):
+    """Fala vinda da central de avisos (mensagem, rede, lembrete...). Sempre no PC; não é cortada por voz alta."""
+    print(f"\n[GHOST - aviso]: {texto}")
+    contexto.anotar_fala(texto)
+    painel.fala("ghost", texto)
+    texto_limpo = limpar_texto_para_voz(texto)
+    if texto_limpo:
+        texto_queue.put((texto_limpo, som.geracao(), "aviso"))
+
+
+def ghost_livre(silencio_s):
+    """Pode falar um aviso agora? Ninguém conversando com o Ghost, nada pendente e a sala em silêncio."""
+    return not (_ocupado.is_set() or _ocupado_fundo.is_set() or ghost_falando() or keyboard.is_pressed("f9")
+                or ativacao.modo() == "dormindo" or ativacao.janela_aberta() or automacoes.ha_pendencia()
+                or ativacao.segundos_sem_voz() < silencio_s)
 
 
 def ghost_falando():
@@ -351,7 +375,7 @@ def falar_frase_assincrona(texto):
         return
     texto_limpo = limpar_texto_para_voz(texto)
     if texto_limpo:
-        texto_queue.put((texto_limpo, som.geracao()))
+        texto_queue.put((texto_limpo, som.geracao(), "resposta"))
 
 
 # -------------------------------------------------------------
@@ -562,7 +586,7 @@ def _executar_ferramentas(rota, mensagens, chamadas, ao_receber_frase, turno):
                 print(f"\n[SEGURANÇA]: ação após ler conteúdo externo -> pedindo confirmação ({descricao})")
                 automacoes.pedir_confirmacao(
                     f"Senhor, confirma {descricao}?",
-                    lambda n=c["nome"], a=args: ferramentas.executar(n, a, falar_local, automacoes.pedir_confirmacao),
+                    lambda n=c["nome"], a=args, d=descricao: _executar_confirmado(n, a, d),
                     falar_local)
                 resultados.append((c, "aguardando confirmação por voz do usuário; não diga mais nada"))
                 return f"[aguardando confirmação] {descricao}"
@@ -624,6 +648,23 @@ def _continuar(rota, msgs, ao_receber_frase, usar_ferramentas):
         except Exception as e:
             erro = e
     raise erro or RuntimeError("sem resposta final")
+
+
+def _executar_confirmado(nome, args, descricao):
+    """Ação que o senhor confirmou com "sim": executa e SEMPRE dá retorno (antes, ferramentas de consulta
+    executavam calados e parecia que o Ghost tinha travado)."""
+    _ocupado_fundo.set()
+    try:
+        resultado, volta = ferramentas.executar(nome, args, falar_local, automacoes.pedir_confirmacao)
+        print(f"\n[CONFIRMAÇÃO]: {descricao} -> {str(resultado)[:200]}")
+        if volta:
+            processar_resposta_em_tempo_real(
+                f"[O senhor confirmou: {descricao}. Resultado da ação (dados): {str(resultado)[:1500]}] "
+                "Diga o resultado ao senhor em uma ou duas frases.")
+        elif re.match(r"(erro|falha|não consegui|nao consegui)", str(resultado), re.I):
+            falar_local(f"Senhor, não consegui {descricao}: {str(resultado)[:120]}")
+    finally:
+        _ocupado_fundo.clear()
 
 
 def consultar_ia_streaming(prompt_usuario, ao_receber_frase, turno=None):
@@ -805,6 +846,7 @@ def transcrever(wav_bytes, nome_arquivo="comando.wav"):
 # 8. LOOP PRINCIPAL
 # -------------------------------------------------------------
 _ocupado = threading.Event()
+_ocupado_fundo = threading.Event()   # resposta depois de uma confirmação (roda fora do laço principal)
 
 def ghost_ocupado():
     """True enquanto você fala com o Ghost ou ele ainda está falando (avisos automáticos esperam)."""
@@ -955,12 +997,15 @@ def iniciar_ghost():
     ultimo_uso = time.time()
     preaquecer_voz()                                                             # frases comuns saem instantâneas
     _ligar("rotina", rotina.iniciar, falar_local, ghost_ocupado, client_groq_fundo, automacoes.pedir_confirmacao)
-    _ligar("lembretes", lembretes.iniciar, falar_local)
-    _ligar("alertas", alertas.iniciar, falar_local, ghost_ocupado)
-    _ligar("rede", rede.iniciar, falar_local, ghost_ocupado)                 # inventário da rede (só leitura)
-    _ligar("vigia da rede", monitor_rede.iniciar, falar_local, ghost_ocupado)   # críticos + histórico da internet            # disco, bateria, pausa, chuva...
-    _ligar("notificações", notificacoes.iniciar, falar_local, ghost_ocupado)  # "Senhor, WhatsApp: Leonard"
-    _ligar("tarefas", tarefas.iniciar, client_groq_fundo, MODELOS_GROQ[0], falar_local)
+    # tudo o que o Ghost fala sem ser perguntado passa pela central de avisos (fila única, espera silêncio)
+    _ligar("central de avisos", avisos.iniciar, falar_aviso, ghost_livre, ghost_falando)
+    ativacao.definir_interrompivel(lambda: not _tocando["aviso"])
+    _ligar("lembretes", lembretes.iniciar, avisos.para("alta"))
+    _ligar("alertas", alertas.iniciar, avisos.para("normal"), ghost_ocupado)
+    _ligar("rede", rede.iniciar, avisos.para("normal"), None)                # inventário da rede (só leitura)
+    _ligar("vigia da rede", monitor_rede.iniciar, avisos.para("critica"), None)  # críticos + histórico da internet            # disco, bateria, pausa, chuva...
+    _ligar("notificações", notificacoes.iniciar, avisos.para("normal"), None)  # "Senhor, WhatsApp: Leonard"
+    _ligar("tarefas", tarefas.iniciar, client_groq_fundo, MODELOS_GROQ[0], avisos.para("alta"))
     _ligar("memória longa", memoria_longa.importar_antigos, conversa.recentes())
     threading.Thread(target=_escutar_f9, daemon=True, name="f9").start()
     _ligar("app do celular", celular.iniciar, fila_comandos.put, falar_local)  # pareamento + PIN + Tailscale

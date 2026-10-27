@@ -1000,6 +1000,12 @@ def comando_sensivel(texto):
     return None
 
 
+def ha_pendencia():
+    """True se o Ghost está esperando um "sim/não" ou a resposta de uma pergunta (avisos esperam)."""
+    c, p = _confirmacao, _pergunta
+    return bool((c and time.time() - c["t"] <= TEMPO_CONFIRMACAO) or (p and not p["evento"].is_set()))
+
+
 def pedir_confirmacao(pergunta, funcao, falar=None):
     global _confirmacao
     _confirmacao = {"t": time.time(), "funcao": funcao}
@@ -1018,6 +1024,7 @@ def _tratar_confirmacao(n, falar):
     if curta in SIM:
         em_segundo_plano(c["funcao"])
         return True
+    print(f"\n[CONFIRMAÇÃO]: resposta não foi sim/não ('{n[:60]}'): pergunta descartada, sigo com o novo pedido.")
     return False  # falou outra coisa: descarta a pergunta e o comando segue normalmente
 
 # -------------------------------------------------------------

@@ -124,6 +124,25 @@ def _executar_reset():
             break
 
 
+_ultima_voz = 0.0          # última vez que alguém falou perto do microfone (fora a voz do próprio Ghost)
+_em_resposta = False       # gravando uma resposta/comando agora
+_interrompivel = None      # função: a fala atual pode ser cortada por voz alta? (avisos não podem)
+
+
+def segundos_sem_voz():
+    return time.time() - _ultima_voz
+
+
+def janela_aberta():
+    """True enquanto o Ghost espera/grava uma resposta (depois de "Ghost" ou de uma pergunta dele)."""
+    return _em_resposta or bool(_aguardando_ate and time.time() < _aguardando_ate)
+
+
+def definir_interrompivel(funcao):
+    global _interrompivel
+    _interrompivel = funcao
+
+
 def definir_modo(novo):
     global _modo, _conversa_ate, _aguardando_ate
     _modo = novo
@@ -233,7 +252,7 @@ def _loop(geracao):
 
 
 def _ouvir(geracao):
-    global _rec, _buffer, _aguardando_ate, _conversa_ate
+    global _rec, _buffer, _aguardando_ate, _conversa_ate, _ultima_voz, _em_resposta
     import random
     from collections import deque
 
@@ -320,6 +339,9 @@ def _ouvir(geracao):
             # "Ghost" de verdade dura ~0,5 s: exige 2 blocos seguidos acima do limiar (ou 1 muito alto)
             confirmado_det = pontos >= 0.97 or (pontos >= palavra.LIMIAR and pontos_antes >= palavra.LIMIAR)
             falando_agora = bool(_falando and _falando())
+            if tem_voz and not falando_agora:
+                _ultima_voz = time.time()
+            _em_resposta = resposta is not None
             if _modo == "conversa" and resposta is None and time.time() > _conversa_ate:
                 definir_modo("normal")
                 print("\n[ATIVAÇÃO]: conversa encerrada por falta de uso.")
@@ -340,7 +362,9 @@ def _ouvir(geracao):
 
             # ---------- FALAR POR CIMA: enquanto ele fala, volume bem acima do "vazamento" da voz dele
             # (e perto do seu volume normal) por 0,75 s = é você falando -> ele para e ouve.
-            if falando_agora and resposta is None and _volume_dono and _modo != "dormindo":
+            # (avisos — mensagem, aparelho novo — não são cortados por voz alta: só por "Ghost" ou F9)
+            if (falando_agora and resposta is None and _volume_dono and _modo != "dormindo"
+                    and (_interrompivel is None or _interrompivel())):
                 if eco_nivel == 0.0:
                     eco_nivel = volume
                 elif volume < 1.5 * eco_nivel:
