@@ -1,0 +1,380 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ghost · Link neural da rede</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=Spectral:wght@400;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* HUD "link neural": a rede como um sistema nervoso. Internet no topo, o roteador no centro, cada grupo
+   (departamento ou tipo de aparelho) é um gânglio e cada aparelho um neurônio. Só mostra; não comanda nada. */
+:root {
+  --obsidiana: #0d0a08; --tabua: #17110c; --tabua-2: #1f1710;
+  --fio: rgba(232, 176, 75, .16); --fio-forte: rgba(232, 176, 75, .38);
+  --brasa: #ff6a1a; --ouro: #e8b04b; --cinza-quente: #e9dcc6; --apagado: #9a8770;
+  --sangue: #e0503a; --verdete: #8fbf9f;
+  --f-titulo: "Cinzel", Georgia, serif; --f-texto: "Spectral", Georgia, serif;
+  --f-numero: "JetBrains Mono", Consolas, monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; margin: 0; }
+body { background: var(--obsidiana); color: var(--cinza-quente); font: 15px/1.45 var(--f-texto); overflow: hidden; }
+header {
+  position: fixed; inset: 0 0 auto 0; z-index: 3; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 22px;
+  padding: 12px 18px; background: linear-gradient(var(--obsidiana) 70%, transparent);
+}
+h1 { margin: 0; font: 700 20px/1 var(--f-titulo); letter-spacing: .28em; color: var(--ouro); white-space: nowrap; }
+h1 span { font: 400 13px var(--f-texto); letter-spacing: .04em; color: var(--apagado); margin-left: 8px; }
+.contas { display: flex; gap: 16px; font: 13px var(--f-numero); color: var(--apagado); flex-wrap: wrap; }
+.contas b { color: var(--cinza-quente); font-weight: 600; }
+.contas .ruim b { color: var(--sangue); }
+.ferramentas { margin-left: auto; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+input[type=search] {
+  background: var(--tabua); border: 1px solid var(--fio-forte); color: var(--cinza-quente); border-radius: 6px;
+  padding: 6px 10px; font: 14px var(--f-texto); width: 210px;
+}
+input[type=search]:focus { outline: 2px solid var(--brasa); outline-offset: 1px; }
+.filtro {
+  background: var(--tabua); border: 1px solid var(--fio); color: var(--apagado); border-radius: 999px; padding: 5px 12px;
+  font: 600 11px var(--f-titulo); letter-spacing: .12em; text-transform: uppercase; cursor: pointer;
+}
+.filtro[aria-pressed=true] { color: var(--obsidiana); background: var(--ouro); border-color: var(--ouro); }
+.filtro:focus-visible { outline: 2px solid var(--brasa); outline-offset: 2px; }
+canvas { position: fixed; inset: 0; display: block; }
+#ficha {
+  position: fixed; top: 76px; right: 16px; z-index: 3; width: 320px; max-height: calc(100% - 100px); overflow: auto;
+  background: rgba(23, 17, 12, .94); border: 1px solid var(--fio-forte); border-radius: 10px; padding: 16px 18px;
+  box-shadow: 0 0 40px rgba(255, 106, 26, .08);
+}
+#ficha h2 { margin: 0 0 2px; font: 700 16px var(--f-titulo); letter-spacing: .08em; color: var(--ouro); }
+#ficha .sub { color: var(--apagado); font-size: 13px; margin-bottom: 10px; }
+#ficha dl { display: grid; grid-template-columns: 112px 1fr; gap: 4px 10px; margin: 0; font-size: 14px; }
+#ficha dt { color: var(--apagado); }
+#ficha dd { margin: 0; font-family: var(--f-numero); font-size: 12.5px; overflow-wrap: anywhere; }
+#ficha .alerta { color: var(--sangue); }
+#ficha .ok { color: var(--verdete); }
+#fechar { float: right; background: none; border: 0; color: var(--apagado); font-size: 20px; cursor: pointer; line-height: 1; }
+#legenda {
+  position: fixed; left: 16px; bottom: 14px; z-index: 3; display: flex; flex-wrap: wrap; gap: 6px 16px; max-width: 70%;
+  font-size: 12.5px; color: var(--apagado);
+}
+#legenda i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; }
+#rodape { position: fixed; right: 16px; bottom: 14px; z-index: 3; font: 12px var(--f-numero); color: var(--apagado); }
+#dica {
+  position: fixed; z-index: 4; pointer-events: none; background: rgba(13, 10, 8, .95); border: 1px solid var(--fio-forte);
+  border-radius: 6px; padding: 6px 9px; font-size: 13px; max-width: 260px;
+}
+#dica small { display: block; color: var(--apagado); font-family: var(--f-numero); font-size: 11.5px; }
+@media (max-width: 720px) { #ficha { left: 12px; right: 12px; width: auto; top: auto; bottom: 12px; max-height: 50%; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>LINK NEURAL<span>rede da empresa · somente leitura</span></h1>
+  <div class="contas" id="contas" aria-live="polite"></div>
+  <div class="ferramentas">
+    <input type="search" id="busca" placeholder="Procurar nome, IP, pessoa…" aria-label="Procurar aparelho">
+    <button class="filtro" data-f="todos" aria-pressed="true">Todos</button>
+    <button class="filtro" data-f="ligados" aria-pressed="false">Ligados</button>
+    <button class="filtro" data-f="criticos" aria-pressed="false">Críticos</button>
+    <button class="filtro" data-f="agentes" aria-pressed="false">Com agente</button>
+    <button class="filtro" data-f="alertas" aria-pressed="false">Alertas</button>
+  </div>
+</header>
+<canvas id="tela" role="img" aria-label="Mapa da rede: internet, roteador, grupos e aparelhos"></canvas>
+<div id="dica" hidden></div>
+<aside id="ficha" hidden aria-live="polite"></aside>
+<div id="legenda">
+  <span><i style="background:#e8b04b"></i>ligado</span>
+  <span><i style="background:#4a3d31"></i>desligado</span>
+  <span><i style="background:#8fbf9f"></i>com agente (MeshCentral)</span>
+  <span><i style="background:#e0503a"></i>fora do ar / alerta</span>
+  <span><i style="border:2px solid #ff6a1a;background:none"></i>crítico</span>
+  <span>● computador · ■ impressora · ⬢ servidor · ▲ câmera · ◆ roteador</span>
+</div>
+<div id="rodape"></div>
+<script>
+"use strict";
+const TOKEN = "__GHOST_TOKEN__";
+const DEMO = TOKEN.startsWith("__");
+const COR = { ouro: "#e8b04b", brasa: "#ff6a1a", sangue: "#e0503a", verdete: "#8fbf9f", apagado: "#9a8770",
+              morto: "#4a3d31", texto: "#e9dcc6", fio: "rgba(232,176,75,.16)" };
+const tela = document.getElementById("tela"), ctx = tela.getContext("2d");
+const $ = (id) => document.getElementById(id);
+let dados = null, nos = [], arestas = [], pulsos = [], sobre = null, escolhido = null, filtro = "todos", busca = "";
+let W = 0, H = 0, dpr = 1;
+
+/* ---------------- dados ---------------- */
+function demo() {
+  const deps = { "Administrativo": ["ADM-PAULA", "ADM-13", "POLYANE"], "RH": ["RH-01", "PEDACINHO-RH02", "PEDCINHO-RH03"],
+                 "TI": ["TI_GUSTAVO", "TI-IVAN"], "Comercial": ["COMERCIAL-01", "AMANDA"], "Logística": ["PEDACINHO-LOGIS"] };
+  const ap = []; let ip = 6;
+  for (const [d, ns] of Object.entries(deps)) for (const n of ns)
+    ap.push({ id: n, nome: n, nome_rede: n, departamento: d, grupo: d, ip: `192.168.50.${ip++}`, mac: "00-00-00-00-00-" + ip,
+              tipo: "computador", ligado: n !== "ADM-13", critico: false, novo: n === "AMANDA",
+              agente: /TI_/.test(n) || n === "TI-IVAN" ? { logado: ["usuario"], sistema: "Windows 11", antivirus: "Defender ativo",
+              problemas: n === "TI-IVAN" ? ["reinício pendente"] : [] } : null });
+  ap.push({ id: "srv", nome: "SERVIDOR-SADIN", tipo: "servidor", grupo: "Servidores", ip: "192.168.50.120", ligado: true, critico: true });
+  for (const n of ["IMP_FIN", "NPI3328AD", "SEC8425196B52B5"]) ap.push({ id: n, nome: n, tipo: "impressora", grupo: "Impressoras", ip: "192.168.50." + (ip++ + 100), ligado: true, critico: n === "IMP_FIN" });
+  for (let i = 0; i < 9; i++) ap.push({ id: "x" + i, nome: "aparelho sem nome", tipo: "desconhecido", grupo: "Não identificados", ip: "192.168.50." + (160 + i), ligado: i !== 3 });
+  ap.push({ id: "gw", nome: "192.168.50.1", tipo: "roteador", grupo: "Roteador", ip: "192.168.50.1", ligado: true, critico: true });
+  return { gerado: Date.now() / 1000, gateway: "192.168.50.1", internet: { ok: true, ms: 5, roteador_ms: 1 }, aparelhos: ap };
+}
+async function carregar() {
+  try {
+    dados = DEMO ? demo() : await (await fetch(`/hud/rede/dados?t=${encodeURIComponent(TOKEN)}`, { cache: "no-store" })).json();
+    $("rodape").textContent = "atualizado " + new Date(dados.gerado * 1000).toLocaleTimeString("pt-BR") + (DEMO ? " · demonstração" : "");
+    montar();
+  } catch (e) { $("rodape").textContent = "sem conexão com o Ghost"; }
+}
+
+/* ---------------- layout: estrela de gânglios ---------------- */
+function montar() {
+  const ap = dados.aparelhos.filter((a) => a.tipo !== "roteador");
+  const rot = dados.aparelhos.find((a) => a.tipo === "roteador") || { nome: "Roteador", ip: dados.gateway, ligado: true, tipo: "roteador" };
+  const grupos = {};
+  for (const a of ap) (grupos[a.grupo] ||= []).push(a);
+  const nomes = Object.keys(grupos).sort((a, b) => grupos[b].length - grupos[a].length);
+  const cx = W / 2, cy = H / 2 + 34, raio = Math.min(W, H - 90) / 2;
+  const antigos = Object.fromEntries(nos.map((n) => [n.id, n]));
+  nos = []; arestas = [];
+  const net = { id: "internet", rotulo: "Internet", tipo: "internet", x: cx, y: Math.max(96, cy - raio - 10), r: 15,
+                ligado: dados.internet.ok !== false, fora: dados.internet.fora, info: dados.internet };
+  const hub = { id: "roteador", rotulo: rot.apelido || "Roteador", tipo: "roteador", x: cx, y: cy, r: 17, ligado: true,
+                critico: true, info: rot };
+  nos.push(net, hub);
+  arestas.push({ a: net, b: hub, forte: true });
+  // cada grupo ocupa um arco do tamanho que precisa (54 px entre aparelhos); se não couber, usa mais anéis
+  const r0 = raio * 0.72, sp = 54 / r0, folga = 0.22, giro = Math.PI * 2 - Math.PI * 0.44;
+  let aneis = 1;
+  const span = (n, k) => Math.max(Math.ceil(n / k) - 1, 0) * sp;
+  while (aneis < 4 && nomes.reduce((s, g) => s + span(grupos[g].length, aneis) + folga, 0) > giro) aneis++;
+  const usado = nomes.reduce((s, g) => s + span(grupos[g].length, aneis) + folga, 0);
+  const sobra = Math.max(0, giro - usado) / Math.max(nomes.length, 1);
+  let ang = -Math.PI / 2 + Math.PI * 0.22;                          // deixa o topo livre para a internet
+  for (const g of nomes) {
+    const lista = grupos[g].sort((a, b) => (b.ligado - a.ligado) || String(a.nome).localeCompare(b.nome));
+    const largura = span(lista.length, aneis);
+    const fatia = largura + folga + sobra, meio = ang + fatia / 2;
+    const rg = raio * 0.40;
+    const gan = { id: "g:" + g, rotulo: g, tipo: "ganglio", x: cx + Math.cos(meio) * rg, y: cy + Math.sin(meio) * rg, r: 7,
+                  ligado: lista.some((a) => a.ligado), qtd: lista.length };
+    nos.push(gan); arestas.push({ a: hub, b: gan, forte: true });
+    const porAnel = Math.ceil(lista.length / aneis);
+    lista.forEach((a, i) => {
+      const anel = Math.floor(i / porAnel), pos = i % porAnel, nesse = Math.min(porAnel, lista.length - anel * porAnel);
+      const an = meio + (pos - (nesse - 1) / 2) * sp + (anel % 2 ? sp / 2 : 0);
+      const rr = raio * (0.72 + anel * 0.15);
+      const velho = antigos[a.id];
+      const n = { id: a.id, rotulo: a.nome, tipo: a.tipo, x: cx + Math.cos(an) * rr, y: cy + Math.sin(an) * rr,
+                  r: a.tipo === "servidor" ? 11 : 8, ligado: a.ligado, critico: a.critico,
+                  alerta: a.fora_do_ar || (a.agente && a.agente.problemas && a.agente.problemas.length),
+                  agente: !!a.agente, novo: a.novo, info: a, fase: velho ? velho.fase : Math.random() * 6.28 };
+      nos.push(n); arestas.push({ a: gan, b: n });
+    });
+    ang += fatia;
+  }
+  if (escolhido) escolhido = nos.find((n) => n.id === escolhido.id) || null;
+  contar(); mostrarFicha();
+}
+function contar() {
+  const ap = dados.aparelhos, lig = ap.filter((a) => a.ligado).length;
+  const crit = ap.filter((a) => a.critico && (a.fora_do_ar || !a.ligado)).length;
+  const novos = ap.filter((a) => a.novo).length, ag = ap.filter((a) => a.agente).length;
+  const al = ap.filter((a) => a.agente && a.agente.problemas && a.agente.problemas.length).length;
+  const i = dados.internet;
+  $("contas").innerHTML =
+    `<span><b>${lig}</b>/${ap.length} ligados</span>` +
+    `<span class="${crit ? "ruim" : ""}"><b>${crit}</b> crítico(s) fora</span>` +
+    `<span><b>${ag}</b> com agente${al ? ` · <b style="color:var(--sangue)">${al}</b> c/ alerta` : ""}</span>` +
+    `<span><b>${novos}</b> novo(s) 24h</span>` +
+    `<span class="${i.ok === false ? "ruim" : ""}">internet <b>${i.ok === false ? "FORA" : (i.ms ?? "—") + " ms"}</b></span>`;
+}
+
+/* ---------------- filtro / busca ---------------- */
+function visivel(n) {
+  if (["internet", "roteador", "ganglio"].includes(n.tipo)) return true;
+  const a = n.info;
+  if (filtro === "ligados" && !n.ligado) return false;
+  if (filtro === "criticos" && !n.critico) return false;
+  if (filtro === "agentes" && !n.agente) return false;
+  if (filtro === "alertas" && !n.alerta) return false;
+  if (busca) {
+    const alvo = [a.nome, a.nome_rede, a.apelido, a.responsavel, a.departamento, a.ip, a.mac,
+                  ...(a.agente && a.agente.logado || [])].join(" ").toLowerCase();
+    if (!alvo.includes(busca)) return false;
+  }
+  return true;
+}
+
+/* ---------------- desenho ---------------- */
+function forma(n, x, y, r) {
+  ctx.beginPath();
+  if (n.tipo === "impressora") ctx.rect(x - r * .85, y - r * .85, r * 1.7, r * 1.7);
+  else if (n.tipo === "servidor") { for (let k = 0; k < 6; k++) { const a = Math.PI / 3 * k + Math.PI / 6; ctx.lineTo(x + Math.cos(a) * r, y + Math.sin(a) * r); } ctx.closePath(); }
+  else if (n.tipo === "camera") { ctx.moveTo(x, y - r); ctx.lineTo(x + r, y + r * .8); ctx.lineTo(x - r, y + r * .8); ctx.closePath(); }
+  else if (n.tipo === "roteador") { ctx.moveTo(x, y - r); ctx.lineTo(x + r, y); ctx.lineTo(x, y + r); ctx.lineTo(x - r, y); ctx.closePath(); }
+  else ctx.arc(x, y, r, 0, Math.PI * 2);
+}
+function corDo(n) {
+  if (n.fora || n.alerta) return COR.sangue;
+  if (!n.ligado) return COR.morto;
+  if (n.tipo === "ganglio") return COR.apagado;
+  if (n.agente) return COR.verdete;
+  return COR.ouro;
+}
+function quadro(t) {
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  const g = ctx.createRadialGradient(W / 2, H / 2 + 34, 0, W / 2, H / 2 + 34, Math.max(W, H) * .6);
+  g.addColorStop(0, "rgba(255,106,26,.07)"); g.addColorStop(1, "rgba(13,10,8,0)");
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  if (!dados) return requestAnimationFrame(quadro);
+  const foco = escolhido || sobre;
+  // ligações: curvas leves, como dendritos
+  for (const e of arestas) {
+    const v = visivel(e.b) && visivel(e.a);
+    const ativa = e.a.ligado && e.b.ligado;
+    const ligadoAoFoco = foco && (e.a === foco || e.b === foco);
+    ctx.globalAlpha = !v ? .05 : ligadoAoFoco ? .95 : ativa ? (e.forte ? .5 : .28) : .1;
+    ctx.strokeStyle = (e.b.alerta || e.b.fora) && ativa ? COR.sangue : ligadoAoFoco ? COR.brasa : COR.ouro;
+    ctx.lineWidth = e.forte ? 1.6 : 1;
+    const mx = (e.a.x + e.b.x) / 2 + (e.b.y - e.a.y) * .08, my = (e.a.y + e.b.y) / 2 - (e.b.x - e.a.x) * .08;
+    ctx.beginPath(); ctx.moveTo(e.a.x, e.a.y); ctx.quadraticCurveTo(mx, my, e.b.x, e.b.y); ctx.stroke();
+    e.mx = mx; e.my = my;
+  }
+  ctx.globalAlpha = 1;
+  // impulsos: só em ligações vivas
+  if (Math.random() < .35) {
+    const vivas = arestas.filter((e) => e.a.ligado && e.b.ligado && visivel(e.b));
+    if (vivas.length) pulsos.push({ e: vivas[Math.floor(Math.random() * vivas.length)], p: 0, v: .008 + Math.random() * .012 });
+  }
+  pulsos = pulsos.filter((p) => (p.p += p.v) < 1);
+  for (const p of pulsos) {
+    const e = p.e, u = 1 - p.p;
+    const x = u * u * e.a.x + 2 * u * p.p * e.mx + p.p * p.p * e.b.x, y = u * u * e.a.y + 2 * u * p.p * e.my + p.p * p.p * e.b.y;
+    ctx.fillStyle = e.b.alerta ? COR.sangue : COR.brasa;
+    ctx.shadowColor = ctx.fillStyle; ctx.shadowBlur = 10;
+    ctx.beginPath(); ctx.arc(x, y, 2, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.shadowBlur = 0;
+  // neurônios
+  ctx.textAlign = "center"; ctx.textBaseline = "top";
+  for (const n of nos) {
+    const v = visivel(n);
+    ctx.globalAlpha = v ? 1 : .12;
+    const c = corDo(n);
+    let r = n.r;
+    if (n.novo || n.alerta || n.fora) r += Math.sin(t / 300 + (n.fase || 0)) * 1.2;
+    if (n.ligado && n.tipo !== "ganglio") { ctx.shadowColor = c; ctx.shadowBlur = n === foco ? 22 : 12; }
+    forma(n, n.x, n.y, r);
+    ctx.fillStyle = n.ligado ? c : "rgba(74,61,49,.55)";
+    ctx.fill(); ctx.shadowBlur = 0;
+    if (n.tipo === "desconhecido") { ctx.setLineDash([3, 3]); ctx.strokeStyle = COR.apagado; ctx.lineWidth = 1; ctx.stroke(); ctx.setLineDash([]); }
+    if (n.critico) { forma(n, n.x, n.y, r + 4.5); ctx.strokeStyle = COR.brasa; ctx.lineWidth = 1.6; ctx.stroke(); }
+    if (n === foco) { forma(n, n.x, n.y, r + 8); ctx.strokeStyle = COR.texto; ctx.lineWidth = 1; ctx.stroke(); }
+    if (n.novo) { ctx.fillStyle = COR.brasa; ctx.font = "600 9px 'JetBrains Mono', monospace"; ctx.fillText("NOVO", n.x, n.y - r - 14); }
+    // rótulos
+    const grande = ["internet", "roteador", "ganglio"].includes(n.tipo);
+    ctx.fillStyle = grande ? COR.ouro : n.ligado ? COR.texto : COR.apagado;
+    ctx.font = grande ? "700 12px Cinzel, Georgia, serif" : "11px Spectral, Georgia, serif";
+    let txt = n.tipo === "ganglio" ? `${n.rotulo} · ${n.qtd}` : n.rotulo;
+    if (!grande && txt.length > 16) txt = txt.slice(0, 15) + "…";
+    if (v && (grande || nos.length < 70 || n === foco)) ctx.fillText(txt, n.x, n.y + r + (n.critico ? 8 : 5));
+  }
+  ctx.globalAlpha = 1;
+  requestAnimationFrame(quadro);
+}
+
+/* ---------------- interação ---------------- */
+function noEm(x, y) {
+  let melhor = null, d = 1e9;
+  for (const n of nos) { const k = Math.hypot(n.x - x, n.y - y); if (k < Math.max(n.r + 8, 14) && k < d && visivel(n)) { melhor = n; d = k; } }
+  return melhor;
+}
+tela.addEventListener("mousemove", (ev) => {
+  sobre = noEm(ev.clientX, ev.clientY);
+  tela.style.cursor = sobre ? "pointer" : "default";
+  const dica = $("dica");
+  if (!sobre) { dica.hidden = true; return; }
+  const a = sobre.info || {};
+  dica.innerHTML = "";
+  const b = document.createElement("b"); b.textContent = sobre.tipo === "ganglio" ? `${sobre.rotulo} (${sobre.qtd})` : sobre.rotulo;
+  const s = document.createElement("small");
+  s.textContent = sobre.tipo === "internet" ? (a.ok === false ? "fora do ar" : `${a.ms ?? "—"} ms`) :
+                  sobre.tipo === "ganglio" ? "grupo" : [a.ip, a.responsavel, a.ligado ? "ligado" : "desligado"].filter(Boolean).join(" · ");
+  dica.append(b, s); dica.hidden = false;
+  dica.style.left = Math.min(ev.clientX + 14, W - 270) + "px"; dica.style.top = (ev.clientY + 14) + "px";
+});
+tela.addEventListener("mouseleave", () => { sobre = null; $("dica").hidden = true; });
+tela.addEventListener("click", (ev) => { escolhido = noEm(ev.clientX, ev.clientY); mostrarFicha(); });
+document.addEventListener("keydown", (ev) => { if (ev.key === "Escape") { escolhido = null; mostrarFicha(); } });
+
+function linha(dl, rot, val, classe) {
+  if (val === undefined || val === null || val === "") return;
+  const dt = document.createElement("dt"); dt.textContent = rot;
+  const dd = document.createElement("dd"); dd.textContent = val; if (classe) dd.className = classe;
+  dl.append(dt, dd);
+}
+const quando = (t) => t ? new Date(t * 1000).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }) : "";
+function mostrarFicha() {
+  const f = $("ficha");
+  if (!escolhido) { f.hidden = true; return; }
+  const n = escolhido, a = n.info || {};
+  f.innerHTML = "";
+  const x = document.createElement("button"); x.id = "fechar"; x.textContent = "×"; x.setAttribute("aria-label", "Fechar");
+  x.onclick = () => { escolhido = null; mostrarFicha(); };
+  const h = document.createElement("h2"); h.textContent = n.tipo === "ganglio" ? n.rotulo : n.rotulo;
+  const sub = document.createElement("div"); sub.className = "sub";
+  const dl = document.createElement("dl");
+  if (n.tipo === "internet") {
+    sub.textContent = "Saída para a internet";
+    linha(dl, "Situação", a.ok === false ? "fora do ar" : "no ar", a.ok === false ? "alerta" : "ok");
+    linha(dl, "Latência", a.ms != null ? `${a.ms} ms` : "—");
+    linha(dl, "Roteador", a.roteador_ms != null ? `${a.roteador_ms} ms` : "—");
+    linha(dl, "Medido em", quando(a.quando));
+  } else if (n.tipo === "ganglio") {
+    const membros = nos.filter((m) => arestas.some((e) => e.a === n && e.b === m));
+    sub.textContent = `${n.qtd} aparelho(s) · ${membros.filter((m) => m.ligado).length} ligado(s)`;
+    for (const m of membros) linha(dl, m.ligado ? "ligado" : "desligado", `${m.rotulo} (${m.info.ip || ""})`, m.alerta ? "alerta" : "");
+  } else {
+    sub.textContent = [n.tipo, a.departamento].filter(Boolean).join(" · ");
+    linha(dl, "Situação", n.fora ? "FORA DO AR" : n.ligado ? "ligado" : "desligado", n.fora ? "alerta" : n.ligado ? "ok" : "");
+    linha(dl, "Apelido", a.apelido); linha(dl, "Responsável", a.responsavel); linha(dl, "Departamento", a.departamento);
+    linha(dl, "Nome na rede", a.nome_rede); linha(dl, "Grupo", a.grupo_trabalho);
+    linha(dl, "IP", a.ip); linha(dl, "MAC", a.mac); linha(dl, "Crítico", a.critico ? "sim (vigiado a cada minuto)" : "");
+    linha(dl, "Visto 1ª vez", quando(a.primeira_vez)); linha(dl, "Última vez", quando(a.ultima_vez));
+    if (a.agente) {
+      linha(dl, "Agente", "MeshCentral conectado", "ok");
+      linha(dl, "Logado", (a.agente.logado || []).join(", ") || "ninguém");
+      linha(dl, "Sistema", a.agente.sistema); linha(dl, "Antivírus", a.agente.antivirus);
+      linha(dl, "Ligada desde", a.agente.ligado_desde);
+      linha(dl, "Alertas", (a.agente.problemas || []).join(", ") || "nenhum", (a.agente.problemas || []).length ? "alerta" : "ok");
+    }
+    if (!a.apelido && n.tipo !== "roteador") {
+      const p = document.createElement("p"); p.className = "sub";
+      p.textContent = `Para dar nome: "Ghost, a ${a.ip} é a impressora da recepção".`; f.append(p);
+    }
+  }
+  f.prepend(x, h, sub, dl); f.hidden = false;
+}
+
+for (const b of document.querySelectorAll(".filtro")) b.addEventListener("click", () => {
+  filtro = b.dataset.f;
+  for (const o of document.querySelectorAll(".filtro")) o.setAttribute("aria-pressed", String(o === b));
+});
+$("busca").addEventListener("input", (e) => { busca = e.target.value.trim().toLowerCase(); });
+
+function medir() {
+  dpr = window.devicePixelRatio || 1; W = window.innerWidth; H = window.innerHeight;
+  tela.width = W * dpr; tela.height = H * dpr; tela.style.width = W + "px"; tela.style.height = H + "px";
+  if (dados) montar();
+}
+window.addEventListener("resize", medir);
+medir(); carregar(); setInterval(carregar, 30000);
+requestAnimationFrame(quadro);
+</script>
+</body>
+</html>

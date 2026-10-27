@@ -469,6 +469,16 @@ class _Rotas(BaseHTTPRequestHandler):
                 nome = os.path.basename(r["passos"][n - 1]["recorte"])
                 with open(os.path.join(demo.PASTA_RASCUNHO, nome), "rb") as arq:
                     return self._responder(200, arq.read(), "image/png")
+            if rota.startswith("hud/"):                # telas de visualização (huds.py + painel_web/hud_<nome>.html)
+                from ghost.nucleo import huds
+                partes = rota.split("/")
+                nome = partes[1] if len(partes) > 1 else ""
+                if nome not in huds.HUDS:
+                    return self._responder(404, {"erro": "HUD não existe"})
+                if len(partes) == 3 and partes[2] == "dados":
+                    return self._responder(200, huds.DADOS[nome]())
+                html = self._arquivo(f"hud_{nome}.html").replace(b"__GHOST_TOKEN__", _token.encode())
+                return self._responder(200, html, "text/html; charset=utf-8")
             if rota == "celular/situacao":
                 from ghost.nucleo import celular
                 return self._responder(200, celular.situacao())
@@ -572,6 +582,30 @@ def abrir_janela(mostrar_qr=False, revisao=False):
                                 f"--window-size={largura},{altura}", "--no-first-run",
                                 "--no-default-browser-check", "--disable-features=Translate"])
     evento("Painel aberto", "info")
+    return True
+
+
+_huds_abertos = {}
+
+
+def abrir_hud(nome):
+    """Abre uma tela de visualização (ex.: 'rede') numa janela própria do Edge. False se não existir."""
+    from ghost.nucleo import huds
+    if not _servidor or nome not in huds.HUDS:
+        return False
+    url = f"http://127.0.0.1:{_servidor.server_address[1]}/hud/{nome}?t={_token}"
+    aberta = _huds_abertos.get(nome)
+    if aberta and aberta.poll() is None:
+        aberta.terminate()                       # reabre na frente, com os dados de agora
+    exe = _edge()
+    if not exe:
+        import webbrowser
+        webbrowser.open(url)
+        return True
+    _huds_abertos[nome] = subprocess.Popen([exe, f"--app={url}", f"--user-data-dir={caminhos.dado('painel_janela')}",
+                                            "--window-size=1400,880", "--no-first-run", "--no-default-browser-check",
+                                            "--disable-features=Translate"])
+    evento(f"HUD aberto: {huds.HUDS[nome]}", "info")
     return True
 
 

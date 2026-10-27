@@ -820,6 +820,15 @@ def _tratar_personalidade(n, falar):
     return False
 
 def _tratar_hud(n, falar):
+    # telas de visualização: "mostre o link neural da rede", "abra o mapa da rede"
+    if tem(n, "link neural", "mapa da rede", "mapa de rede", "hud da rede", "tela da rede", "rede neural da rede",
+           "visualizar a rede", "mostrar a rede", "mostre a rede", "mostra a rede", "desenhe a rede"):
+        from ghost.nucleo import painel
+        if painel.abrir_hud("rede"):
+            falar("Abrindo o link neural da rede, senhor.")
+        else:
+            falar("Senhor, o painel não está ligado; não consegui abrir o mapa da rede.")
+        return True
     # "exportar indicadores": Excel com tudo o que a tela de indicadores mostra
     if tem(n, "exportar indicadores", "exporta os indicadores", "exportar os indicadores", "exportar painel",
            "exportar o painel", "exportar relatorio do painel", "exportar relatorio dos indicadores",

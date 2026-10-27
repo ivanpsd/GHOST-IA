@@ -466,6 +466,7 @@ SYSTEM_INSTRUCTION = (
     "consegue: aprender skill olhando a tela ('aprenda uma skill pela tela'; serve para 'grave minha tela', "
     "'veja o que eu faço'), 'parar de gravar', 'teste a skill', 'salve a skill como <nome>', 'descarte a skill', "
     "'remova o passo N', 'mostre a revisão', 'abrir painel', 'exportar indicadores', 'conectar celular', "
+    "'mostrar o link neural da rede' (mapa interativo da rede), "
     "'tirar print' (ou 'tirar print do monitor N'; pelo celular a imagem vai para o app). Quando pedirem um "
     "print/captura, use isso, não olhar_tela: olhar_tela é para você LER e explicar a tela."
 )

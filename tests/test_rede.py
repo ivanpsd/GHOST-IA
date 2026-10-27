@@ -91,3 +91,30 @@ def test_exportar_excel(monkeypatch, tmp_path):
     assert wb.sheetnames == ["Inventário", "Quedas", "Internet por dia"]
     assert wb["Inventário"]["D2"].value == "SERVIDOR-SADIN" and wb["Inventário"]["H2"].value == "sim"
     assert wb["Internet por dia"]["B2"].value == 100.0
+
+
+def test_tipo_de_aparelho_para_o_mapa():
+    from ghost.nucleo import huds
+    t = lambda nome, ip="192.168.50.9": huds.tipo_aparelho({"nome": nome, "ip": ip}, "192.168.50.1")  # noqa: E731
+    assert t("x", "192.168.50.1") == "roteador" and t("SERVIDOR-SADIN") == "servidor"
+    assert t("IMP_FIN") == "impressora" and t("NPI3328AD") == "impressora" and t("SEC8425196B52B5") == "impressora"
+    assert t("ADM-PAULA") == "computador" and t(None) == "desconhecido"
+
+
+def test_hud_da_rede_servido_com_a_chave(monkeypatch, tmp_path):
+    import json
+    import urllib.request
+
+    from ghost.nucleo import huds, painel
+    monkeypatch.setattr(huds, "DADOS", {"rede": lambda: {"aparelhos": [], "internet": {}, "gerado": 1}})
+    painel.iniciar(abrir=False)
+    base = f"http://127.0.0.1:{painel._servidor.server_address[1]}"
+    html = urllib.request.urlopen(f"{base}/hud/rede?t={painel._token}").read().decode()
+    assert "LINK NEURAL" in html and painel._token in html and "__GHOST_TOKEN__" not in html
+    assert json.loads(urllib.request.urlopen(f"{base}/hud/rede/dados?t={painel._token}").read())["gerado"] == 1
+    import urllib.error
+    try:
+        urllib.request.urlopen(f"{base}/hud/rede/dados?t=errada")
+        raise AssertionError("deveria negar")
+    except urllib.error.HTTPError as e:
+        assert e.code == 403
