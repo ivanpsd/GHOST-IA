@@ -111,12 +111,8 @@ def checar():
     no_horario = HORARIO[0] <= agora.hour < HORARIO[1]
     dia_util = agora.weekday() < 5
 
-    # internet (vale sempre)
-    on = _internet()
-    if on != _estado["internet"]:
-        _estado["internet"] = on
-        _avisar("internet", "Senhor, a internet voltou." if on else
-                "Senhor, a conexão com a internet caiu. Vou funcionar só com o que é local até voltar.")
+    # internet: NÃO é checada aqui. O vigia da rede (servicos/monitor_rede.py) já testa a cada minuto e avisa;
+    # checar nos dois lugares dava aviso duplicado da mesma queda.
 
     # bateria (vale sempre)
     pct, na_tomada = _bateria()
@@ -159,7 +155,6 @@ def checar():
 
 
 def _loop():
-    _estado["internet"] = _internet()     # 1ª checagem aqui (não trava a inicialização do Ghost)
     while True:
         time.sleep(INTERVALO)
         try:
