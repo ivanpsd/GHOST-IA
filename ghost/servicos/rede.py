@@ -945,6 +945,12 @@ def _registrar_acao(a, texto):
         pass
 
 
+def _notificar(no, texto):
+    """Notificação do Windows no PC (canto da tela). Usa DeviceToast porque a caixa de mensagem (DeviceMessage) o
+    MeshCentral só entrega a quem tem direito de CONTROLE REMOTO — e a conta ghost-acoes de propósito não tem."""
+    _mesh_acao(["DeviceToast", "--id", no, "--title", "Aviso do TI", "--msg", texto])
+
+
 def acao_manual(mac, acao, texto=""):
     """Ponto único das ações do painel. acao: ligar | mensagem | reiniciar | desligar | cancelar."""
     a = carregar().get(mac)
@@ -959,8 +965,8 @@ def acao_manual(mac, acao, texto=""):
         no, ligado = _agente_do(a)
         if not ligado:
             raise ValueError("o agente desse PC está desconectado")
-        _mesh_acao(["DeviceMessage", "--id", no, "--msg", texto, "--title", "Aviso do TI"])
-        r = "mensagem mostrada na tela"
+        _notificar(no, texto)
+        r = "notificação enviada para a tela"
     elif acao in ("reiniciar", "desligar"):
         if mac in _agendadas:
             raise ValueError(f"já há um '{_agendadas[mac]['acao']}' agendado; cancele antes")
@@ -968,14 +974,13 @@ def acao_manual(mac, acao, texto=""):
         if not ligado:
             raise ValueError("o agente desse PC está desconectado")
         minutos = AVISO_ANTES_S // 60
-        _mesh_acao(["DeviceMessage", "--id", no, "--title", "Aviso do TI", "--timeout", str(AVISO_ANTES_S * 1000),
-                    "--msg", f"Este computador vai {'REINICIAR' if acao == 'reiniciar' else 'DESLIGAR'} em {minutos} "
-                             "minutos. Salve o que estiver fazendo."])
+        _notificar(no, f"Este computador vai {'REINICIAR' if acao == 'reiniciar' else 'DESLIGAR'} em {minutos} "
+                       "minutos. Salve o que estiver fazendo.")
         t = threading.Timer(AVISO_ANTES_S, _executar_energia, args=(mac, acao))
         t.daemon = True
         _agendadas[mac] = {"acao": acao, "quando": time.time() + AVISO_ANTES_S, "timer": t}
         t.start()
-        r = f"aviso mostrado na tela; {acao} em {minutos} minutos (dá para cancelar)"
+        r = f"aviso enviado para a tela; {acao} em {minutos} minutos (dá para cancelar)"
     elif acao == "cancelar":
         ag = _agendadas.pop(mac, None)
         if not ag:
@@ -983,8 +988,7 @@ def acao_manual(mac, acao, texto=""):
         ag["timer"].cancel()
         try:
             no, _ = _agente_do(a)
-            _mesh_acao(["DeviceMessage", "--id", no, "--title", "Aviso do TI", "--msg",
-                        f"O {'reinício' if ag['acao'] == 'reiniciar' else 'desligamento'} foi cancelado."])
+            _notificar(no, f"O {'reinício' if ag['acao'] == 'reiniciar' else 'desligamento'} foi cancelado.")
         except Exception:
             pass
         r = f"{ag['acao']} cancelado"
