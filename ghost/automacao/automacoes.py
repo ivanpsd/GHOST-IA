@@ -821,8 +821,12 @@ def _tratar_personalidade(n, falar):
 
 def _tratar_hud(n, falar):
     # telas de visualização: "mostre o link neural da rede", "abra o mapa da rede"
-    if tem(n, "link neural", "mapa da rede", "mapa de rede", "hud da rede", "tela da rede", "rede neural da rede",
-           "visualizar a rede", "mostrar a rede", "mostre a rede", "mostra a rede", "desenhe a rede"):
+    # só ABRIR: frase curta com verbo de mostrar. "crie departamentos no link neural" vai para a IA (não reabre a tela)
+    if (tem(n, "link neural", "mapa da rede", "mapa de rede", "hud da rede", "tela da rede", "rede neural da rede",
+            "visualizar a rede", "mostrar a rede", "mostre a rede", "mostra a rede", "desenhe a rede")
+            and len(n.split()) <= 9
+            and not re.search(r"\b(cri\w*|departament\w*|setor\w*|renome\w*|nome\w*|apelid\w*|coloc\w*|"
+                              r"mud\w*|troc\w*|remov\w*|adicion\w*|marc\w*)\b", n)):
         from ghost.nucleo import painel
         if painel.abrir_hud("rede"):
             falar("Abrindo o link neural da rede, senhor.")

@@ -72,7 +72,7 @@ def dados_rede():
             "novo": agora - a.get("primeira_vez", 0) < 86400, "primeira_vez": a.get("primeira_vez"),
             "ultima_vez": a.get("ultima_vez"), "agente": agentes.get(a.get("ip")),
         })
-    return {"gerado": agora, "gateway": gw,
+    return {"gerado": agora, "gateway": gw, "departamentos": rede.departamentos(),
             "internet": {"ok": ultima.get("net_ms") is not None if ultima else None, "ms": ultima.get("net_ms"),
                          "roteador_ms": ultima.get("gw_ms"), "quando": ultima.get("t"), "fora": "internet" in quedas},
             "aparelhos": aparelhos}

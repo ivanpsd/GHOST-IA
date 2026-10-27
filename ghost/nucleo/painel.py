@@ -494,6 +494,20 @@ class _Rotas(BaseHTTPRequestHandler):
         try:
             if rota == "exportar":
                 return self._responder(200, {"arquivo": exportar()})
+            if rota == "hud/rede/editar":             # ficha do link neural: só o inventário do Ghost, não a máquina
+                from ghost.servicos import rede
+                n = int(self.headers.get("Content-Length") or 0)
+                j = json.loads(self.rfile.read(min(n, 10_000)) or b"{}") if n else {}
+                if j.get("departamento_novo"):
+                    return self._responder(200, {"departamentos": rede.definir_departamentos([str(j["departamento_novo"])[:40]])})
+                if j.get("departamento_remover"):
+                    return self._responder(200, {"departamentos": rede.definir_departamentos(
+                        [str(j["departamento_remover"])], remover=True)})
+                a = rede.editar(str(j.get("mac") or ""), j.get("campos") or {})
+                if a is None:
+                    return self._responder(404, {"erro": "aparelho não está no inventário"})
+                evento(f"Rede: {rede.nome_exibicao(a)} atualizado", "acao")
+                return self._responder(200, {"ok": True})
             if rota == "skill/acao":
                 from ghost.automacao import demonstracao as demo
                 n = int(self.headers.get("Content-Length") or 0)

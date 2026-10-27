@@ -22,6 +22,7 @@ from datetime import datetime
 from ghost.nucleo import arquivo, caminhos
 
 ARQUIVO = caminhos.dado("rede.json")
+ARQ_DEPARTAMENTOS = caminhos.dado("rede_departamentos.json")
 INTERVALO_MIN = 15            # varredura automática (minutos)
 AVISAR_NOVOS = True           # fala quando aparece um aparelho nunca visto (MAC aleatório de celular não conta)
 MAX_HOSTS = 1024              # nunca varre mais que isso (rede /22 ou menor)
@@ -144,6 +145,72 @@ def nomear(alvo, apelido=None, responsavel=None, departamento=None, critico=None
             a["critico"] = bool(critico)
         _salvar(inv)
         return a, 1
+
+
+def editar(mac, campos):
+    """Edição direta (tela do link neural): campos apelido/responsavel/departamento/critico; texto vazio apaga."""
+    with _trava:
+        inv = carregar()
+        a = inv.get(mac)
+        if a is None:
+            return None
+        for campo in ("apelido", "responsavel", "departamento"):
+            if campo in campos:
+                valor = str(campos[campo] or "").strip()[:60]
+                if valor:
+                    a[campo] = valor
+                else:
+                    a.pop(campo, None)
+        if "critico" in campos:
+            a["critico"] = bool(campos["critico"])
+        _salvar(inv)
+    if a.get("departamento"):
+        definir_departamentos([a["departamento"]])
+    return a
+
+
+def atribuir_departamento(alvos, departamento):
+    """Coloca vários aparelhos num departamento. Devolve (feitos, não achados, ambíguos)."""
+    feitos, nao, amb = [], [], []
+    with _trava:
+        inv = carregar()
+        for alvo in alvos:
+            achados = procurar(inv, alvo)
+            if len(achados) == 1:
+                inv[achados[0]["mac"]]["departamento"] = departamento.strip()
+                feitos.append(nome_exibicao(achados[0]))
+            else:
+                (nao if not achados else amb).append(alvo)
+        _salvar(inv)
+    definir_departamentos([departamento])
+    return feitos, nao, amb
+
+
+# ---- departamentos (existem mesmo sem aparelho, para aparecerem no mapa) ----
+def departamentos():
+    lista = arquivo.ler_json(ARQ_DEPARTAMENTOS, [])
+    usados = {a.get("departamento") for a in carregar().values() if a.get("departamento")}
+    vistos, saida = set(), []
+    for d in list(lista if isinstance(lista, list) else []) + sorted(usados):
+        if d and normalizar(d) not in vistos:
+            vistos.add(normalizar(d))
+            saida.append(d)
+    return saida
+
+
+def definir_departamentos(nomes, remover=False):
+    """Cria (ou remove) departamentos. Nomes iguais sem acento/maiúscula contam como o mesmo."""
+    with _trava:
+        atual = arquivo.ler_json(ARQ_DEPARTAMENTOS, [])
+        atual = atual if isinstance(atual, list) else []
+        alvo = {normalizar(n) for n in nomes if n and n.strip()}
+        if remover:
+            atual = [d for d in atual if normalizar(d) not in alvo]
+        else:
+            existentes = {normalizar(d) for d in atual}
+            atual += [n.strip() for n in nomes if n and n.strip() and normalizar(n) not in existentes]
+        arquivo.salvar_json(ARQ_DEPARTAMENTOS, atual)
+    return departamentos()
 
 
 # =============================================================

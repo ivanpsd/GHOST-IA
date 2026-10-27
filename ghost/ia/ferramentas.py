@@ -157,10 +157,20 @@ TOOLS = [
             "acao": {"type": "string", "enum": ["listar", "procurar", "alertas"]},
             "termo": {"type": "string"}}, "required": ["acao"]}}},
     {"type": "function", "function": {
+        "name": "departamentos_rede",
+        "description": ("Departamentos do mapa da rede (link neural), só no inventário do Ghost. acao: criar (lista de "
+                        "nomes), remover, listar, atribuir (coloca os aparelhos 'alvos' — IPs ou nomes — no departamento "
+                        "'departamento'). Use quando pedirem para criar departamentos ou pôr máquinas num setor."),
+        "parameters": {"type": "object", "properties": {
+            "acao": {"type": "string", "enum": ["criar", "remover", "listar", "atribuir"]},
+            "nomes": {"type": "array", "items": {"type": "string"}},
+            "departamento": {"type": "string"},
+            "alvos": {"type": "array", "items": {"type": "string"}}}, "required": ["acao"]}}},
+    {"type": "function", "function": {
         "name": "nomear_maquina",
-        "description": ("Anota no inventário do Ghost quem usa um aparelho da rede (apelido, responsável, departamento) "
-                        "e marca/desmarca como crítico (vigiado a cada minuto, avisa se cair). 'alvo' = IP, MAC ou nome "
-                        "atual. Não altera a máquina."),
+        "description": ("Anota no inventário do Ghost UM aparelho da rede: apelido, responsável, departamento. "
+                        "'critico' SÓ quando o usuário pedir explicitamente para vigiar/marcar como crítico. 'alvo' = IP "
+                        "(ex.: '192.168.50.13'; 'final 50.13' = esse IP), MAC ou nome atual. Não altera a máquina."),
         "parameters": {"type": "object", "properties": {
             "alvo": {"type": "string"}, "apelido": {"type": "string"}, "responsavel": {"type": "string"},
             "departamento": {"type": "string"}, "critico": {"type": "boolean"}}, "required": ["alvo"]}}},
@@ -233,7 +243,9 @@ EXTERNAS = {"consultar_emails", "consultar_agenda", "ver_planilha", "calcular_pl
 # Ferramentas que AGEM (depois de ler algo externo, só com confirmação por voz)
 ACOES = {"abrir_aplicativo", "fechar_aplicativo", "abrir_site", "pesquisar_web", "digitar_texto",
          "pressionar_teclas", "comando_ghost", "criar_skill", "definir_saudacao",
-         "criar_lembrete", "cancelar_lembrete", "configurar_notificacoes", "tarefa_segundo_plano", "nomear_maquina"}
+         "criar_lembrete", "cancelar_lembrete", "configurar_notificacoes", "tarefa_segundo_plano"}
+# nomear_maquina / departamentos_rede ficam FORA de ACOES: só mudam rótulos no inventário do Ghost (nada na máquina),
+# então não pedem "confirma?" a cada apelido.
 
 
 # Ferramentas enviadas em TODO pedido; as outras só quando a frase combina (economiza tokens do plano gratuito)
@@ -253,7 +265,8 @@ GRUPOS = [
     (r"notifica|whats|mensage|quem (me )?(mandou|escreveu)", {"listar_notificacoes", "configurar_notificacoes"}),
     (r"\brede\b|maquina|computador|\bpcs?\b|\bips?\b|online|ligad|servidor|internet|wi.?fi|roteador|aparelho|"
      r"impressora|conexao|lento|ping|caiu|queda|critic|inventario|camera|logad|antivirus|firewall|reinici|"
-     r"atualizac|agente|meshcentral|ligada desde", {"consultar_rede", "nomear_maquina", "consultar_maquinas"}),
+     r"atualizac|agente|meshcentral|ligada desde|departamento|setor|link neural|renome|apelid",
+     {"consultar_rede", "nomear_maquina", "consultar_maquinas", "departamentos_rede"}),
     (r"segundo plano|tarefa|enquanto|monitor|acompanh|fique de olho|verifique a cada", {"tarefa_segundo_plano",
                                                                                        "listar_tarefas"}),
 ]
@@ -284,6 +297,7 @@ def descrever(nome, args):
             "comando_ghost": f"executar: {v('frase')}",
             "criar_skill": "criar uma skill nova", "definir_saudacao": "mudar a saudação",
             "criar_lembrete": f"criar o lembrete {v('texto')}", "cancelar_lembrete": f"cancelar o lembrete {v('trecho')}",
+            "nomear_maquina": f"anotar {v('alvo')} como {v('apelido') or v('departamento')}",
             }.get(nome, nome.replace("_", " "))
 
 
@@ -481,6 +495,19 @@ def executar(nome, args, falar, pedir_confirmacao):
         if nome == "consultar_maquinas":
             from ghost.servicos import meshcentral
             return meshcentral.consultar(args.get("acao", "listar"), args.get("termo", "")), True
+
+        if nome == "departamentos_rede":
+            from ghost.servicos import rede
+            acao = args.get("acao", "listar")
+            if acao in ("criar", "remover"):
+                lista = rede.definir_departamentos(args.get("nomes") or [], remover=acao == "remover")
+                return "departamentos agora: " + ", ".join(lista), True
+            if acao == "atribuir":
+                feitos, nao, amb = rede.atribuir_departamento(args.get("alvos") or [], args.get("departamento") or "")
+                return (f"no departamento {args.get('departamento')}: {', '.join(feitos) or 'nenhum'}"
+                        + (f"; não achei: {', '.join(nao)}" if nao else "")
+                        + (f"; ambíguos (peça o IP): {', '.join(amb)}" if amb else "")), True
+            return "departamentos: " + (", ".join(rede.departamentos()) or "nenhum ainda"), True
 
         if nome == "nomear_maquina":
             from ghost.servicos import rede

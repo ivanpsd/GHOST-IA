@@ -118,3 +118,35 @@ def test_hud_da_rede_servido_com_a_chave(monkeypatch, tmp_path):
         raise AssertionError("deveria negar")
     except urllib.error.HTTPError as e:
         assert e.code == 403
+
+
+def test_departamentos_e_edicao_pela_tela(monkeypatch, tmp_path):
+    monkeypatch.setattr(rede, "ARQUIVO", str(tmp_path / "rede.json"))
+    monkeypatch.setattr(rede, "ARQ_DEPARTAMENTOS", str(tmp_path / "deps.json"))
+    rede._salvar({"m1": {"mac": "m1", "ip": "192.168.50.13", "nome": "SEC8425196B52B5"},
+                  "m2": {"mac": "m2", "ip": "192.168.50.18", "nome": "ADM-PAULA"}})
+    assert rede.definir_departamentos(["TI", "Financeiro", "Comercial", "RH", "Produção", "rh"]) == \
+        ["TI", "Financeiro", "Comercial", "RH", "Produção"]                       # "rh" repetido não duplica
+    feitos, nao, amb = rede.atribuir_departamento(["192.168.50.18", "192.168.50.99"], "Financeiro")
+    assert feitos == ["ADM-PAULA"] and nao == ["192.168.50.99"] and amb == []
+    a = rede.editar("m1", {"apelido": "Impressora Financeiro", "departamento": "Administrativo", "critico": False})
+    assert a["apelido"] == "Impressora Financeiro" and a["critico"] is False
+    assert "Administrativo" in rede.departamentos()                               # criado ao usar
+    assert "responsavel" not in rede.editar("m1", {"responsavel": ""})            # vazio apaga
+    assert rede.definir_departamentos(["Produção"], remover=True).count("Produção") == 0
+    assert rede.editar("nao-existe", {"apelido": "x"}) is None
+
+
+def test_frase_de_departamento_nao_reabre_o_mapa(monkeypatch):
+    import pytest
+    pytest.importorskip("pyautogui")
+    from ghost.automacao import automacoes as a
+    from ghost.nucleo import painel
+    abertos = []
+    monkeypatch.setattr(painel, "abrir_hud", lambda nome: abertos.append(nome) or True)
+    assert a._tratar_hud(a.normalizar("mostre o link neural da rede"), lambda t: None) is True
+    assert abertos == ["rede"]
+    for frase in ("Consegue criar quatro departamentos no link neural? RH, financeiro, comercial e produção",
+                  "no link neural coloque a impressora no financeiro"):
+        assert a._tratar_hud(a.normalizar(frase), lambda t: None) is not True
+    assert abertos == ["rede"]

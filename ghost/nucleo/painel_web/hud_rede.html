@@ -55,6 +55,17 @@ canvas { position: fixed; inset: 0; display: block; }
 #ficha dd { margin: 0; font-family: var(--f-numero); font-size: 12.5px; overflow-wrap: anywhere; }
 #ficha .alerta { color: var(--sangue); }
 #ficha .ok { color: var(--verdete); }
+#ficha form { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--fio); display: grid; gap: 8px; }
+#ficha label { display: grid; gap: 3px; font-size: 12.5px; color: var(--apagado); }
+#ficha input[type=text], #ficha select {
+  background: var(--obsidiana); border: 1px solid var(--fio-forte); color: var(--cinza-quente); border-radius: 6px;
+  padding: 6px 8px; font: 14px var(--f-texto);
+}
+#ficha input:focus, #ficha select:focus { outline: 2px solid var(--brasa); outline-offset: 1px; }
+#ficha .linha-bot { display: flex; gap: 8px; align-items: center; justify-content: space-between; }
+#ficha .salvar { background: var(--ouro); color: var(--obsidiana); border: 0; border-radius: 6px; padding: 7px 14px;
+  font: 700 12px var(--f-titulo); letter-spacing: .12em; cursor: pointer; }
+#ficha .aviso { font-size: 12.5px; color: var(--verdete); min-height: 1em; }
 #fechar { float: right; background: none; border: 0; color: var(--apagado); font-size: 20px; cursor: pointer; line-height: 1; }
 #legenda {
   position: fixed; left: 16px; bottom: 14px; z-index: 3; display: flex; flex-wrap: wrap; gap: 6px 16px; max-width: 70%;
@@ -76,6 +87,7 @@ canvas { position: fixed; inset: 0; display: block; }
   <div class="contas" id="contas" aria-live="polite"></div>
   <div class="ferramentas">
     <input type="search" id="busca" placeholder="Procurar nome, IP, pessoa…" aria-label="Procurar aparelho">
+    <button class="filtro" id="novo-dep" type="button">+ Departamento</button>
     <button class="filtro" data-f="todos" aria-pressed="true">Todos</button>
     <button class="filtro" data-f="ligados" aria-pressed="false">Ligados</button>
     <button class="filtro" data-f="criticos" aria-pressed="false">Críticos</button>
@@ -104,7 +116,7 @@ const COR = { ouro: "#e8b04b", brasa: "#ff6a1a", sangue: "#e0503a", verdete: "#8
 const tela = document.getElementById("tela"), ctx = tela.getContext("2d");
 const $ = (id) => document.getElementById(id);
 let dados = null, nos = [], arestas = [], pulsos = [], sobre = null, escolhido = null, filtro = "todos", busca = "";
-let W = 0, H = 0, dpr = 1;
+let W = 0, H = 0, dpr = 1, editando = false;
 
 /* ---------------- dados ---------------- */
 function demo() {
@@ -120,7 +132,8 @@ function demo() {
   for (const n of ["IMP_FIN", "NPI3328AD", "SEC8425196B52B5"]) ap.push({ id: n, nome: n, tipo: "impressora", grupo: "Impressoras", ip: "192.168.50." + (ip++ + 100), ligado: true, critico: n === "IMP_FIN" });
   for (let i = 0; i < 9; i++) ap.push({ id: "x" + i, nome: "aparelho sem nome", tipo: "desconhecido", grupo: "Não identificados", ip: "192.168.50." + (160 + i), ligado: i !== 3 });
   ap.push({ id: "gw", nome: "192.168.50.1", tipo: "roteador", grupo: "Roteador", ip: "192.168.50.1", ligado: true, critico: true });
-  return { gerado: Date.now() / 1000, gateway: "192.168.50.1", internet: { ok: true, ms: 5, roteador_ms: 1 }, aparelhos: ap };
+  ap.forEach((a, i) => { a.mac ||= "aa-bb-cc-00-00-" + String(i).padStart(2, "0"); a.id = a.mac; });
+  return { gerado: Date.now() / 1000, gateway: "192.168.50.1", departamentos: [...Object.keys(deps), "Produção"], internet: { ok: true, ms: 5, roteador_ms: 1 }, aparelhos: ap };
 }
 async function carregar() {
   try {
@@ -136,6 +149,7 @@ function montar() {
   const rot = dados.aparelhos.find((a) => a.tipo === "roteador") || { nome: "Roteador", ip: dados.gateway, ligado: true, tipo: "roteador" };
   const grupos = {};
   for (const a of ap) (grupos[a.grupo] ||= []).push(a);
+  for (const d of dados.departamentos || []) if (!Object.keys(grupos).some((g) => g.toLowerCase() === d.toLowerCase())) grupos[d] = [];
   const nomes = Object.keys(grupos).sort((a, b) => grupos[b].length - grupos[a].length);
   const cx = W / 2, cy = H / 2 + 34, raio = Math.min(W, H - 90) / 2;
   const antigos = Object.fromEntries(nos.map((n) => [n.id, n]));
@@ -177,7 +191,7 @@ function montar() {
     ang += fatia;
   }
   if (escolhido) escolhido = nos.find((n) => n.id === escolhido.id) || null;
-  contar(); mostrarFicha();
+  contar(); if (!editando) mostrarFicha();
 }
 function contar() {
   const ap = dados.aparelhos, lig = ap.filter((a) => a.ligado).length;
@@ -309,7 +323,7 @@ tela.addEventListener("mousemove", (ev) => {
   dica.style.left = Math.min(ev.clientX + 14, W - 270) + "px"; dica.style.top = (ev.clientY + 14) + "px";
 });
 tela.addEventListener("mouseleave", () => { sobre = null; $("dica").hidden = true; });
-tela.addEventListener("click", (ev) => { escolhido = noEm(ev.clientX, ev.clientY); mostrarFicha(); });
+tela.addEventListener("click", (ev) => { escolhido = noEm(ev.clientX, ev.clientY); editando = false; mostrarFicha(); });
 document.addEventListener("keydown", (ev) => { if (ev.key === "Escape") { escolhido = null; mostrarFicha(); } });
 
 function linha(dl, rot, val, classe) {
@@ -325,7 +339,7 @@ function mostrarFicha() {
   const n = escolhido, a = n.info || {};
   f.innerHTML = "";
   const x = document.createElement("button"); x.id = "fechar"; x.textContent = "×"; x.setAttribute("aria-label", "Fechar");
-  x.onclick = () => { escolhido = null; mostrarFicha(); };
+  x.onclick = () => { escolhido = null; editando = false; mostrarFicha(); };
   const h = document.createElement("h2"); h.textContent = n.tipo === "ganglio" ? n.rotulo : n.rotulo;
   const sub = document.createElement("div"); sub.className = "sub";
   const dl = document.createElement("dl");
@@ -339,6 +353,11 @@ function mostrarFicha() {
     const membros = nos.filter((m) => arestas.some((e) => e.a === n && e.b === m));
     sub.textContent = `${n.qtd} aparelho(s) · ${membros.filter((m) => m.ligado).length} ligado(s)`;
     for (const m of membros) linha(dl, m.ligado ? "ligado" : "desligado", `${m.rotulo} (${m.info.ip || ""})`, m.alerta ? "alerta" : "");
+    if (!n.qtd && (dados.departamentos || []).includes(n.rotulo)) {
+      const b = document.createElement("button"); b.className = "filtro"; b.textContent = "Remover departamento";
+      b.onclick = async () => { await salvar({ departamento_remover: n.rotulo }); escolhido = null; carregar(); };
+      f.append(b);
+    }
   } else {
     sub.textContent = [n.tipo, a.departamento].filter(Boolean).join(" · ");
     linha(dl, "Situação", n.fora ? "FORA DO AR" : n.ligado ? "ligado" : "desligado", n.fora ? "alerta" : n.ligado ? "ok" : "");
@@ -353,17 +372,76 @@ function mostrarFicha() {
       linha(dl, "Ligada desde", a.agente.ligado_desde);
       linha(dl, "Alertas", (a.agente.problemas || []).join(", ") || "nenhum", (a.agente.problemas || []).length ? "alerta" : "ok");
     }
-    if (!a.apelido && n.tipo !== "roteador") {
-      const p = document.createElement("p"); p.className = "sub";
-      p.textContent = `Para dar nome: "Ghost, a ${a.ip} é a impressora da recepção".`; f.append(p);
-    }
+    if (a.mac) f.append(formulario(a));
   }
   f.prepend(x, h, sub, dl); f.hidden = false;
 }
 
-for (const b of document.querySelectorAll(".filtro")) b.addEventListener("click", () => {
+/* ---------------- edição (só o inventário do Ghost) ---------------- */
+async function salvar(corpo) {
+  if (DEMO) {                                   // demonstração: aplica só na tela
+    if (corpo.departamento_novo) dados.departamentos = [...(dados.departamentos || []), corpo.departamento_novo];
+    if (corpo.departamento_remover) dados.departamentos = (dados.departamentos || []).filter((d) => d !== corpo.departamento_remover);
+    if (corpo.mac) { const a = dados.aparelhos.find((x) => x.mac === corpo.mac); Object.assign(a, corpo.campos);
+      a.grupo = a.departamento || a.grupo; a.nome = a.apelido || a.nome; }
+    return { ok: true };
+  }
+  const r = await fetch(`/hud/rede/editar?t=${encodeURIComponent(TOKEN)}`, { method: "POST",
+    headers: { "Content-Type": "application/json" }, body: JSON.stringify(corpo) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.erro || `erro ${r.status}`);
+  return j;
+}
+function formulario(a) {
+  const form = document.createElement("form");
+  const campo = (rot, nome, valor) => {
+    const l = document.createElement("label"); l.textContent = rot;
+    const i = document.createElement("input"); i.type = "text"; i.name = nome; i.value = valor || ""; i.maxLength = 60;
+    l.append(i); return l;
+  };
+  const dep = document.createElement("label"); dep.textContent = "Departamento";
+  const sel = document.createElement("select"); sel.name = "departamento";
+  const deps = [...new Set([...(dados.departamentos || []), ...(a.departamento ? [a.departamento] : [])])];
+  for (const [v, t] of [["", "(nenhum)"], ...deps.map((d) => [d, d]), ["__novo__", "+ novo departamento…"]]) {
+    const o = document.createElement("option"); o.value = v; o.textContent = t; if (v === (a.departamento || "")) o.selected = true; sel.append(o);
+  }
+  dep.append(sel);
+  const crit = document.createElement("label"); crit.style.cssText = "display:flex;gap:8px;align-items:center";
+  const cb = document.createElement("input"); cb.type = "checkbox"; cb.name = "critico"; cb.checked = !!a.critico;
+  crit.append(cb, "Crítico (vigiar a cada minuto)");
+  const bot = document.createElement("div"); bot.className = "linha-bot";
+  const aviso = document.createElement("span"); aviso.className = "aviso"; aviso.setAttribute("aria-live", "polite");
+  const b = document.createElement("button"); b.className = "salvar"; b.type = "submit"; b.textContent = "SALVAR";
+  bot.append(aviso, b);
+  form.append(campo("Apelido", "apelido", a.apelido), campo("Responsável", "responsavel", a.responsavel), dep, crit, bot);
+  form.addEventListener("focusin", () => { editando = true; });
+  sel.addEventListener("change", () => {
+    if (sel.value !== "__novo__") return;
+    const nome = (prompt("Nome do novo departamento:") || "").trim();
+    if (!nome) { sel.value = a.departamento || ""; return; }
+    const o = document.createElement("option"); o.value = nome; o.textContent = nome; sel.insertBefore(o, sel.lastChild); sel.value = nome;
+  });
+  form.addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const fd = new FormData(form);
+    try {
+      await salvar({ mac: a.mac, campos: { apelido: fd.get("apelido"), responsavel: fd.get("responsavel"),
+                                           departamento: fd.get("departamento"), critico: cb.checked } });
+      aviso.textContent = "salvo"; editando = false;
+      setTimeout(carregar, 300);
+    } catch (e) { aviso.style.color = "var(--sangue)"; aviso.textContent = e.message; }
+  });
+  return form;
+}
+document.getElementById("novo-dep").addEventListener("click", async () => {
+  const nome = (prompt("Nome do novo departamento:") || "").trim();
+  if (!nome) return;
+  try { await salvar({ departamento_novo: nome }); carregar(); } catch (e) { alert(e.message); }
+});
+
+for (const b of document.querySelectorAll(".filtro[data-f]")) b.addEventListener("click", () => {
   filtro = b.dataset.f;
-  for (const o of document.querySelectorAll(".filtro")) o.setAttribute("aria-pressed", String(o === b));
+  for (const o of document.querySelectorAll(".filtro[data-f]")) o.setAttribute("aria-pressed", String(o === b));
 });
 $("busca").addEventListener("input", (e) => { busca = e.target.value.trim().toLowerCase(); });
 
