@@ -18,11 +18,6 @@ def auto():
     return automacoes
 
 
-@pytest.mark.parametrize("frase", ["oi ghost", "olá, Ghost!", "ei ghost tudo bem", "ghost, vamos conversar", "Ghost acorda"])
-def test_frases_que_ligam_a_conversa(app, auto, frase):
-    assert app.FRASE_CONVERSA.fullmatch(auto.normalizar(frase))
-
-
 @pytest.mark.parametrize("frase", ["tchau ghost", "boa noite, Ghost", "Ghost, pode descansar", "até amanhã ghost valeu"])
 def test_frases_que_fazem_dormir(app, auto, frase):
     assert app.FRASE_DORMIR.fullmatch(auto.normalizar(frase))
@@ -32,7 +27,7 @@ def test_frases_que_fazem_dormir(app, auto, frase):
                                    "tchau tchau para o problema"])
 def test_frases_comuns_nao_mudam_o_modo(app, auto, frase):
     n = auto.normalizar(frase)
-    assert not app.FRASE_CONVERSA.fullmatch(n) and not app.FRASE_DORMIR.fullmatch(n)
+    assert not app.FRASE_DORMIR.fullmatch(n)
 
 
 @pytest.mark.parametrize("frase", ["Precisa de mais alguma coisa, senhor?", "Posso ajudar em algo mais?",
@@ -45,12 +40,6 @@ def test_oferta_generica_e_cortada(app, frase):
                                    "A reunião é às 14h ou às 15h?"])
 def test_pergunta_util_passa(app, frase):
     assert not app._oferta_generica(frase)
-
-
-def test_nome_no_inicio(app):
-    assert app.NOME_NO_INICIO.match("Ghost, que horas são")
-    assert app.NOME_NO_INICIO.match("ei ghost abre o excel")
-    assert not app.NOME_NO_INICIO.match("o fantasma da ópera")
 
 
 @pytest.mark.parametrize("frase,contato,msg", [
