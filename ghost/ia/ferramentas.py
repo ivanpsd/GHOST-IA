@@ -138,11 +138,13 @@ TOOLS = [
         "description": ("Rede da empresa, SOMENTE LEITURA: aparelhos ligados (listar), procurar uma máquina (por "
                         "apelido, responsável, departamento, nome, IP), aparelhos novos nas últimas 24 h, internet agora, "
                         "historico_internet (disponibilidade, latência e quedas no período), quedas (aparelhos críticos "
-                        "que caíram e voltaram, 7 dias), exportar (Excel com inventário, quedas e internet por dia). "
+                        "que caíram e voltaram, 7 dias), exportar (Excel com inventário, quedas e internet por dia), impressoras "
+                        "(toner, papel e erros). Ligar, desligar, reiniciar ou mandar mensagem NÃO é por aqui: o senhor "
+                        "faz manualmente pelos botões do link neural. "
                         "Nunca liga, desliga ou altera máquinas."),
         "parameters": {"type": "object", "properties": {
             "acao": {"type": "string", "enum": ["listar", "procurar", "novos", "internet", "historico_internet",
-                                                 "quedas", "exportar"]},
+                                                 "quedas", "exportar", "impressoras"]},
             "periodo": {"type": "string", "enum": ["hoje", "24h", "semana", "mes"],
                         "description": "só para historico_internet"},
             "termo": {"type": "string", "description": "o que procurar (só para acao=procurar)"}},
@@ -485,6 +487,8 @@ def executar(nome, args, falar, pedir_confirmacao):
                 return rede.texto_internet(args.get("periodo", "hoje")), True
             if acao == "quedas":
                 return rede.eventos_recentes(7), True
+            if acao == "impressoras":
+                return rede.texto_impressoras(), True
             if acao == "exportar":
                 import os
                 caminho = rede.exportar()

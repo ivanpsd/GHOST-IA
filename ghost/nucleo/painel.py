@@ -471,6 +471,12 @@ class _Rotas(BaseHTTPRequestHandler):
                     return self._responder(404, {"erro": "HUD não existe"})
                 if len(partes) == 3 and partes[2] == "dados":
                     return self._responder(200, HUDS[nome][1]())
+                if nome == "rede" and len(partes) == 3 and partes[2] == "impressora":   # toner/erros, só leitura
+                    from ghost.servicos import rede
+                    ip = (parse_qs(urlparse(self.path).query).get("ip") or [""])[0]
+                    if not any(a.get("ip") == ip for a in rede.carregar().values()):
+                        return self._responder(404, {"erro": "aparelho não está no inventário"})
+                    return self._responder(200, rede.ler_impressora(ip))
                 html = self._arquivo(f"hud_{nome}.html").replace(b"__GHOST_TOKEN__", _token.encode())
                 return self._responder(200, html, "text/html; charset=utf-8")
             if rota == "celular/situacao":
@@ -488,6 +494,15 @@ class _Rotas(BaseHTTPRequestHandler):
         try:
             if rota == "exportar":
                 return self._responder(200, {"arquivo": exportar()})
+            if rota == "hud/rede/acao":               # botões MANUAIS da ficha (ligar, mensagem, reiniciar...)
+                from ghost.servicos import rede
+                n = int(self.headers.get("Content-Length") or 0)
+                j = json.loads(self.rfile.read(min(n, 10_000)) or b"{}") if n else {}
+                try:
+                    r = rede.acao_manual(str(j.get("mac") or ""), str(j.get("acao") or ""), str(j.get("texto") or ""))
+                except Exception as e:
+                    return self._responder(400, {"erro": str(e)})
+                return self._responder(200, {"ok": True, "resultado": r})
             if rota == "hud/rede/editar":             # ficha do link neural: só o inventário do Ghost, não a máquina
                 from ghost.servicos import rede
                 n = int(self.headers.get("Content-Length") or 0)

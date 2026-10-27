@@ -360,7 +360,7 @@ _trava_vigia = threading.Lock()
 
 
 # =============================================================
-# 1. TESTES
+# 5.1 TESTES
 # =============================================================
 def _ping_ms(ip, tempo_ms=1000):
     """Latência em ms (int) ou None."""
@@ -406,7 +406,7 @@ def responde(ip):
 
 
 # =============================================================
-# 2. TRANSIÇÕES (função pura: decide quando avisar)
+# 5.2 TRANSIÇÕES (função pura: decide quando avisar)
 # =============================================================
 def registrar_teste(chave, ok, agora, estado=None):
     """Atualiza o estado de um alvo. Devolve ('caiu', None) | ('voltou', minutos_fora) | (None, None)."""
@@ -428,7 +428,7 @@ def registrar_teste(chave, ok, agora, estado=None):
 
 
 # =============================================================
-# 3. RESUMO DO HISTÓRICO (função pura)
+# 5.3 RESUMO DO HISTÓRICO (função pura)
 # =============================================================
 def resumir_internet(linhas, desde, ate=None):
     """linhas = registros de internet.jsonl. Devolve dict com disponibilidade, latência média e quedas."""
@@ -480,7 +480,7 @@ def eventos_recentes(dias=7):
 
 
 # =============================================================
-# 4. LAÇO
+# 5.4 LAÇO
 # =============================================================
 def _podar(caminho, dias):
     """Mantém só os últimos `dias` dias (roda 1x por dia)."""
@@ -569,7 +569,7 @@ class SemMesh(Exception):
 
 
 # =============================================================
-# 1. LEITURA
+# 6.1 LEITURA
 # =============================================================
 def mesh_configurado():
     return all(os.getenv(k) for k in ("MESH_URL", "MESH_USUARIO", "MESH_SENHA"))
@@ -591,27 +591,35 @@ def listar_agentes(forcar=False):
 def _ler_agentes():
     if not mesh_configurado():
         raise SemMesh("o MeshCentral não está configurado no .env (MESH_URL, MESH_USUARIO, MESH_SENHA)")
-    ctrl = os.getenv("MESH_CTRL") or MESHCTRL_PADRAO
-    if not os.path.exists(ctrl):
-        raise SemMesh(f"não achei o meshctrl.js em {ctrl}")
-    cmd = ["node", ctrl, "ListDevices", "--json", "--url", os.environ["MESH_URL"],
-           "--loginuser", os.environ["MESH_USUARIO"], "--loginpass", os.environ["MESH_SENHA"]]
+    saida = _meshctrl(["ListDevices", "--json"], "MESH_USUARIO", "MESH_SENHA")
     try:
-        r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=40,
-                           creationflags=SEM_JANELA if os.name == "nt" else 0)
-    except subprocess.TimeoutExpired as e:
-        raise SemMesh("o MeshCentral não respondeu (a janela dele está aberta?)") from e
-    try:
-        dados = json.loads(r.stdout)
+        dados = json.loads(saida)
     except ValueError as e:
-        msg = (r.stdout + r.stderr).replace(os.environ["MESH_SENHA"], "***").strip().splitlines()
-        raise SemMesh("o MeshCentral recusou ou está fora do ar" + (f" ({msg[-1][:120]})" if msg else "")) from e
+        linhas = saida.strip().splitlines()
+        raise SemMesh("o MeshCentral recusou ou está fora do ar" + (f" ({linhas[-1][:120]})" if linhas else "")) from e
     _cache_mesh.update(t=time.time(), dados=dados, erro=None)
     return dados
 
 
+def _meshctrl(argumentos, var_usuario, var_senha, tempo=40):
+    """Roda o meshctrl.js com a conta indicada no .env. Devolve a saída (senha nunca aparece)."""
+    usuario, senha = os.getenv(var_usuario), os.getenv(var_senha)
+    if not (os.getenv("MESH_URL") and usuario and senha):
+        raise SemMesh(f"falta no .env: MESH_URL, {var_usuario} e {var_senha}")
+    ctrl = os.getenv("MESH_CTRL") or MESHCTRL_PADRAO
+    if not os.path.exists(ctrl):
+        raise SemMesh(f"não achei o meshctrl.js em {ctrl}")
+    cmd = ["node", ctrl, *argumentos, "--url", os.environ["MESH_URL"], "--loginuser", usuario, "--loginpass", senha]
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=tempo,
+                           creationflags=SEM_JANELA if os.name == "nt" else 0)
+    except subprocess.TimeoutExpired as e:
+        raise SemMesh("o MeshCentral não respondeu (o serviço está rodando?)") from e
+    return (r.stdout + r.stderr).replace(senha, "***")
+
+
 # =============================================================
-# 2. RESUMO (função pura)
+# 6.2 RESUMO (função pura)
 # =============================================================
 def resumo_agente(d):
     """Dispositivo cru -> dict simples. Só campos de inventário e segurança."""
@@ -632,6 +640,7 @@ def resumo_agente(d):
         "atualizacao_ok": wsc.get("autoUpdate", "OK") == "OK",
         "reinicio_pendente": bool(d.get("pr")),
         "grupo": d.get("groupname"),
+        "id": d.get("_id"),
     }
 
 
@@ -725,7 +734,7 @@ def dados_mapa():
         if mesh_configurado():
             for d in listar_agentes():
                 r = resumo_agente(d)
-                agentes[r["ip"]] = {"logado": r["usuarios"], "sistema": r["sistema"], "antivirus": r["antivirus"],
+                agentes[r["ip"]] = {"id": r["id"], "logado": r["usuarios"], "sistema": r["sistema"], "antivirus": r["antivirus"],
                                     "problemas": problemas_agente(r), "ligado_desde": str(r["ligado_desde"] or "")}
     except Exception:
         pass
@@ -740,9 +749,11 @@ def dados_mapa():
             "grupo": a.get("departamento") or GRUPO_DO_TIPO.get(tipo, "Outros"),
             "ligado": online(a, agora), "critico": bool(a.get("critico")), "fora_do_ar": mac in quedas,
             "novo": agora - a.get("primeira_vez", 0) < 86400, "primeira_vez": a.get("primeira_vez"),
-            "ultima_vez": a.get("ultima_vez"), "agente": agentes.get(a.get("ip")),
+            "ultima_vez": a.get("ultima_vez"), "agente": agentes.get(a.get("ip")), "agendada": agendada(mac),
         })
-    return {"gerado": agora, "gateway": gw, "departamentos": departamentos(),
+    mesh_web = re.sub(r"^wss?://", "https://", os.getenv("MESH_URL", "")).rstrip("/") or None
+    return {"gerado": agora, "gateway": gw, "departamentos": departamentos(), "mesh_web": mesh_web,
+            "acoes_mesh": bool(os.getenv("MESH_ACAO_USUARIO") and os.getenv("MESH_ACAO_SENHA")),
             "internet": {"ok": ultima.get("net_ms") is not None if ultima else None, "ms": ultima.get("net_ms"),
                          "roteador_ms": ultima.get("gw_ms"), "quando": ultima.get("t"), "fora": "internet" in quedas},
             "aparelhos": aparelhos}
@@ -835,3 +846,290 @@ def iniciar(falar=None, ocupado=None):
                 ultimo_erro = None
             time.sleep(INTERVALO_MIN * 60)
     threading.Thread(target=laco, daemon=True, name="rede").start()
+
+
+# =============================================================
+# 10. AÇÕES NOS EQUIPAMENTOS — SÓ PELO PAINEL (botões do link neural), NUNCA pela IA ou por voz.
+#     Lista fechada; cada ação vai para o log e para os eventos do painel.
+#     Conta do MeshCentral SÓ para ações (.env): MESH_ACAO_USUARIO / MESH_ACAO_SENHA
+#     (permissões no grupo: "Ações de energia" e "Chat e notificação"; nada de área de trabalho/terminal/arquivos).
+# =============================================================
+AVISO_ANTES_S = 120                       # reiniciar/desligar: avisa na tela e espera 2 min (dá para cancelar)
+_agendadas = {}                           # mac -> {"acao", "quando", "timer"}
+
+
+def pacote_wol(mac):
+    """Pacote mágico do Wake-on-LAN: 6 x FF + 16 x o MAC (função pura)."""
+    b = bytes.fromhex(re.sub(r"[^0-9a-fA-F]", "", mac))
+    if len(b) != 6:
+        raise ValueError(f"MAC inválido: {mac}")
+    return b"\xff" * 6 + b * 16
+
+
+def ligar_wol(mac):
+    """Liga um PC pela rede (precisa do Wake-on-LAN ativo na placa/BIOS dele). Não precisa de agente."""
+    pacote = pacote_wol(mac)
+    _, rede_local = minha_rede()
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        for destino in {"255.255.255.255", str(rede_local.broadcast_address)}:
+            for porta in (9, 7):
+                s.sendto(pacote, (destino, porta))
+    return "pacote de ligar enviado (se o Wake-on-LAN estiver ativo no PC, ele liga em até 1 minuto)"
+
+
+def _agente_do(a):
+    """Id do agente MeshCentral do aparelho (pelo IP), ou erro claro."""
+    for d in listar_agentes():
+        r = resumo_agente(d)
+        if r["ip"] == a.get("ip") and r["id"]:
+            return r["id"], r["ligado"]
+    raise SemMesh(f"{nome_exibicao(a)} não tem o agente do MeshCentral instalado")
+
+
+def _mesh_acao(argumentos):
+    saida = _meshctrl(argumentos, "MESH_ACAO_USUARIO", "MESH_ACAO_SENHA", tempo=60)
+    if re.search(r"(?i)\b(error|erro|denied|negad|invalid|not found|failed)\b", saida):
+        raise SemMesh(saida.strip().splitlines()[-1][:160])
+    return saida
+
+
+def _executar_energia(mac, acao):
+    _agendadas.pop(mac, None)
+    a = carregar().get(mac) or {}
+    try:
+        no, _ = _agente_do(a)
+        _mesh_acao(["DevicePower", "--reset" if acao == "reiniciar" else "--off", "--id", no])
+        _registrar_acao(a, f"{acao} executado")
+    except Exception as e:
+        _registrar_acao(a, f"{acao} FALHOU: {e}")
+
+
+def _registrar_acao(a, texto):
+    msg = f"Rede: {nome_exibicao(a)} ({a.get('ip')}): {texto}"
+    print(f"\n[AÇÃO MANUAL]: {msg}")
+    try:
+        from ghost.nucleo import painel
+        painel.evento(msg, "acao")
+    except Exception:
+        pass
+
+
+def acao_manual(mac, acao, texto=""):
+    """Ponto único das ações do painel. acao: ligar | mensagem | reiniciar | desligar | cancelar."""
+    a = carregar().get(mac)
+    if a is None:
+        raise ValueError("aparelho não está no inventário")
+    if acao == "ligar":
+        r = ligar_wol(mac)
+    elif acao == "mensagem":
+        texto = (texto or "").strip()[:300]
+        if not texto:
+            raise ValueError("mensagem vazia")
+        no, ligado = _agente_do(a)
+        if not ligado:
+            raise ValueError("o agente desse PC está desconectado")
+        _mesh_acao(["DeviceMessage", "--id", no, "--msg", texto, "--title", "Aviso do TI"])
+        r = "mensagem mostrada na tela"
+    elif acao in ("reiniciar", "desligar"):
+        if mac in _agendadas:
+            raise ValueError(f"já há um '{_agendadas[mac]['acao']}' agendado; cancele antes")
+        no, ligado = _agente_do(a)
+        if not ligado:
+            raise ValueError("o agente desse PC está desconectado")
+        minutos = AVISO_ANTES_S // 60
+        _mesh_acao(["DeviceMessage", "--id", no, "--title", "Aviso do TI", "--timeout", str(AVISO_ANTES_S * 1000),
+                    "--msg", f"Este computador vai {'REINICIAR' if acao == 'reiniciar' else 'DESLIGAR'} em {minutos} "
+                             "minutos. Salve o que estiver fazendo."])
+        t = threading.Timer(AVISO_ANTES_S, _executar_energia, args=(mac, acao))
+        t.daemon = True
+        _agendadas[mac] = {"acao": acao, "quando": time.time() + AVISO_ANTES_S, "timer": t}
+        t.start()
+        r = f"aviso mostrado na tela; {acao} em {minutos} minutos (dá para cancelar)"
+    elif acao == "cancelar":
+        ag = _agendadas.pop(mac, None)
+        if not ag:
+            raise ValueError("não há nada agendado para esse PC")
+        ag["timer"].cancel()
+        try:
+            no, _ = _agente_do(a)
+            _mesh_acao(["DeviceMessage", "--id", no, "--title", "Aviso do TI", "--msg",
+                        f"O {'reinício' if ag['acao'] == 'reiniciar' else 'desligamento'} foi cancelado."])
+        except Exception:
+            pass
+        r = f"{ag['acao']} cancelado"
+    else:
+        raise ValueError("ação não permitida")
+    _registrar_acao(a, r)
+    return r
+
+
+def agendada(mac):
+    ag = _agendadas.get(mac)
+    return {"acao": ag["acao"], "faltam_s": max(0, round(ag["quando"] - time.time()))} if ag else None
+
+
+# =============================================================
+# 11. IMPRESSORAS: toner, papel e erros por SNMP (SOMENTE LEITURA; sem biblioteca extra)
+# =============================================================
+SNMP_COMUNIDADE = "public"
+OID_DESCRICAO = "1.3.6.1.2.1.1.1.0"
+OID_STATUS = "1.3.6.1.2.1.25.3.5.1.1.1"           # hrPrinterStatus: 3 parada, 4 imprimindo, 5 aquecendo
+OID_ERROS = "1.3.6.1.2.1.25.3.5.1.2.1"            # hrPrinterDetectedErrorState (bits)
+OID_SUPRIMENTO_NOME = "1.3.6.1.2.1.43.11.1.1.6.1"
+OID_SUPRIMENTO_MAX = "1.3.6.1.2.1.43.11.1.1.8.1"
+OID_SUPRIMENTO_NIVEL = "1.3.6.1.2.1.43.11.1.1.9.1"
+ERROS_IMPRESSORA = ["pouco papel", "sem papel", "pouco toner", "sem toner", "porta aberta", "papel atolado",
+                    "offline", "precisa de manutenção", "bandeja de entrada ausente", "bandeja de saída ausente",
+                    "suprimento ausente", "saída quase cheia", "saída cheia", "bandeja vazia", "manutenção atrasada"]
+
+
+def _ber_tamanho(n):
+    if n < 0x80:
+        return bytes([n])
+    b = n.to_bytes((n.bit_length() + 7) // 8, "big")
+    return bytes([0x80 | len(b)]) + b
+
+
+def _ber(tag, conteudo):
+    return bytes([tag]) + _ber_tamanho(len(conteudo)) + conteudo
+
+
+def _ber_int(v):
+    return _ber(0x02, v.to_bytes(max(1, (v.bit_length() + 8) // 8), "big", signed=True))
+
+
+def _ber_oid(oid):
+    p = [int(x) for x in oid.split(".")]
+    corpo = bytes([40 * p[0] + p[1]])
+    for n in p[2:]:
+        partes = [n & 0x7F]
+        n >>= 7
+        while n:
+            partes.insert(0, 0x80 | (n & 0x7F))
+            n >>= 7
+        corpo += bytes(partes)
+    return _ber(0x06, corpo)
+
+
+def snmp_pedido(oid, proximo=False, comunidade=SNMP_COMUNIDADE, req=1):
+    """Monta um GET (ou GETNEXT) SNMP v1 (função pura)."""
+    vb = _ber(0x30, _ber(0x30, _ber_oid(oid) + b"\x05\x00"))
+    pdu = _ber(0xA1 if proximo else 0xA0, _ber_int(req) + _ber_int(0) + _ber_int(0) + vb)
+    return _ber(0x30, _ber_int(0) + _ber(0x04, comunidade.encode()) + pdu)
+
+
+def _ler_tlv(dados, i):
+    tag, n = dados[i], dados[i + 1]
+    i += 2
+    if n & 0x80:
+        k = n & 0x7F
+        n = int.from_bytes(dados[i:i + k], "big")
+        i += k
+    return tag, dados[i:i + n], i + n
+
+
+def _oid_texto(b):
+    p = [b[0] // 40, b[0] % 40]
+    n = 0
+    for x in b[1:]:
+        n = (n << 7) | (x & 0x7F)
+        if not x & 0x80:
+            p.append(n)
+            n = 0
+    return ".".join(map(str, p))
+
+
+def snmp_resposta(dados):
+    """Resposta SNMP -> (oid, valor). Valor: int, bytes ou None (fim da tabela/sem objeto). (função pura)"""
+    _, msg, _ = _ler_tlv(dados, 0)
+    i = 0
+    for _ in range(2):                                  # versão, comunidade
+        _, _, i = _ler_tlv(msg, i)
+    _, pdu, _ = _ler_tlv(msg, i)
+    j = 0
+    for _ in range(3):                                  # request-id, error-status, error-index
+        _, _, j = _ler_tlv(pdu, j)
+    _, vbs, _ = _ler_tlv(pdu, j)
+    _, vb, _ = _ler_tlv(vbs, 0)
+    _, oid, k = _ler_tlv(vb, 0)
+    tag, valor, _ = _ler_tlv(vb, k)
+    if tag in (0x02, 0x41, 0x42, 0x43):
+        return _oid_texto(oid), int.from_bytes(valor, "big", signed=tag == 0x02)
+    if tag == 0x04:
+        return _oid_texto(oid), valor
+    return _oid_texto(oid), None
+
+
+def _snmp(ip, oid, proximo=False, tempo=1.0):
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+        s.settimeout(tempo)
+        s.sendto(snmp_pedido(oid, proximo), (ip, 161))
+        return snmp_resposta(s.recv(4096))
+
+
+def _coluna(ip, base, maximo=12):
+    valores, oid = [], base
+    for _ in range(maximo):
+        oid, v = _snmp(ip, oid, proximo=True)
+        if not oid.startswith(base + ".") or v is None:
+            break
+        valores.append(v)
+    return valores
+
+
+def erros_impressora(bits):
+    """Bits do hrPrinterDetectedErrorState -> nomes (função pura)."""
+    saida = []
+    for i, nome in enumerate(ERROS_IMPRESSORA):
+        byte, bit = divmod(i, 8)
+        if byte < len(bits) and bits[byte] & (0x80 >> bit):
+            saida.append(nome)
+    return saida
+
+
+def nivel_pct(nivel, maximo):
+    """Nível do suprimento em % (ou texto quando a impressora não informa o número)."""
+    if maximo and maximo > 0 and nivel is not None and nivel >= 0:
+        return f"{round(100 * nivel / maximo)}%"
+    return {-3: "tem (sem medida)", -2: "desconhecido"}.get(nivel, "desconhecido")
+
+
+def ler_impressora(ip):
+    """{modelo, situacao, erros, suprimentos:[(nome, nível)]} ou {erro}. Leva ~1 s; só quando pedido."""
+    try:
+        _, desc = _snmp(ip, OID_DESCRICAO)
+    except OSError:
+        return {"erro": "não respondeu ao SNMP (desligada, SNMP desativado ou comunidade diferente de 'public')"}
+    try:
+        _, st = _snmp(ip, OID_STATUS)
+        _, bits = _snmp(ip, OID_ERROS)
+    except OSError:
+        st, bits = None, b""
+    nomes = _coluna(ip, OID_SUPRIMENTO_NOME)
+    maximos = _coluna(ip, OID_SUPRIMENTO_MAX)
+    niveis = _coluna(ip, OID_SUPRIMENTO_NIVEL)
+    sup = [(n.decode(errors="replace").strip() if isinstance(n, bytes) else str(n),
+            nivel_pct(niveis[i] if i < len(niveis) else None, maximos[i] if i < len(maximos) else None))
+           for i, n in enumerate(nomes)]
+    return {"modelo": desc.decode(errors="replace").strip()[:80] if isinstance(desc, bytes) else None,
+            "situacao": {3: "parada (pronta)", 4: "imprimindo", 5: "aquecendo"}.get(st, "desconhecida"),
+            "erros": erros_impressora(bits if isinstance(bits, bytes) else b""), "suprimentos": sup}
+
+
+def texto_impressoras():
+    """Para a IA (leitura): toner e erros de todas as impressoras do inventário que estão ligadas."""
+    gw = gateway()
+    impressoras = [a for a in carregar().values() if tipo_aparelho(a, gw) == "impressora" and online(a)]
+    if not impressoras:
+        return "Nenhuma impressora ligada no inventário."
+    linhas = []
+    for a in impressoras:
+        r = ler_impressora(a["ip"])
+        if "erro" in r:
+            linhas.append(f"{nome_exibicao(a)} ({a['ip']}): {r['erro']}")
+            continue
+        sup = ", ".join(f"{n}: {v}" for n, v in r["suprimentos"][:6]) or "sem dados de toner"
+        linhas.append(f"{nome_exibicao(a)} ({a['ip']}): {r['situacao']}; {sup}"
+                      + (f"; ALERTA: {', '.join(r['erros'])}" if r["erros"] else ""))
+    return "\n".join(linhas)

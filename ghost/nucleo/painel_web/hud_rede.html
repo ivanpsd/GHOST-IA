@@ -65,6 +65,17 @@ canvas { position: fixed; inset: 0; display: block; }
 #ficha .linha-bot { display: flex; gap: 8px; align-items: center; justify-content: space-between; }
 #ficha .salvar { background: var(--ouro); color: var(--obsidiana); border: 0; border-radius: 6px; padding: 7px 14px;
   font: 700 12px var(--f-titulo); letter-spacing: .12em; cursor: pointer; }
+#ficha .acoes { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--fio); display: flex; flex-wrap: wrap; gap: 6px; }
+#ficha .acoes h3, #ficha .toner h3 { width: 100%; margin: 0 0 2px; font: 600 11px var(--f-titulo); letter-spacing: .14em;
+  color: var(--apagado); text-transform: uppercase; }
+#ficha .acao { background: var(--tabua-2); border: 1px solid var(--fio-forte); color: var(--cinza-quente); border-radius: 6px;
+  padding: 6px 10px; font: 13px var(--f-texto); cursor: pointer; }
+#ficha .acao.perigo { border-color: rgba(224, 80, 58, .6); color: #f3b3a8; }
+#ficha .acao:disabled { opacity: .45; cursor: default; }
+#ficha .acao:focus-visible { outline: 2px solid var(--brasa); outline-offset: 2px; }
+#ficha .toner { margin-top: 12px; font-size: 13px; }
+#ficha .barra { height: 6px; background: var(--obsidiana); border-radius: 3px; overflow: hidden; margin: 2px 0 6px; }
+#ficha .barra i { display: block; height: 100%; background: var(--ouro); }
 #ficha .aviso { font-size: 12.5px; color: var(--verdete); min-height: 1em; }
 #fechar { float: right; background: none; border: 0; color: var(--apagado); font-size: 20px; cursor: pointer; line-height: 1; }
 #legenda {
@@ -372,6 +383,8 @@ function mostrarFicha() {
       linha(dl, "Ligada desde", a.agente.ligado_desde);
       linha(dl, "Alertas", (a.agente.problemas || []).join(", ") || "nenhum", (a.agente.problemas || []).length ? "alerta" : "ok");
     }
+    if (a.mac) f.append(acoes(a, n));
+    if (n.tipo === "impressora" && a.ligado) f.append(impressora(a));
     if (a.mac) f.append(formulario(a));
   }
   f.prepend(x, h, sub, dl); f.hidden = false;
@@ -438,6 +451,82 @@ document.getElementById("novo-dep").addEventListener("click", async () => {
   if (!nome) return;
   try { await salvar({ departamento_novo: nome }); carregar(); } catch (e) { alert(e.message); }
 });
+
+/* ---------------- ações MANUAIS (só por estes botões; a IA não executa nenhuma) ---------------- */
+async function agir(a, acao, texto) {
+  if (DEMO) return { resultado: `demonstração: ${acao}` };
+  const r = await fetch(`/hud/rede/acao?t=${encodeURIComponent(TOKEN)}`, { method: "POST",
+    headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mac: a.mac, acao, texto }) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.erro || `erro ${r.status}`);
+  return j;
+}
+function acoes(a, n) {
+  const box = document.createElement("div"); box.className = "acoes";
+  const h = document.createElement("h3"); h.textContent = "Ações (manuais)"; box.append(h);
+  const aviso = document.createElement("span"); aviso.className = "aviso"; aviso.style.width = "100%"; aviso.setAttribute("aria-live", "polite");
+  const botao = (rotulo, acao, perigo, pergunta, pedirTexto) => {
+    const b = document.createElement("button"); b.type = "button"; b.className = "acao" + (perigo ? " perigo" : ""); b.textContent = rotulo;
+    b.onclick = async () => {
+      let texto = "";
+      if (pedirTexto) { texto = (prompt(pedirTexto) || "").trim(); if (!texto) return; }
+      else if (pergunta && !confirm(pergunta)) return;
+      b.disabled = true; aviso.style.color = ""; aviso.textContent = "enviando…";
+      try { aviso.textContent = (await agir(a, acao, texto)).resultado; setTimeout(carregar, 800); }
+      catch (e) { aviso.style.color = "var(--sangue)"; aviso.textContent = e.message; }
+      finally { b.disabled = false; }
+    };
+    box.append(b);
+  };
+  const nome = a.apelido || a.nome || a.ip;
+  if (!a.ligado && n.tipo !== "impressora") botao("Ligar (Wake-on-LAN)", "ligar", false, `Enviar o sinal para LIGAR ${nome}?`);
+  if (a.agente) {
+    if (!dados.acoes_mesh) {
+      const p = document.createElement("span"); p.className = "sub";
+      p.textContent = "Para mensagem/reiniciar/desligar: crie a conta de ações no MeshCentral e ponha MESH_ACAO_USUARIO e MESH_ACAO_SENHA no .env.";
+      box.append(p);
+    } else if (a.agendada) {
+      botao(`Cancelar ${a.agendada.acao} (faltam ${Math.ceil(a.agendada.faltam_s / 60)} min)`, "cancelar", false, null);
+    } else {
+      botao("Mensagem na tela", "mensagem", false, null, `Mensagem para aparecer na tela de ${nome}:`);
+      botao("Reiniciar", "reiniciar", true, `REINICIAR ${nome}?\nA pessoa recebe um aviso na tela e o PC reinicia em 2 minutos (dá para cancelar).`);
+      botao("Desligar", "desligar", true, `DESLIGAR ${nome}?\nA pessoa recebe um aviso na tela e o PC desliga em 2 minutos (dá para cancelar).`);
+    }
+    if (dados.mesh_web && a.agente.id) {
+      const l = document.createElement("button"); l.type = "button"; l.className = "acao"; l.textContent = "Acesso remoto (MeshCentral)";
+      l.onclick = () => window.open(`${dados.mesh_web}/?gotonode=${encodeURIComponent(a.agente.id.split("/").pop())}`, "_blank");
+      box.append(l);
+    }
+  }
+  if (box.children.length === 1) return document.createDocumentFragment();   // nada a fazer nesse aparelho
+  box.append(aviso);
+  return box;
+}
+function impressora(a) {
+  const box = document.createElement("div"); box.className = "toner";
+  const h = document.createElement("h3"); h.textContent = "Suprimentos"; box.append(h);
+  const corpo = document.createElement("div"); corpo.textContent = "lendo a impressora…"; box.append(corpo);
+  (async () => {
+    try {
+      const r = DEMO ? { situacao: "parada (pronta)", erros: [], suprimentos: [["Toner preto", "38%"]] }
+        : await (await fetch(`/hud/rede/impressora?ip=${encodeURIComponent(a.ip)}&t=${encodeURIComponent(TOKEN)}`)).json();
+      corpo.textContent = "";
+      if (r.erro) { corpo.textContent = r.erro; return; }
+      const sit = document.createElement("div"); sit.textContent = `${r.situacao}${r.erros.length ? " · " + r.erros.join(", ") : ""}`;
+      if (r.erros.length) sit.style.color = "var(--sangue)";
+      corpo.append(sit);
+      for (const [nome, nivel] of r.suprimentos) {
+        const l = document.createElement("div"); l.textContent = `${nome}: ${nivel}`;
+        const barra = document.createElement("div"); barra.className = "barra";
+        const pct = parseInt(nivel, 10);
+        if (!isNaN(pct)) { const i = document.createElement("i"); i.style.width = pct + "%"; if (pct <= 15) i.style.background = "var(--sangue)"; barra.append(i); }
+        corpo.append(l, barra);
+      }
+      if (r.modelo) { const m = document.createElement("div"); m.className = "sub"; m.textContent = r.modelo; corpo.append(m); }
+    } catch (e) { corpo.textContent = "não consegui ler"; }
+  })();
+  return box;
+}
 
 for (const b of document.querySelectorAll(".filtro[data-f]")) b.addEventListener("click", () => {
   filtro = b.dataset.f;

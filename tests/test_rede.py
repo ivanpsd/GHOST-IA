@@ -180,3 +180,39 @@ def test_sem_configuracao(monkeypatch):
         monkeypatch.delenv(k, raising=False)
     rede._cache_mesh.update(t=0, dados=None, erro=None)
     assert "não está configurado" in rede.consultar_agentes()
+
+
+# ---------------- ações manuais e impressoras
+def test_pacote_wake_on_lan():
+    p = rede.pacote_wol("5c-53-10-4d-4c-2e")
+    assert len(p) == 102 and p[:6] == b"\xff" * 6 and p[6:12] == bytes.fromhex("5c53104d4c2e")
+    import pytest
+    with pytest.raises(ValueError):
+        rede.pacote_wol("xx")
+
+
+def test_acao_manual_so_lista_fechada(monkeypatch, tmp_path):
+    import pytest
+    monkeypatch.setattr(rede, "ARQUIVO", str(tmp_path / "rede.json"))
+    rede._salvar({"m1": {"mac": "m1", "ip": "192.168.50.7"}})
+    with pytest.raises(ValueError, match="não permitida"):
+        rede.acao_manual("m1", "formatar")
+    with pytest.raises(ValueError, match="inventário"):
+        rede.acao_manual("nao-existe", "ligar")
+    with pytest.raises(ValueError, match="vazia"):
+        rede.acao_manual("m1", "mensagem", "  ")
+
+
+def test_snmp_ida_e_volta():
+    pedido = rede.snmp_pedido("1.3.6.1.2.1.43.11.1.1.9.1", proximo=True)
+    assert pedido[0] == 0x30 and b"public" in pedido and bytes([0xA1]) in pedido
+    # resposta fabricada: GetResponse com o nível 1234 no OID 1.3.6.1.2.1.43.11.1.1.9.1.1
+    vb = rede._ber(0x30, rede._ber(0x30, rede._ber_oid("1.3.6.1.2.1.43.11.1.1.9.1.1") + rede._ber_int(1234)))
+    pdu = rede._ber(0xA2, rede._ber_int(1) + rede._ber_int(0) + rede._ber_int(0) + vb)
+    resp = rede._ber(0x30, rede._ber_int(0) + rede._ber(0x04, b"public") + pdu)
+    assert rede.snmp_resposta(resp) == ("1.3.6.1.2.1.43.11.1.1.9.1.1", 1234)
+
+
+def test_erros_e_nivel_da_impressora():
+    assert rede.erros_impressora(bytes([0b00110000, 0b00000100])) == ["pouco toner", "sem toner", "bandeja vazia"]
+    assert rede.nivel_pct(380, 1000) == "38%" and rede.nivel_pct(-3, -2) == "tem (sem medida)"
