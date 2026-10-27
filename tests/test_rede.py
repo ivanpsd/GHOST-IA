@@ -216,3 +216,12 @@ def test_snmp_ida_e_volta():
 def test_erros_e_nivel_da_impressora():
     assert rede.erros_impressora(bytes([0b00110000, 0b00000100])) == ["pouco toner", "sem toner", "bandeja vazia"]
     assert rede.nivel_pct(380, 1000) == "38%" and rede.nivel_pct(-3, -2) == "tem (sem medida)"
+
+
+def test_agente_casa_pelo_nome_mesmo_com_ip_ipv6():
+    inv = {"aa": {"mac": "aa", "ip": "192.168.50.7", "nome": "TI_GUSTAVO"},
+           "bb": {"mac": "bb", "ip": "192.168.50.37", "nome": "TI-IVAN"}}
+    assert rede.aparelho_do_agente({"nome": "Ti_Gustavo", "ip": "fe80::1%9"}, inv)["mac"] == "aa"
+    assert rede.aparelho_do_agente({"nome": "Ti-Ivan", "ip": "192.168.50.37"}, inv)["mac"] == "bb"
+    assert rede.aparelho_do_agente({"nome": "Outro", "ip": "192.168.50.37"}, inv)["mac"] == "bb"   # cai no IP
+    assert rede.aparelho_do_agente({"nome": "Outro", "ip": "10.0.0.1"}, inv) is None

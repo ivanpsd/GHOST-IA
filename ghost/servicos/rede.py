@@ -245,6 +245,16 @@ def minha_rede():
 
 
 _cache_rede = {}
+
+
+def _meu_mac(ip):
+    """MAC da placa que tem este IP (PowerShell 1 vez por IP; depois fica em cache)."""
+    if _cache_rede.get("mac_ip") != ip:
+        texto = _rodar(["powershell", "-NoProfile", "-Command",
+                        f"(Get-NetAdapter -InterfaceIndex (Get-NetIPAddress -IPAddress {ip}).InterfaceIndex).MacAddress"], 15)
+        m = re.search(r"([0-9A-Fa-f]{2}(?:[-:][0-9A-Fa-f]{2}){5})", texto)
+        _cache_rede.update(mac_ip=ip, mac=m.group(1).lower().replace(":", "-") if m else None)
+    return _cache_rede.get("mac")
 _cache_gw = {"ip": None, "t": 0.0}
 
 
@@ -284,6 +294,9 @@ def varrer():
     with ThreadPoolExecutor(16) as ex:
         nomes = dict(zip(tabela, ex.map(_nome, tabela), strict=True))
     achados = {mac: {"ip": ip, **nomes[ip]} for ip, mac in tabela.items()}
+    eu = _meu_mac(meu_ip)
+    if eu:                                     # o ARP nunca lista o próprio PC: entra aqui
+        achados[eu] = {"ip": meu_ip, "nome": socket.gethostname().upper()}
     with _trava:
         inv = carregar()
         novos = mesclar(inv, achados)
@@ -658,9 +671,21 @@ def problemas_agente(r):
     return p
 
 
+def _chave_nome(nome):
+    return re.sub(r"[^a-z0-9]", "", (nome or "").lower())
+
+
+def aparelho_do_agente(r, inventario):
+    """Aparelho do inventário que corresponde ao agente: pelo nome do PC (o agente às vezes informa o IP em IPv6),
+    senão pelo IP. (função pura)"""
+    chave = _chave_nome(r["nome"])
+    return (next((x for x in inventario.values() if chave and _chave_nome(x.get("nome")) == chave), None)
+            or next((x for x in inventario.values() if x.get("ip") == r["ip"]), None))
+
+
 def _apelido_agente(r, inventario):
-    """Junta o apelido/responsável do inventário da rede (pelo IP)."""
-    a = next((x for x in inventario.values() if x.get("ip") == r["ip"]), None)
+    """Junta o apelido/responsável do inventário da rede."""
+    a = aparelho_do_agente(r, inventario)
     if not a:
         return r["nome"]
     extra = ", ".join(x for x in (a.get("responsavel"), a.get("departamento")) if x)
@@ -729,15 +754,18 @@ def dados_mapa():
     inv = carregar()
     ultima = (arquivo.ler_jsonl(ARQ_INTERNET) or [{}])[-1]
     gw = gateway()
-    agentes = {}
+    agentes = {}                               # mac do inventário -> dados do agente
     try:
         if mesh_configurado():
             for d in listar_agentes():
                 r = resumo_agente(d)
-                agentes[r["ip"]] = {"id": r["id"], "logado": r["usuarios"], "sistema": r["sistema"], "antivirus": r["antivirus"],
-                                    "problemas": problemas_agente(r), "ligado_desde": str(r["ligado_desde"] or "")}
-    except Exception:
-        pass
+                a = aparelho_do_agente(r, inv)
+                if a:
+                    agentes[a["mac"]] = {"id": r["id"], "conectado": r["ligado"], "logado": r["usuarios"],
+                                         "sistema": r["sistema"], "antivirus": r["antivirus"],
+                                         "problemas": problemas_agente(r), "ligado_desde": str(r["ligado_desde"] or "")}
+    except Exception as e:
+        print(f"\n[REDE]: mapa sem dados do MeshCentral ({e}).")
     quedas = {k for k, e in _estado_vigia.items() if e.get("avisado")}
     aparelhos = []
     for mac, a in inv.items():
@@ -747,9 +775,10 @@ def dados_mapa():
             "responsavel": a.get("responsavel"), "departamento": a.get("departamento"), "ip": a.get("ip"), "mac": mac,
             "grupo_trabalho": a.get("grupo"), "tipo": tipo,
             "grupo": a.get("departamento") or GRUPO_DO_TIPO.get(tipo, "Outros"),
-            "ligado": online(a, agora), "critico": bool(a.get("critico")), "fora_do_ar": mac in quedas,
+            "ligado": online(a, agora) or bool(agentes.get(mac, {}).get("conectado")),   # agente conectado = ligado
+            "critico": bool(a.get("critico")), "fora_do_ar": mac in quedas,
             "novo": agora - a.get("primeira_vez", 0) < 86400, "primeira_vez": a.get("primeira_vez"),
-            "ultima_vez": a.get("ultima_vez"), "agente": agentes.get(a.get("ip")), "agendada": agendada(mac),
+            "ultima_vez": a.get("ultima_vez"), "agente": agentes.get(mac), "agendada": agendada(mac),
         })
     mesh_web = re.sub(r"^wss?://", "https://", os.getenv("MESH_URL", "")).rstrip("/") or None
     return {"gerado": agora, "gateway": gw, "departamentos": departamentos(), "mesh_web": mesh_web,
@@ -879,10 +908,11 @@ def ligar_wol(mac):
 
 
 def _agente_do(a):
-    """Id do agente MeshCentral do aparelho (pelo IP), ou erro claro."""
+    """Id do agente MeshCentral do aparelho, ou erro claro."""
+    inv = {a.get("mac"): a}
     for d in listar_agentes():
         r = resumo_agente(d)
-        if r["ip"] == a.get("ip") and r["id"]:
+        if r["id"] and aparelho_do_agente(r, inv):
             return r["id"], r["ligado"]
     raise SemMesh(f"{nome_exibicao(a)} não tem o agente do MeshCentral instalado")
 
