@@ -873,7 +873,11 @@ def iniciar(falar=None, ocupado=None):
                 ultimo_erro = repr(e)
             else:
                 ultimo_erro = None
-            time.sleep(INTERVALO_MIN * 60)
+            # Espera pelo RELÓGIO, em passos curtos: se o PC dormir, o sleep longo não conta o tempo suspenso e a
+            # varredura atrasava até 15 min depois de acordar (mapa mostrava PCs em uso como desligados).
+            proxima = time.time() + INTERVALO_MIN * 60
+            while time.time() < proxima:
+                time.sleep(30)
     threading.Thread(target=laco, daemon=True, name="rede").start()
 
 
