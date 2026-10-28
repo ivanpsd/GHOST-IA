@@ -66,32 +66,25 @@ function Garantir-Ambiente {
     Ok "bibliotecas instaladas"
 }
 
-function Garantir-Vosk {
-    $modelos = Join-Path $Pasta "modelos"
-    $dir = Join-Path $modelos "vosk-model-small-en-us-0.15"
-    if (Test-Path (Join-Path $dir "am")) { Ok "modelo Vosk já existe"; return }
-    New-Item -ItemType Directory -Force $modelos | Out-Null
-    $zip = Join-Path $env:TEMP "vosk-small-en.zip"
-    Invoke-WebRequest "https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip" -OutFile $zip -UseBasicParsing
-    Expand-Archive $zip -DestinationPath $modelos -Force
-    Remove-Item $zip -ErrorAction SilentlyContinue
-    Ok "modelo Vosk baixado"
-}
-
-function Baixar-Modelos {
-    & $Py -m ghost.instalar_modelos
-    if ($LASTEXITCODE -ne 0) { Aviso "algum modelo não baixou (veja acima); o resto funciona e dá para rodar de novo depois" }
-}
-
-function Criar-Atalho-Inicializacao {
-    $ws = New-Object -ComObject WScript.Shell
-    $lnk = $ws.CreateShortcut($Atalho)
-    $lnk.TargetPath = $PyW
-    $lnk.Arguments = "-m ghost.vigia"
+function Novo-Atalho($caminho, $alvo, $argumentos, $descricao) {
+    $lnk = (New-Object -ComObject WScript.Shell).CreateShortcut($caminho)
+    $lnk.TargetPath = $alvo
+    $lnk.Arguments = $argumentos
     $lnk.WorkingDirectory = $Pasta
-    $lnk.Description = "GHOST - assistente por voz"
+    $lnk.Description = $descricao
+    $lnk.IconLocation = (Join-Path $Pasta "ghost\nucleo\painel_web\ghost.ico") + ",0"
     $lnk.Save()
-    Ok "Ghost inicia junto com o Windows (atalho GHOST na Inicialização)"
+}
+
+function Criar-Atalhos {
+    # Inicialização do Windows + Menu Iniciar ("GHOST" e "Parar GHOST"). Não é .exe: o atalho chama o Python do
+    # .venv, então toda atualização (git pull) já vale sem gerar nada de novo.
+    $menu = Join-Path ([Environment]::GetFolderPath("Programs")) "GHOST"
+    New-Item -ItemType Directory -Force $menu | Out-Null
+    Novo-Atalho $Atalho $PyW "-m ghost.vigia" "GHOST - assistente por voz"
+    Novo-Atalho (Join-Path $menu "GHOST.lnk") $PyW "-m ghost.vigia" "Abrir o GHOST (se já estiver aberto, não abre outro)"
+    Novo-Atalho (Join-Path $menu "Parar GHOST.lnk") "powershell.exe" "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$Pasta\scripts\parar.ps1`"" "Fechar o GHOST"
+    Ok "atalhos: Inicialização do Windows e Menu Iniciar (GHOST / Parar GHOST)"
 }
 
 function Iniciar-Ghost {
