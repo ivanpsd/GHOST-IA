@@ -268,7 +268,7 @@ main {
           <canvas id="nucleo" width="800" height="800" aria-hidden="true"></canvas>
           <div class="nucleo-legenda">
             <div class="estado" id="estado-nome">Em espera</div>
-            <div class="texto" id="estado-texto">Diga "Ghost" ou segure F9</div>
+            <div class="texto" id="estado-texto">Segure F9 e fale</div>
           </div>
         </section>
         <section class="tabua dialogo" aria-label="Última conversa">
@@ -429,7 +429,7 @@ main {
     nucleo.estado(d.estado.nome);
     const p = $("pilula-estado"); p.style.color = est.cor; p.lastElementChild.textContent = est.rotulo;
     $("estado-nome").textContent = est.rotulo; $("estado-nome").style.color = est.cor;
-    $("estado-texto").textContent = d.estado.texto || (d.estado.nome === "espera" ? 'Diga "Ghost" ou segure F9' :
+    $("estado-texto").textContent = d.estado.texto || (d.estado.nome === "espera" ? 'Segure F9 e fale' :
       d.estado.nome === "dormindo" ? 'Diga "oi Ghost" para me chamar' : "");
     const pm = $("pilula-modo"); pm.lastElementChild.textContent = MODOS[d.modo] || d.modo;
     pm.style.color = d.modo === "conversa" ? "var(--ouro)" : "var(--apagado)";

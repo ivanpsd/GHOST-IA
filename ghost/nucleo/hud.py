@@ -105,7 +105,7 @@ def _rodar():
     ponto = tela.create_oval(16, 21, 32, 37, fill=CORES["espera"], outline="")
     titulo = tela.create_text(44, 17, anchor="w", text=ROTULOS["espera"], fill=TEXTO_FRACO,
                               font=("Segoe UI Semibold", 9))
-    linha = tela.create_text(44, 37, anchor="w", text="Diga \"Ghost\" ou segure F9", fill=TEXTO,
+    linha = tela.create_text(44, 37, anchor="w", text="Segure F9 e fale", fill=TEXTO,
                              font=("Segoe UI", 11))
     raiz.update_idletasks()
     _atravessavel(raiz)
@@ -119,7 +119,7 @@ def _rodar():
         tela.itemconfig(borda, outline=cor)
         tela.itemconfig(titulo, text=ROTULOS.get(nome, "GHOST"))
         tela.itemconfig(linha, text=_cortar(texto) if texto else
-                        ("Diga \"Ghost\" ou segure F9" if nome == "espera" else ""))
+                        ("Segure F9 e fale" if nome == "espera" else ""))
         raiz.attributes("-alpha", TRANSPARENCIA_ESPERA if nome in DISCRETOS else TRANSPARENCIA_ATIVO)
 
     def ciclo():
