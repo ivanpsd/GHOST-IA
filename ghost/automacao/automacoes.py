@@ -25,7 +25,7 @@ try:
 except ImportError:
     pyperclip = None
 
-from ghost.nucleo import caminhos, canal, preferencias
+from ghost.nucleo import arquivo, caminhos, canal, preferencias
 
 PASTA_PRINTS = caminhos.PRINTS
 
@@ -1103,13 +1103,102 @@ def _tratar_pergunta(texto, n):
     return True
 
 
-def executar(texto, falar):
+# -------------------------------------------------------------
+# COMANDOS ENSINADOS: "quando eu falar X, faça Y" -> daqui pra frente X vira Y (dados/comandos_ensinados.json)
+# É assim que o Ghost aprende frases novas para comandos que já existem, sem mexer no código.
+# -------------------------------------------------------------
+ARQ_ENSINADOS = caminhos.dado("comandos_ensinados.json")
+SEP_LISTA = r"faca|faz|fazer|execute|executar|quer dizer|significa|e para|e pra|entenda como|e o mesmo que"
+SEPARADORES = rf"\b(?:{SEP_LISTA})\b"
+
+
+def ler_ensino(texto):
+    """'Quando eu falar painel das câmeras, abra a planta das câmeras' -> ('painel das cameras',
+    'abra a planta das cameras') ou None (função pura). Vírgula separa; sem vírgula, 'faça/execute/significa...'."""
+    bruto = unicodedata.normalize("NFD", (texto or "").lower())
+    bruto = "".join(c for c in bruto if unicodedata.category(c) != "Mn")
+    m = re.search(r"\b(?:quando|sempre que|se) (?:eu )?(?:falar|disser|dizer|pedir|mandar|digitar)\s+(.+)$", bruto)
+    if not m:
+        return None
+    resto = m.group(1)
+    if "," in resto:
+        de, para = resto.split(",", 1)
+        para = re.sub(rf"^(?:{SEP_LISTA})\s+", "", normalizar(para))
+    else:
+        partes = re.split(SEPARADORES, normalizar(resto), maxsplit=1)
+        if len(partes) < 2:
+            return None
+        de, para = partes
+    de, para = normalizar(de).strip("' "), normalizar(para).strip()
+    de = re.sub(r"^(?:o|a|os|as)\s+", "", de)
+    if re.match(r"(?:com|para|pra|sobre|de|do|da|no|na|ao|a ele|a ela)\b", de):   # "quando eu falar com o João, ..."
+        return None                                                                 # é lembrete/conversa, não ensino
+    if not de or not para or de == para or len(de.split()) > 12:
+        return None
+    return de, para
+
+
+def ensinados():
+    d = arquivo.ler_json(ARQ_ENSINADOS, {})
+    return d if isinstance(d, dict) else {}
+
+
+def ensinar(de, para):
+    d = ensinados()
+    d[normalizar(de)] = normalizar(para)
+    arquivo.salvar_json(ARQ_ENSINADOS, d)
+
+
+def traduzir_ensinado(n, tabela=None):
+    """Frase dita -> comando ensinado (igual, ou quase igual: 'abre o painel das cameras' ~ 'painel das cameras').
+    Função pura com 'tabela'; None se não houver."""
+    tabela = ensinados() if tabela is None else tabela
+    if n in tabela:
+        return tabela[n]
+    import difflib
+    sem_cortesia = re.sub(r"\b(ghost|senhor|por favor|por gentileza|pra mim|para mim|ai|ae)\b", " ", n)
+    sem_cortesia = re.sub(r"^(?:abr\w*|abra|mostr\w*|ve|ver)\s+(?:o|a|os|as)?\s*", "", " ".join(sem_cortesia.split()))
+    for de, para in tabela.items():
+        if sem_cortesia == de or difflib.SequenceMatcher(None, sem_cortesia, de).ratio() >= 0.88:
+            return para
+    return None
+
+
+def _tratar_ensino(texto, n, falar):
+    par = ler_ensino(texto)
+    if par:
+        ensinar(*par)
+        falar(f"Aprendido, senhor: quando o senhor disser '{par[0]}', vou fazer '{par[1]}'.")
+        return True
+    m = re.search(r"\b(?:esquec\w*|apag\w*|remov\w*)\s+(?:o\s+)?comando\s+(?:ensinado\s+)?(.+)$", n)
+    if m:
+        d = ensinados()
+        alvo = m.group(1).strip()
+        if d.pop(alvo, None) is None:
+            falar(f"Senhor, não tenho nenhum comando ensinado chamado {alvo}.")
+        else:
+            arquivo.salvar_json(ARQ_ENSINADOS, d)
+            falar(f"Esqueci o comando {alvo}, senhor.")
+        return True
+    if tem(n, "comandos ensinados", "comandos que voce aprendeu", "o que voce aprendeu de comando", "comandos aprendidos"):
+        d = ensinados()
+        falar("Senhor, " + ("; ".join(f"{k} vira {v}" for k, v in list(d.items())[:8]) if d
+                            else "ainda não aprendi nenhum comando. Diga: quando eu falar tal coisa, faça tal coisa."))
+        return True
+    return False
+
+
+def executar(texto, falar, _profundidade=0):
     """Tenta resolver o comando localmente. Retorna True se executou algo; False para mandar à IA."""
     n = normalizar(texto)
+    if _tratar_pergunta(texto, n) or _tratar_confirmacao(n, falar) or _tratar_ensino(texto, n, falar):
+        return True
+    traduzido = traduzir_ensinado(n) if _profundidade == 0 else None
+    if traduzido:
+        print(f"\n[ENSINADO]: '{n}' -> '{traduzido}'")
+        return executar(traduzido, falar, 1)
     return (
-        _tratar_pergunta(texto, n)
-        or _tratar_confirmacao(n, falar)
-        or _tratar_demonstracao(texto, n, falar)
+        _tratar_demonstracao(texto, n, falar)
         or _tratar_skills(texto, n, falar)
         or _tratar_pessoas(texto, n, falar)
         or _tratar_resumo(texto, n, falar)

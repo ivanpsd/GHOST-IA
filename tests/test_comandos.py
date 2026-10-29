@@ -105,3 +105,18 @@ def test_pedidos_da_planta_das_cameras():
            "qual câmera tem alguém agora?"]
     assert all(pediu_hud_cameras(normalizar(f)) for f in sim), [f for f in sim if not pediu_hud_cameras(normalizar(f))]
     assert not any(pediu_hud_cameras(normalizar(f)) for f in nao), [f for f in nao if pediu_hud_cameras(normalizar(f))]
+
+
+def test_ensinar_comando_por_voz():
+    from ghost.automacao.automacoes import ler_ensino, traduzir_ensinado
+    assert ler_ensino("Quando eu falar painel das câmeras, abra a planta das câmeras") == \
+        ("painel das cameras", "abra a planta das cameras")
+    assert ler_ensino("sempre que eu disser o relatório, faça exportar indicadores") == ("relatorio", "exportar indicadores")
+    assert ler_ensino("quando eu falar bom dia execute resumo do dia") == ("bom dia", "resumo do dia")
+    assert ler_ensino("quando eu falar com o João") is None
+    assert ler_ensino("quando eu falar com o João, me lembre de cobrar") is None
+    t = {"painel das cameras": "abrir planta das cameras"}
+    assert traduzir_ensinado("painel das cameras", t) == "abrir planta das cameras"
+    assert traduzir_ensinado("abra o painel das cameras por favor", t) == "abrir planta das cameras"
+    assert traduzir_ensinado("abre o painel da camera", t) == "abrir planta das cameras"
+    assert traduzir_ensinado("abra o painel de energia", t) is None

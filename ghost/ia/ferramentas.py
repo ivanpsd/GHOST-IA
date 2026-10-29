@@ -171,6 +171,14 @@ TOOLS = [
             "departamento": {"type": "string"},
             "alvos": {"type": "array", "items": {"type": "string"}}}, "required": ["acao"]}}},
     {"type": "function", "function": {
+        "name": "ensinar_comando",
+        "description": ("Grava que uma FRASE do usuário deve fazer o mesmo que um comando que já existe (ex.: frase "
+                        "'painel das câmeras' -> comando 'abrir planta das câmeras'). Use quando ele ensinar ou corrigir "
+                        "um comando ('quando eu falar X faça Y', 'X é a mesma coisa que Y', 'eu já te ensinei isso'). "
+                        "'comando' tem que ser uma frase que o comando_ghost já entende."),
+        "parameters": {"type": "object", "properties": {"frase": {"type": "string"}, "comando": {"type": "string"}},
+                       "required": ["frase", "comando"]}}},
+    {"type": "function", "function": {
         "name": "nomear_maquina",
         "description": ("Anota no inventário do Ghost UM aparelho da rede: apelido, responsável, departamento. "
                         "'critico' SÓ quando o usuário pedir explicitamente para vigiar/marcar como crítico. 'alvo' = IP "
@@ -265,6 +273,8 @@ GRUPOS = [
     (r"camera|webcam|olha isso|ve isso|o que (e|eh) isso|na minha mao|segurando|mostrando|estou vestindo",
      {"olhar_camera"}),
     (r"skill|habilidade|automatiz|rotina", {"criar_skill"}),
+    (r"quando eu (fal|dis|ped)|sempre que|ensin|aprend|mesma coisa|ja te (falei|disse|ensinei)|burro|comando",
+     {"ensinar_comando"}),
     (r"sauda|cumpriment|me chame|me chama", {"definir_saudacao"}),
     (r"notifica|whats|mensage|quem (me )?(mandou|escreveu)", {"listar_notificacoes", "configurar_notificacoes"}),
     (r"\brede\b|maquina|computador|\bpcs?\b|\bips?\b|online|ligad|servidor|internet|wi.?fi|roteador|aparelho|"
@@ -513,6 +523,14 @@ def executar(nome, args, falar, pedir_confirmacao):
                         + (f"; não achei: {', '.join(nao)}" if nao else "")
                         + (f"; ambíguos (peça o IP): {', '.join(amb)}" if amb else "")), True
             return "departamentos: " + (", ".join(rede.departamentos()) or "nenhum ainda"), True
+
+        if nome == "ensinar_comando":
+            from ghost.automacao import automacoes
+            de, para = automacoes.normalizar(args.get("frase", "")), automacoes.normalizar(args.get("comando", ""))
+            if not de or not para or de == para:
+                return "frase ou comando vazio", True
+            automacoes.ensinar(de, para)
+            return f"aprendido: '{de}' -> '{para}' (vale já, por voz)", True
 
         if nome == "nomear_maquina":
             from ghost.servicos import rede
