@@ -6,8 +6,9 @@
 <title>Ghost · Planta das câmeras</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=Spectral:wght@400;600&family=JetBrains+Mono:wght@400;600&display=swap">
 <style>
-/* Planta das câmeras: cada câmera do gravador num ponto da planta; a área acende com "movimento" ou "pessoa"
-   (eventos do próprio gravador). Só mostra; posição e nome das câmeras ficam no Ghost, o gravador não muda. */
+/* Planta das câmeras em 3D: as paredes saem da planta do croqui; cada câmera é um ponto com o "leque" do que ela vê.
+   Quando o gravador acusa movimento/pessoa, um boneco aparece e anda DENTRO daquela área (posição ilustrativa:
+   o gravador diz QUE tem alguém na área, não ONDE). Só mostra; o gravador não muda. */
 :root {
   --obsidiana: #0d0a08; --tabua: #17110c; --tabua-2: #1f1710;
   --fio: rgba(232, 176, 75, .16); --fio-forte: rgba(232, 176, 75, .38);
@@ -27,45 +28,27 @@ h1 { margin: 0; font: 700 20px/1 var(--f-titulo); letter-spacing: .28em; color: 
 .contas b { color: var(--cinza-quente); font-weight: 600; }
 .contas .ruim b { color: var(--sangue); }
 .contas .bom b { color: var(--verdete); }
-.ferramentas { margin-left: auto; display: flex; gap: 8px; }
+.ferramentas { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
 button {
   background: var(--tabua); border: 1px solid var(--fio-forte); color: var(--ouro); border-radius: 6px; padding: 6px 12px;
   font: 600 11px var(--f-titulo); letter-spacing: .12em; text-transform: uppercase; cursor: pointer;
 }
 button:hover { border-color: var(--ouro); }
 button.forte { background: var(--ouro); color: var(--obsidiana); }
+button[aria-pressed=true] { background: var(--ouro); color: var(--obsidiana); }
 button:focus-visible, input:focus-visible { outline: 2px solid var(--brasa); outline-offset: 2px; }
 main { display: grid; grid-template-columns: 1fr 340px; gap: 14px; padding: 14px 18px; height: calc(100% - 58px); }
-@media (max-width: 900px) { main { grid-template-columns: 1fr; height: auto; } }
-#mapa { background: var(--tabua); border: 1px solid var(--fio); border-radius: 10px; overflow: hidden; min-height: 320px; }
-#mapa svg { width: 100%; height: 100%; display: block; }
-#mapa.editando svg { cursor: crosshair; }
-.sala rect { fill: var(--tabua-2); stroke: var(--fio-forte); stroke-width: 3; }
-.sala.fundo rect { fill: #140f0a; }
-.sala text { fill: var(--apagado); font: 600 20px var(--f-titulo); letter-spacing: .1em; pointer-events: none; }
-.movel rect { fill: none; stroke: var(--fio-forte); stroke-dasharray: 6 5; }
-.movel text { fill: var(--apagado); font: 16px var(--f-titulo); }
-.portao { stroke: var(--ouro); stroke-width: 5; stroke-dasharray: 4 6; }
-.cam { cursor: pointer; }
-.cam .cone { fill: rgba(232, 176, 75, .06); stroke: rgba(232, 176, 75, .22); }
-.cam.movimento .cone { fill: rgba(111, 183, 201, .22); stroke: var(--movimento); }
-.cam.pessoa .cone { fill: rgba(255, 106, 26, .25); stroke: var(--brasa); }
-.cam .corpo { fill: var(--obsidiana); stroke: var(--ouro); stroke-width: 3; }
-.cam.sel .corpo { fill: var(--ouro); }
-.cam text { fill: var(--ouro); font: 700 14px var(--f-numero); pointer-events: none; }
-.cam.sel text.n { fill: var(--obsidiana); }
-.cam .rotulo { fill: var(--cinza-quente); font: 600 15px var(--f-texto); }
-.boneco { pointer-events: none; }
-.boneco path, .boneco circle { fill: var(--brasa); }
-.boneco.movimento path, .boneco.movimento circle { fill: var(--movimento); }
-.boneco rect { fill: rgba(13, 10, 8, .9); stroke: var(--brasa); }
-.boneco.movimento rect { stroke: var(--movimento); }
-.boneco text { fill: var(--cinza-quente); font: 14px var(--f-texto); }
+@media (max-width: 900px) { main { grid-template-columns: 1fr; height: auto; } #cena { height: 60vh; } }
+#cena { position: relative; background: var(--tabua); border: 1px solid var(--fio); border-radius: 10px; overflow: hidden; min-height: 320px; }
+#cena canvas { display: block; width: 100%; height: 100%; }
+#cena.editando { cursor: crosshair; }
+#dica { position: absolute; left: 12px; bottom: 10px; font-size: 12.5px; color: var(--apagado); pointer-events: none; }
+#erro3d { position: absolute; inset: 0; display: grid; place-items: center; padding: 20px; text-align: center; color: var(--apagado); }
 aside { display: flex; flex-direction: column; gap: 12px; overflow: auto; }
 .caixa { background: var(--tabua); border: 1px solid var(--fio); border-radius: 10px; padding: 14px 16px; }
 .caixa h2 { margin: 0 0 8px; font: 700 13px var(--f-titulo); letter-spacing: .14em; color: var(--ouro); }
 .sub { color: var(--apagado); font-size: 13px; }
-.aviso { border-color: var(--sangue); color: var(--cinza-quente); }
+.aviso { border-color: var(--sangue); }
 .aviso h2 { color: var(--sangue); }
 .tela { aspect-ratio: 352 / 240; background: #000; border: 1px solid var(--fio); border-radius: 6px; display: grid; place-items: center; overflow: hidden; margin: 8px 0; }
 .tela img { width: 100%; height: 100%; object-fit: contain; }
@@ -73,10 +56,10 @@ aside { display: flex; flex-direction: column; gap: 12px; overflow: auto; }
 ul { list-style: none; margin: 0; padding: 0; }
 li { display: flex; justify-content: space-between; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--fio); font-size: 13.5px; }
 li span:last-child { color: var(--apagado); font-family: var(--f-numero); font-size: 12px; white-space: nowrap; }
-.canais { display: grid; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: 6px; }
+.canais { display: grid; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: 6px; margin-top: 10px; }
 .canais button { padding: 6px 4px; font: 600 12px var(--f-numero); letter-spacing: 0; text-transform: none; color: var(--apagado); }
 .canais button.na-planta { color: var(--ouro); }
-.canais button[aria-pressed=true] { background: var(--ouro); color: var(--obsidiana); }
+.canais button[aria-pressed=true] { color: var(--obsidiana); }
 label { display: grid; gap: 3px; font-size: 12.5px; color: var(--apagado); margin-top: 8px; }
 input[type=text] { background: var(--obsidiana); border: 1px solid var(--fio-forte); color: var(--cinza-quente); border-radius: 6px; padding: 6px 8px; font: 14px var(--f-texto); }
 .linha { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
@@ -88,19 +71,23 @@ input[type=text] { background: var(--obsidiana); border: 1px solid var(--fio-for
   <h1>PLANTA DAS CÂMERAS</h1>
   <div class="contas" id="contas"></div>
   <div class="ferramentas">
+    <button id="bt-vista" type="button" aria-pressed="false">Vista de cima</button>
     <button id="bt-editar" type="button">Posicionar câmeras</button>
     <button id="bt-salvar" type="button" class="forte" hidden>Salvar</button>
     <button id="bt-cancelar" type="button" hidden>Cancelar</button>
   </div>
 </header>
 <main>
-  <div id="mapa"><svg id="svg" aria-label="Planta da empresa com as câmeras"></svg></div>
+  <div id="cena">
+    <div id="erro3d" hidden></div>
+    <div id="dica">Arraste para girar · roda do mouse para aproximar · botão direito para mover</div>
+  </div>
   <aside>
     <div class="caixa aviso" id="aviso" hidden><h2>CÂMERAS</h2><div id="aviso-texto"></div></div>
     <div class="caixa" id="edicao" hidden>
       <h2>POSICIONAR</h2>
-      <div class="sub">Escolha o canal e clique na planta onde a câmera fica. Gire para apontar o cone.</div>
-      <div class="canais" id="lista-canais" style="margin-top:10px"></div>
+      <div class="sub">Escolha o canal e clique no chão da planta onde a câmera fica. Gire para apontar o leque.</div>
+      <div class="canais" id="lista-canais"></div>
       <div id="edicao-cam"></div>
     </div>
     <div class="caixa" id="ficha"><h2>DETALHE</h2><div class="sub">Clique numa câmera para ver a imagem ao vivo.</div></div>
@@ -108,90 +95,332 @@ input[type=text] { background: var(--obsidiana); border: 1px solid var(--fio-for
     <div class="caixa sub" id="rodape"></div>
   </aside>
 </main>
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/controls/OrbitControls.js"></script>
 <script>
 const TOKEN = "__GHOST_TOKEN__";
 const DEMO = TOKEN.startsWith("__");
-const NS = "http://www.w3.org/2000/svg";
 const $ = id => document.getElementById(id);
 const q = s => `${s}${s.includes("?") ? "&" : "?"}t=${encodeURIComponent(TOKEN)}`;
-let dados = null, editando = false, rascunho = [], canalSel = null, verCanal = null, fotoUrl = null;
-
-function el(tag, attrs = {}, pai) {
-  const e = document.createElementNS(NS, tag);
-  for (const k in attrs) e.setAttribute(k, attrs[k]);
-  if (pai) pai.appendChild(e);
-  return e;
-}
-const nomeCam = c => c.nome || (dados.titulos[c.canal] || `CAM ${c.canal}`);
 const hora = t => new Date(t * 1000).toLocaleTimeString("pt-BR");
+const COR = { ouro: 0xe8b04b, brasa: 0xff6a1a, movimento: 0x6fb7c9, parede: 0x3a2c1f, piso: 0x1a130d, pisoSala: 0x221910 };
+const RAIO_LEQUE = 170, ABERTURA = 70;                // alcance e ângulo do "leque" de cada câmera (unidades da planta)
 
+let dados = null, editando = false, rascunho = [], canalSel = null, verCanal = null, fotoUrl = null;
+const nomeCam = c => c.nome || (dados.titulos[c.canal] || `CAM ${c.canal}`);
+
+// ---------------------------------------------------------------- dados (demonstração quando aberto fora do Ghost)
 function demo() {
-  const agora = Date.now() / 1000, ativo = Math.floor(agora / 6) % 3;
+  const agora = Date.now() / 1000, fase = Math.floor(agora / 8) % 3;
   return { gerado: agora, configurado: true, estado: "conectado", erro: null, gravador: "demonstração",
     titulos: Object.fromEntries(Array.from({ length: 18 }, (_, i) => [i + 1, `CAM ${i + 1}`])),
-    planta: { largura: 960, altura: 1280, salas: [
-      { id: "salao", nome: "Salão", x: 235, y: 260, w: 520, h: 835, fundo: true },
-      { id: "almox", nome: "Almoxarifado", x: 240, y: 85, w: 525, h: 175 },
-      { id: "rh", nome: "RH", x: 525, y: 760, w: 225, h: 220 }],
-      moveis: [{ nome: "ADM", x: 615, y: 485, w: 70, h: 190 }], portoes: [],
-      cameras: [{ canal: 1, x: 250, y: 100, ang: 30, nome: "Almoxarifado" }, { canal: 2, x: 740, y: 1080, ang: 225, nome: "Salão" }] },
-    canais: ativo === 1 ? { 1: "movimento" } : ativo === 2 ? { 2: "pessoa" } : {},
-    ultimos: [{ t: agora - 20, canal: 2, tipo: "pessoa" }, { t: agora - 70, canal: 1, tipo: "movimento" }] };
+    planta: { largura: 960, altura: 1280, pe_direito: 70, salas: [
+      { id: "salao", nome: "Salão", x: 240, y: 260, w: 520, h: 840, fundo: true },
+      { id: "almox", nome: "Almoxarifado", x: 240, y: 80, w: 520, h: 180 },
+      { id: "deborah", nome: "Sala Deborah", x: 240, y: 260, w: 160, h: 160 },
+      { id: "financeiro", nome: "Financeiro", x: 540, y: 260, w: 220, h: 160 },
+      { id: "rh", nome: "RH", x: 520, y: 760, w: 240, h: 220 },
+      { id: "reuniao", nome: "Sala reunião", x: 520, y: 980, w: 240, h: 120 },
+      { id: "copa", nome: "Copa", x: 240, y: 1100, w: 180, h: 100 },
+      { id: "banh_f", nome: "Banh. F", x: 420, y: 1100, w: 50, h: 100 },
+      { id: "banh_m", nome: "Banh. M", x: 470, y: 1100, w: 50, h: 100 },
+      { id: "servidor", nome: "Servidor", x: 520, y: 1100, w: 240, h: 100 },
+      { id: "entrada", nome: "Entrada", x: 80, y: 880, w: 160, h: 320, aberta: true }],
+      moveis: [{ nome: "ADM", x: 620, y: 480, w: 60, h: 200 }], portoes: [{ x1: 240, y1: 880, x2: 240, y2: 1100 }],
+      cameras: [{ canal: 1, x: 746, y: 969, ang: 225, nome: "" }, { canal: 3, x: 641, y: 757, ang: 270, nome: "" },
+                { canal: 4, x: 750, y: 270, ang: 135, nome: "" }, { canal: 14, x: 230, y: 1150, ang: 0, nome: "" }] },
+    canais: fase === 0 ? { 1: "pessoa", 4: "movimento" } : fase === 1 ? { 3: "pessoa" } : { 14: "movimento" },
+    ultimos: [{ t: agora - 20, canal: 1, tipo: "pessoa" }, { t: agora - 70, canal: 4, tipo: "movimento" }] };
 }
 
+// ---------------------------------------------------------------- cena 3D
+let renderer, cena, camera, controles, raio, chao, grupoPlanta, grupoCams, larguraP = 960, alturaP = 1280;
+const bonecos = new Map();                            // canal -> {grupo, alvo, tipo, sumindo}
+const objCams = new Map();                            // canal -> grupo da câmera (para o clique)
+let assinaturaPlanta = "", assinaturaCams = "";
+
+function iniciar3D() {
+  if (!window.THREE || !THREE.OrbitControls) {
+    $("erro3d").hidden = false;
+    $("erro3d").textContent = "Não consegui carregar o 3D (sem internet para baixar o three.js). A lista de eventos continua funcionando.";
+    return false;
+  }
+  const caixa = $("cena");
+  renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "low-power" });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+  renderer.setClearColor(0x17110c);
+  caixa.prepend(renderer.domElement);
+  cena = new THREE.Scene();
+  cena.fog = new THREE.Fog(0x17110c, 1400, 2600);
+  camera = new THREE.PerspectiveCamera(45, 1, 5, 5000);
+  camera.position.set(480 - 520, 760, 640 + 860);
+  controles = new THREE.OrbitControls(camera, renderer.domElement);
+  controles.target.set(480, 0, 640);
+  controles.maxPolarAngle = Math.PI / 2.15;
+  controles.enableDamping = true;
+  controles.update();
+  cena.add(new THREE.HemisphereLight(0xffe9c8, 0x1a120a, 0.75));
+  const sol = new THREE.DirectionalLight(0xffe0b0, 0.6);
+  sol.position.set(-300, 900, 200);
+  cena.add(sol);
+  raio = new THREE.Raycaster();
+  chao = new THREE.Mesh(new THREE.PlaneGeometry(4000, 4000), new THREE.MeshBasicMaterial({ visible: false }));
+  chao.rotation.x = -Math.PI / 2;
+  cena.add(chao);
+  grupoPlanta = new THREE.Group(); grupoCams = new THREE.Group();
+  cena.add(grupoPlanta, grupoCams);
+  new ResizeObserver(redimensionar).observe(caixa);
+  redimensionar();
+  renderer.domElement.addEventListener("pointerdown", e => { clique0 = [e.clientX, e.clientY]; });
+  renderer.domElement.addEventListener("pointerup", aoClicar);
+  requestAnimationFrame(animar);
+  return true;
+}
+function descartar(grupo) {                           // libera a memória da placa de vídeo ao redesenhar
+  grupo.traverse(o => {
+    if (o.geometry) o.geometry.dispose();
+    if (o.material) { if (o.material.map) o.material.map.dispose(); o.material.dispose(); }
+  });
+}
+function redimensionar() {
+  const r = $("cena").getBoundingClientRect();
+  renderer.setSize(r.width, r.height, false);
+  camera.aspect = r.width / Math.max(r.height, 1);
+  camera.updateProjectionMatrix();
+}
+
+function texto(t, cor = "#e9dcc6", tamanho = 44) {    // etiqueta como textura (sem fonte 3D)
+  const c = document.createElement("canvas"), g = c.getContext("2d");
+  g.font = `600 ${tamanho}px Spectral, Georgia, serif`;
+  c.width = Math.ceil(g.measureText(t).width) + 24; c.height = tamanho + 20;
+  g.font = `600 ${tamanho}px Spectral, Georgia, serif`;
+  g.fillStyle = cor; g.textBaseline = "middle"; g.fillText(t, 12, c.height / 2);
+  const tex = new THREE.CanvasTexture(c);
+  tex.anisotropy = 4;
+  return { tex, w: c.width, h: c.height };
+}
+function rotuloChao(t, x, y, escala = 0.42) {
+  const { tex, w, h } = texto(t.toUpperCase(), "#9a8770");
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w * escala, h * escala), new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false }));
+  m.rotation.x = -Math.PI / 2; m.position.set(x, 1.5, y);
+  return m;
+}
+function placa(t, cor) {                              // etiqueta que sempre olha para a câmera
+  const { tex, w, h } = texto(t, cor, 40);
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
+  s.scale.set(w * 0.55, h * 0.55, 1);
+  return s;
+}
+
+function paredes(salas) {
+  // une os segmentos que estão na mesma linha (parede compartilhada vira uma só, sem "piscar")
+  const linhas = {};
+  const add = (eixo, fixo, a, b) => { const k = eixo + fixo; (linhas[k] = linhas[k] || { eixo, fixo, iv: [] }).iv.push([Math.min(a, b), Math.max(a, b)]); };
+  for (const s of salas) {
+    if (s.aberta) continue;
+    add("h", s.y, s.x, s.x + s.w); add("h", s.y + s.h, s.x, s.x + s.w);
+    add("v", s.x, s.y, s.y + s.h); add("v", s.x + s.w, s.y, s.y + s.h);
+  }
+  const segs = [];
+  for (const l of Object.values(linhas)) {
+    l.iv.sort((a, b) => a[0] - b[0]);
+    let [ini, fim] = l.iv[0];
+    for (const [a, b] of l.iv.slice(1)) { if (a <= fim) fim = Math.max(fim, b); else { segs.push({ ...l, a: ini, b: fim }); [ini, fim] = [a, b]; } }
+    segs.push({ ...l, a: ini, b: fim });
+  }
+  return segs;
+}
+
+function montarPlanta(p) {
+  const assin = JSON.stringify([p.salas, p.moveis, p.portoes]);
+  if (assin === assinaturaPlanta) return;
+  assinaturaPlanta = assin; larguraP = p.largura; alturaP = p.altura;
+  descartar(grupoPlanta); grupoPlanta.clear();
+  const alto = p.pe_direito || 70, esp = 6;
+  const matParede = new THREE.MeshStandardMaterial({ color: COR.parede, roughness: .9, transparent: true, opacity: .92 });
+  const matTopo = new THREE.MeshBasicMaterial({ color: COR.ouro, transparent: true, opacity: .55 });
+  for (const s of p.salas) {
+    const piso = new THREE.Mesh(new THREE.PlaneGeometry(s.w, s.h),
+      new THREE.MeshStandardMaterial({ color: s.fundo ? COR.piso : COR.pisoSala, roughness: 1 }));
+    piso.rotation.x = -Math.PI / 2; piso.position.set(s.x + s.w / 2, s.fundo ? 0 : 0.5, s.y + s.h / 2);
+    grupoPlanta.add(piso);
+    if (s.w >= 80) grupoPlanta.add(rotuloChao(s.nome, s.x + s.w / 2, s.y + s.h / 2 + (s.fundo ? 0 : 0)));
+    else { const r = rotuloChao(s.nome, s.x + s.w / 2, s.y + s.h / 2, 0.3); r.rotation.z = Math.PI / 2; grupoPlanta.add(r); }
+  }
+  for (const sg of paredes(p.salas)) {
+    const comp = sg.b - sg.a + esp;
+    const geo = sg.eixo === "h" ? new THREE.BoxGeometry(comp, alto, esp) : new THREE.BoxGeometry(esp, alto, comp);
+    const m = new THREE.Mesh(geo, matParede);
+    const meio = (sg.a + sg.b) / 2;
+    m.position.set(sg.eixo === "h" ? meio : sg.fixo, alto / 2, sg.eixo === "h" ? sg.fixo : meio);
+    grupoPlanta.add(m);
+    const topo = new THREE.Mesh(sg.eixo === "h" ? new THREE.BoxGeometry(comp, 1, esp + 1) : new THREE.BoxGeometry(esp + 1, 1, comp), matTopo);
+    topo.position.set(m.position.x, alto + 0.5, m.position.z);
+    grupoPlanta.add(topo);
+  }
+  for (const mv of p.moveis || []) {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(mv.w, 22, mv.h), new THREE.MeshStandardMaterial({ color: 0x4a3826, roughness: .8 }));
+    m.position.set(mv.x + mv.w / 2, 11, mv.y + mv.h / 2);
+    grupoPlanta.add(m);
+    const r = rotuloChao(mv.nome, mv.x + mv.w / 2, mv.y + mv.h / 2, 0.32); r.position.y = 23; r.rotation.z = Math.PI / 2;
+    grupoPlanta.add(r);
+  }
+  for (const pt of p.portoes || []) {                 // portão/grade: barras finas
+    const dx = pt.x2 - pt.x1, dy = pt.y2 - pt.y1, n = Math.max(2, Math.round(Math.hypot(dx, dy) / 14));
+    for (let i = 0; i <= n; i++) {
+      const barra = new THREE.Mesh(new THREE.CylinderGeometry(1.4, 1.4, alto * .8, 6), new THREE.MeshStandardMaterial({ color: COR.ouro }));
+      barra.position.set(pt.x1 + dx * i / n, alto * .4, pt.y1 + dy * i / n);
+      grupoPlanta.add(barra);
+    }
+  }
+}
+
+function leque(cor, opacidade) {
+  const g = new THREE.CircleGeometry(RAIO_LEQUE, 24, -ABERTURA / 2 * Math.PI / 180, ABERTURA * Math.PI / 180);
+  const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: cor, transparent: true, opacity: opacidade, depthWrite: false, side: THREE.DoubleSide }));
+  m.rotation.x = -Math.PI / 2;
+  return m;
+}
+function montarCameras() {
+  const cams = editando ? rascunho : dados.planta.cameras;
+  const assin = JSON.stringify([cams, editando ? canalSel : verCanal, editando ? {} : dados.canais]);
+  if (assin === assinaturaCams) return;
+  assinaturaCams = assin;
+  descartar(grupoCams); grupoCams.clear(); objCams.clear();
+  for (const c of cams) {
+    const estado = editando ? null : dados.canais[c.canal];
+    const sel = (editando ? canalSel : verCanal) === c.canal;
+    const g = new THREE.Group();
+    g.position.set(c.x, 0, c.y);
+    const cor = estado === "pessoa" ? COR.brasa : estado === "movimento" ? COR.movimento : COR.ouro;
+    const lq = leque(cor, estado ? .28 : .08);
+    lq.position.y = 2;
+    lq.rotation.z = -c.ang * Math.PI / 180;            // ângulo da planta (0 = para a direita, sentido horário)
+    g.add(lq);
+    const poste = new THREE.Mesh(new THREE.CylinderGeometry(2, 2, 60, 8), new THREE.MeshStandardMaterial({ color: 0x6b5a45 }));
+    poste.position.y = 30; g.add(poste);
+    const corpo = new THREE.Mesh(new THREE.BoxGeometry(18, 12, 12), new THREE.MeshStandardMaterial({ color: sel ? COR.ouro : 0x2b2118, emissive: cor, emissiveIntensity: estado ? .6 : .15 }));
+    corpo.position.y = 64; corpo.rotation.y = -c.ang * Math.PI / 180;
+    g.add(corpo);
+    const p = placa(`${c.canal} · ${nomeCam(c)}`, sel ? "#ffcf7a" : "#e8b04b");
+    p.position.y = 92; g.add(p);
+    g.userData.canal = c.canal;
+    g.traverse(o => { o.userData.canal = c.canal; });
+    grupoCams.add(g); objCams.set(c.canal, g);
+  }
+}
+
+// ---------------------------------------------------------------- bonecos (presença na área; andar é ilustrativo)
+function novoBoneco(tipo) {
+  const cor = tipo === "pessoa" ? COR.brasa : COR.movimento;
+  const mat = new THREE.MeshStandardMaterial({ color: cor, emissive: cor, emissiveIntensity: .35, transparent: true, opacity: 1 });
+  const g = new THREE.Group();
+  const tronco = new THREE.Mesh(new THREE.CylinderGeometry(7, 9, 30, 12), mat); tronco.position.y = 25;
+  const cabeca = new THREE.Mesh(new THREE.SphereGeometry(7.5, 14, 10), mat); cabeca.position.y = 48;
+  const perna1 = new THREE.Mesh(new THREE.CylinderGeometry(2.6, 2.6, 14, 6), mat); perna1.position.set(-4, 7, 0);
+  const perna2 = perna1.clone(); perna2.position.x = 4;
+  const etiqueta = placa(tipo === "pessoa" ? "Pessoa" : "Movimento", tipo === "pessoa" ? "#ff8a4a" : "#9fd6e4");
+  etiqueta.position.y = 72;
+  g.add(tronco, cabeca, perna1, perna2, etiqueta);
+  g.userData = { mat, pernas: [perna1, perna2], etiqueta };
+  cena.add(g);
+  return g;
+}
+function pontoNaArea(c) {                             // ponto aleatório dentro do leque da câmera e dentro do prédio
+  for (let i = 0; i < 20; i++) {
+    const a = (c.ang + (Math.random() - .5) * ABERTURA * .8) * Math.PI / 180, r = 40 + Math.random() * (RAIO_LEQUE - 50);
+    const x = c.x + r * Math.cos(a), y = c.y + r * Math.sin(a);
+    if (dados.planta.salas.some(s => x > s.x + 8 && x < s.x + s.w - 8 && y > s.y + 8 && y < s.y + s.h - 8)) return { x, y };
+  }
+  return { x: c.x + 60 * Math.cos(c.ang * Math.PI / 180), y: c.y + 60 * Math.sin(c.ang * Math.PI / 180) };
+}
+function atualizarBonecos() {
+  if (!cena) return;
+  const ativos = editando ? {} : dados.canais;
+  for (const c of dados.planta.cameras) {
+    const tipo = ativos[c.canal], b = bonecos.get(c.canal);
+    if (tipo && (!b || b.tipo !== tipo || b.sumindo)) {
+      if (b) { cena.remove(b.grupo); descartar(b.grupo); }
+      const g = novoBoneco(tipo), ini = pontoNaArea(c);
+      g.position.set(ini.x, 0, ini.y);
+      bonecos.set(c.canal, { grupo: g, alvo: pontoNaArea(c), tipo, cam: c, sumindo: false, pausa: 0 });
+    } else if (!tipo && b && !b.sumindo) b.sumindo = true;
+  }
+  for (const [canal, b] of bonecos) if (!dados.planta.cameras.some(c => c.canal === canal)) { cena.remove(b.grupo); descartar(b.grupo); bonecos.delete(canal); }
+}
+function moverBonecos(dt, t) {
+  for (const [canal, b] of bonecos) {
+    const g = b.grupo;
+    if (b.sumindo) {
+      g.userData.mat.opacity -= dt * 1.2;
+      g.userData.etiqueta.material.opacity = g.userData.mat.opacity;
+      if (g.userData.mat.opacity <= 0) { cena.remove(g); descartar(g); bonecos.delete(canal); }
+      continue;
+    }
+    if (b.pausa > 0) { b.pausa -= dt; continue; }
+    const dx = b.alvo.x - g.position.x, dz = b.alvo.y - g.position.z, d = Math.hypot(dx, dz);
+    if (d < 3) { b.alvo = pontoNaArea(b.cam); b.pausa = .5 + Math.random() * 2; continue; }
+    const v = Math.min(d, 38 * dt);                   // ~1 m/s na escala da planta
+    g.position.x += dx / d * v; g.position.z += dz / d * v;
+    g.rotation.y = Math.atan2(dx, dz);
+    const passo = Math.sin(t * 9) * .5;
+    g.userData.pernas[0].rotation.x = passo; g.userData.pernas[1].rotation.x = -passo;
+  }
+}
+
+let ultimoQuadro = 0, clique0 = null;
+function animar(t) {
+  requestAnimationFrame(animar);
+  if (document.hidden || t - ultimoQuadro < 33) return;     // ~30 quadros/s e nada com a janela escondida
+  const dt = Math.min((t - ultimoQuadro) / 1000, .1);
+  ultimoQuadro = t;
+  moverBonecos(dt, t / 1000);
+  controles.update();
+  renderer.render(cena, camera);
+}
+
+function vistaDeCima(ligar) {
+  $("bt-vista").setAttribute("aria-pressed", ligar);
+  const cx = larguraP / 2, cz = alturaP / 2;
+  controles.target.set(cx, 0, cz);
+  if (ligar) camera.position.set(cx, 1700, cz + 1);
+  else camera.position.set(cx - 520, 760, cz + 860);
+  controles.enableRotate = !ligar;
+  controles.update();
+}
+
+function aoClicar(e) {
+  if (!clique0 || Math.hypot(e.clientX - clique0[0], e.clientY - clique0[1]) > 6) return;   // foi arrastar, não clicar
+  const r = renderer.domElement.getBoundingClientRect();
+  const ponto = new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+  raio.setFromCamera(ponto, camera);
+  const acerto = raio.intersectObjects(grupoCams.children, true).find(i => i.object.userData.canal);
+  if (acerto && !(editando && canalSel && !rascunho.some(c => c.canal === canalSel))) {
+    const canal = acerto.object.userData.canal;
+    editando ? escolherCanal(canal) : verCamera(canal);
+    return;
+  }
+  if (editando && canalSel) {
+    const p = raio.intersectObject(chao)[0];
+    if (!p) return;
+    const c = rascunho.find(x => x.canal === canalSel);
+    if (c) { c.x = Math.round(p.point.x); c.y = Math.round(p.point.z); }
+    else rascunho.push({ canal: canalSel, x: Math.round(p.point.x), y: Math.round(p.point.z), ang: 45, nome: "" });
+    listaCanais(); montarCameras();
+  }
+}
+
+// ---------------------------------------------------------------- painel lateral
 async function atualizar() {
   try {
     dados = DEMO ? demo() : await (await fetch(q("/hud/cameras/dados"), { cache: "no-store" })).json();
   } catch (e) { $("rodape").textContent = "sem resposta do Ghost: " + e; return; }
   if (!editando) rascunho = dados.planta.cameras.map(c => ({ ...c }));
-  desenhar(); painel();
+  if (cena) { montarPlanta(dados.planta); montarCameras(); atualizarBonecos(); }
+  painel();
 }
-
-function desenhar() {
-  const p = dados.planta, svg = $("svg");
-  svg.setAttribute("viewBox", `40 60 ${p.largura - 80} ${p.altura - 40}`);
-  svg.replaceChildren();
-  for (const s of [...p.salas].sort((a, b) => (b.fundo ? 1 : 0) - (a.fundo ? 1 : 0))) {
-    const g = el("g", { class: "sala" + (s.fundo ? " fundo" : "") }, svg);
-    el("rect", { x: s.x, y: s.y, width: s.w, height: s.h, rx: 4 }, g);
-    const t = el("text", { x: s.x + s.w / 2, y: s.fundo ? s.y + s.h / 2 : s.y + s.h / 2 + 6, "text-anchor": "middle" }, g);
-    t.textContent = s.nome.toUpperCase();
-    if (s.w < 80) { t.setAttribute("transform", `rotate(90 ${s.x + s.w / 2} ${s.y + s.h / 2})`); t.style.fontSize = "13px"; }
-  }
-  for (const m of p.moveis || []) {
-    const g = el("g", { class: "movel" }, svg);
-    el("rect", { x: m.x, y: m.y, width: m.w, height: m.h, rx: 4 }, g);
-    el("text", { x: m.x + m.w / 2, y: m.y + m.h / 2 + 5, "text-anchor": "middle" }, g).textContent = m.nome;
-  }
-  for (const pt of p.portoes || []) el("line", { class: "portao", x1: pt.x1, y1: pt.y1, x2: pt.x2, y2: pt.y2 }, svg);
-  const cams = editando ? rascunho : p.cameras;
-  for (const c of cams) {
-    const estado = editando ? null : dados.canais[c.canal];
-    const g = el("g", { class: "cam" + (estado ? " " + estado : "") + ((editando ? canalSel : verCanal) === c.canal ? " sel" : ""),
-      tabindex: 0, role: "button", "aria-label": `Câmera ${nomeCam(c)}` }, svg);
-    const r = 170, a1 = (c.ang - 35) * Math.PI / 180, a2 = (c.ang + 35) * Math.PI / 180;
-    el("path", { class: "cone", d: `M${c.x},${c.y} L${c.x + r * Math.cos(a1)},${c.y + r * Math.sin(a1)} A${r},${r} 0 0 1 ${c.x + r * Math.cos(a2)},${c.y + r * Math.sin(a2)} Z` }, g);
-    el("circle", { class: "corpo", cx: c.x, cy: c.y, r: 16 }, g);
-    el("text", { class: "n", x: c.x, y: c.y + 5, "text-anchor": "middle" }, g).textContent = c.canal;
-    el("text", { class: "rotulo", x: c.x, y: c.y - 24, "text-anchor": "middle" }, g).textContent = nomeCam(c);
-    const abrir = ev => { ev.stopPropagation(); editando ? escolherCanal(c.canal) : verCamera(c.canal); };
-    g.addEventListener("click", abrir);
-    g.addEventListener("keydown", ev => { if (ev.key === "Enter" || ev.key === " ") abrir(ev); });
-    if (estado) {                                  // boneco no meio do cone: a área tem pessoa/movimento agora
-      const bx = c.x + 95 * Math.cos(c.ang * Math.PI / 180), by = c.y + 95 * Math.sin(c.ang * Math.PI / 180);
-      const b = el("g", { class: "boneco " + estado, transform: `translate(${bx},${by})` }, svg);
-      el("circle", { cx: 0, cy: -16, r: 8 }, b);
-      el("path", { d: "M-11,12 Q-11,-5 0,-5 Q11,-5 11,12 Z" }, b);
-      const txt = estado === "pessoa" ? "Pessoa" : "Movimento";
-      el("rect", { x: -44, y: -52, width: 88, height: 22, rx: 5 }, b);
-      el("text", { x: 0, y: -36, "text-anchor": "middle" }, b).textContent = txt;
-    }
-  }
-}
-
 function painel() {
-  const ativos = Object.values(dados.canais);
-  const ok = dados.estado === "conectado";
+  const ativos = Object.values(dados.canais), ok = dados.estado === "conectado";
   $("contas").innerHTML = `<span class="${ok ? "bom" : "ruim"}">gravador <b>${dados.gravador || "—"}</b> ${ok ? "conectado" : dados.estado}</span>`
     + `<span>câmeras na planta <b>${dados.planta.cameras.length}</b>/${Object.keys(dados.titulos).length || "?"}</span>`
     + `<span>pessoa <b>${ativos.filter(v => v === "pessoa").length}</b></span>`
@@ -203,19 +432,18 @@ function painel() {
     return `<li><span><b class="tag-${u.tipo}">${u.tipo}</b> · ${c ? nomeCam(c) : (dados.titulos[u.canal] || "CAM " + u.canal)}</span><span>${hora(u.t)}</span></li>`;
   }).join("") : '<li><span class="sub">Nenhum evento ainda.</span><span></span></li>';
   $("rodape").textContent = "atualizado " + hora(dados.gerado) + (DEMO ? " · demonstração" : "")
-    + " · \"pessoa\" exige o SMD Plus ligado no gravador; sem ele, só \"movimento\".";
+    + " · O boneco mostra que há alguém NA ÁREA da câmera; o caminho dele é ilustrativo. \"Pessoa\" exige o SMD Plus ligado no gravador.";
   if (editando) listaCanais();
 }
 
-// ---------------------------------------------------------------- imagem ao vivo
 function verCamera(canal) {
   verCanal = canal;
   const c = dados.planta.cameras.find(x => x.canal === canal);
   $("ficha").innerHTML = `<h2>${(c ? nomeCam(c) : "CAM " + canal).toUpperCase()}</h2>
     <div class="sub">canal ${canal} · ${dados.canais[canal] ? `<span class="tag-${dados.canais[canal]}">${dados.canais[canal]} agora</span>` : "sem evento agora"}</div>
-    <div class="tela" id="tela"><span>conectando à câmera…</span></div>
+    <div class="tela" id="tela"><span>${DEMO ? "imagem ao vivo (no Ghost)" : "conectando à câmera…"}</span></div>
     <div class="sub">Imagem reduzida, só enquanto esta ficha estiver aberta.</div>`;
-  desenhar();
+  if (cena) montarCameras();
 }
 async function puxarFoto() {
   if (!verCanal || editando || DEMO) return;
@@ -228,20 +456,19 @@ async function puxarFoto() {
       let img = tela.querySelector("img");
       if (!img) { tela.replaceChildren(); img = document.createElement("img"); img.alt = "Imagem ao vivo"; tela.appendChild(img); }
       img.src = url; if (fotoUrl) URL.revokeObjectURL(fotoUrl); fotoUrl = url;
-    } else if (r.status !== 202) {
-      tela.innerHTML = `<span>${(await r.json()).erro || "sem imagem"}</span>`;
-    }
+    } else if (r.status !== 202) tela.innerHTML = `<span>${(await r.json()).erro || "sem imagem"}</span>`;
   } catch (e) { /* tenta no próximo ciclo */ }
 }
 
-// ---------------------------------------------------------------- posicionar câmeras (só a planta do Ghost)
 function modoEdicao(ligar) {
   editando = ligar; canalSel = null; verCanal = null;
   rascunho = dados.planta.cameras.map(c => ({ ...c }));
-  $("mapa").classList.toggle("editando", ligar);
-  $("edicao").hidden = !ligar; $("bt-salvar").hidden = !ligar; $("bt-cancelar").hidden = !ligar; $("bt-editar").hidden = ligar;
+  $("cena").classList.toggle("editando", ligar);
+  for (const id of ["edicao", "bt-salvar", "bt-cancelar"]) $(id).hidden = !ligar;
+  $("bt-editar").hidden = ligar;
   $("ficha").innerHTML = '<h2>DETALHE</h2><div class="sub">Clique numa câmera para ver a imagem ao vivo.</div>';
-  desenhar(); if (ligar) listaCanais();
+  if (cena) { vistaDeCima(ligar); atualizarBonecos(); montarCameras(); }
+  if (ligar) listaCanais();
 }
 function listaCanais() {
   const total = Math.max(Object.keys(dados.titulos).length, 1);
@@ -249,27 +476,20 @@ function listaCanais() {
     `<button type="button" data-canal="${n}" aria-pressed="${canalSel === n}" class="${rascunho.some(c => c.canal === n) ? "na-planta" : ""}">${dados.titulos[n] || "CAM " + n}</button>`).join("");
   $("lista-canais").querySelectorAll("button").forEach(b => b.onclick = () => escolherCanal(+b.dataset.canal));
   const c = rascunho.find(x => x.canal === canalSel);
-  $("edicao-cam").innerHTML = !canalSel ? "" : !c ? `<div class="sub" style="margin-top:10px">Clique na planta para colocar o canal ${canalSel}.</div>` :
+  $("edicao-cam").innerHTML = !canalSel ? "" : !c ? `<div class="sub" style="margin-top:10px">Clique no chão da planta para colocar o canal ${canalSel}.</div>` :
     `<label>Nome da câmera (só no Ghost)<input type="text" id="cam-nome" maxlength="40" value="${(c.nome || "").replace(/"/g, "&quot;")}" placeholder="${dados.titulos[c.canal] || ""}"></label>
-     <div class="linha"><button type="button" id="girar-e">↺ Girar</button><button type="button" id="girar-d">↻ Girar</button><button type="button" id="tirar">Tirar da planta</button></div>`;
+     <div class="linha"><button type="button" id="girar-e">↺ Girar</button><button type="button" id="girar-d">↻ Girar</button><button type="button" id="tirar">Tirar da planta</button></div>
+     <div class="sub" style="margin-top:6px">Para mudar de lugar, clique de novo no chão.</div>`;
   if (c) {
-    $("cam-nome").oninput = e => { c.nome = e.target.value; desenhar(); };
-    $("girar-e").onclick = () => { c.ang = (c.ang + 315) % 360; desenhar(); };
-    $("girar-d").onclick = () => { c.ang = (c.ang + 45) % 360; desenhar(); };
-    $("tirar").onclick = () => { rascunho = rascunho.filter(x => x !== c); listaCanais(); desenhar(); };
+    $("cam-nome").oninput = e => { c.nome = e.target.value; montarCameras(); };
+    $("girar-e").onclick = () => { c.ang = (c.ang + 315) % 360; montarCameras(); };
+    $("girar-d").onclick = () => { c.ang = (c.ang + 45) % 360; montarCameras(); };
+    $("tirar").onclick = () => { rascunho = rascunho.filter(x => x !== c); listaCanais(); montarCameras(); };
   }
 }
-function escolherCanal(n) { canalSel = n; listaCanais(); desenhar(); }
-$("svg").addEventListener("click", ev => {
-  if (!editando || !canalSel) return;
-  const svg = $("svg"), pt = svg.createSVGPoint();
-  pt.x = ev.clientX; pt.y = ev.clientY;
-  const p = pt.matrixTransform(svg.getScreenCTM().inverse());
-  const c = rascunho.find(x => x.canal === canalSel);
-  if (c) { c.x = Math.round(p.x); c.y = Math.round(p.y); }
-  else rascunho.push({ canal: canalSel, x: Math.round(p.x), y: Math.round(p.y), ang: 45, nome: "" });
-  listaCanais(); desenhar();
-});
+function escolherCanal(n) { canalSel = n; listaCanais(); if (cena) montarCameras(); }
+
+$("bt-vista").onclick = () => { if (cena) vistaDeCima($("bt-vista").getAttribute("aria-pressed") !== "true"); };
 $("bt-editar").onclick = () => modoEdicao(true);
 $("bt-cancelar").onclick = () => modoEdicao(false);
 $("bt-salvar").onclick = async () => {
@@ -282,6 +502,7 @@ $("bt-salvar").onclick = async () => {
   modoEdicao(false);
 };
 
+iniciar3D();
 atualizar();
 setInterval(atualizar, 1000);
 setInterval(puxarFoto, 600);

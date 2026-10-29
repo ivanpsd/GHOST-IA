@@ -1189,25 +1189,25 @@ CAM_ACESO_S = 8                  # depois do "Stop", a área fica acesa mais um 
 VISOR_OCIOSO_S = 15
 CAM_MAX_CANAIS = 64
 
-# Planta desenhada a partir do croqui do senhor (coordenadas da folha; o HUD só escala).
+# Planta do 1º andar (escritório), do croqui do senhor, ALINHADA numa grade de 20 (paredes que se encontram batem).
+# Fica no código (versionada); o que o senhor ajusta no HUD (posição/nome das câmeras) fica em dados/cameras.json.
 PLANTA_PADRAO = {
-    "largura": 960, "altura": 1280,
+    "largura": 960, "altura": 1280, "pe_direito": 70,
     "salas": [
-        {"id": "salao", "nome": "Salão", "x": 235, "y": 260, "w": 520, "h": 835, "fundo": True},
-        {"id": "almox", "nome": "Almoxarifado", "x": 240, "y": 85, "w": 525, "h": 175},
-        {"id": "deborah", "nome": "Sala Deborah", "x": 235, "y": 260, "w": 165, "h": 150},
-        {"id": "financeiro", "nome": "Financeiro", "x": 535, "y": 270, "w": 220, "h": 160},
-        {"id": "rh", "nome": "RH", "x": 525, "y": 760, "w": 225, "h": 220},
-        {"id": "reuniao", "nome": "Sala reunião", "x": 520, "y": 980, "w": 230, "h": 115},
-        {"id": "servidor", "nome": "Servidor", "x": 520, "y": 1095, "w": 225, "h": 95},
-        {"id": "banh_m", "nome": "Banh. M", "x": 470, "y": 1095, "w": 50, "h": 105},
-        {"id": "banh_f", "nome": "Banh. F", "x": 415, "y": 1095, "w": 55, "h": 110},
-        {"id": "copa", "nome": "Copa", "x": 210, "y": 1095, "w": 205, "h": 110},
-        {"id": "entrada", "nome": "Entrada", "x": 70, "y": 870, "w": 140, "h": 340},
+        {"id": "salao", "nome": "Salão", "x": 240, "y": 260, "w": 520, "h": 840, "fundo": True},
+        {"id": "almox", "nome": "Almoxarifado", "x": 240, "y": 80, "w": 520, "h": 180},
+        {"id": "deborah", "nome": "Sala Deborah", "x": 240, "y": 260, "w": 160, "h": 160},
+        {"id": "financeiro", "nome": "Financeiro", "x": 540, "y": 260, "w": 220, "h": 160},
+        {"id": "rh", "nome": "RH", "x": 520, "y": 760, "w": 240, "h": 220},
+        {"id": "reuniao", "nome": "Sala reunião", "x": 520, "y": 980, "w": 240, "h": 120},
+        {"id": "copa", "nome": "Copa", "x": 240, "y": 1100, "w": 180, "h": 100},
+        {"id": "banh_f", "nome": "Banh. F", "x": 420, "y": 1100, "w": 50, "h": 100},
+        {"id": "banh_m", "nome": "Banh. M", "x": 470, "y": 1100, "w": 50, "h": 100},
+        {"id": "servidor", "nome": "Servidor", "x": 520, "y": 1100, "w": 240, "h": 100},
+        {"id": "entrada", "nome": "Entrada", "x": 80, "y": 880, "w": 160, "h": 320, "aberta": True},
     ],
-    "moveis": [{"nome": "ADM", "x": 615, "y": 485, "w": 70, "h": 190}],
-    "portoes": [{"x1": 210, "y1": 870, "x2": 210, "y2": 1095}],
-    "cameras": [],               # [{"canal": 3, "x": .., "y": .., "ang": graus, "nome": "Corredor"}] — posicionadas no HUD
+    "moveis": [{"nome": "ADM", "x": 620, "y": 480, "w": 60, "h": 200}],
+    "portoes": [{"x1": 240, "y1": 880, "x2": 240, "y2": 1100}],
 }
 
 _cam_trava = threading.Lock()
@@ -1357,8 +1357,11 @@ def foto_camera(canal):
 
 # ---------------------------------------------------------------- planta + dados do HUD
 def carregar_planta():
-    p = arquivo.ler_json(ARQ_PLANTA, None)
-    return p if isinstance(p, dict) and p.get("salas") else json.loads(json.dumps(PLANTA_PADRAO))
+    """Planta do código + câmeras que o senhor posicionou (dados/cameras.json)."""
+    p = json.loads(json.dumps(PLANTA_PADRAO))
+    salvo = arquivo.ler_json(ARQ_PLANTA, None)
+    p["cameras"] = validar_cameras(salvo.get("cameras") if isinstance(salvo, dict) else None)
+    return p
 
 
 def validar_cameras(lista):
@@ -1377,10 +1380,9 @@ def validar_cameras(lista):
 
 
 def salvar_cameras(lista):
-    p = carregar_planta()
-    p["cameras"] = validar_cameras(lista)
-    arquivo.salvar_json(ARQ_PLANTA, p)
-    return p["cameras"]
+    cameras = validar_cameras(lista)
+    arquivo.salvar_json(ARQ_PLANTA, {"cameras": cameras})
+    return cameras
 
 
 def dados_cameras():

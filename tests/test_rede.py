@@ -252,3 +252,10 @@ def test_cameras_da_planta_validadas():
     assert r == [{"canal": 2, "x": 30, "y": 40, "ang": 0, "nome": ""}]
     assert rede.validar_cameras(None) == []
     assert {s["id"] for s in rede.PLANTA_PADRAO["salas"]} >= {"almox", "rh", "financeiro", "servidor"}
+
+
+def test_planta_alinhada_na_grade():
+    p = rede.PLANTA_PADRAO
+    for s in p["salas"] + p["moveis"]:
+        assert all(s[k] % 10 == 0 for k in ("x", "y", "w", "h")), s["nome"]
+    assert "cameras" not in p                                  # câmeras ficam só em dados/cameras.json
