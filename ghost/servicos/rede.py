@@ -1375,7 +1375,8 @@ def validar_cameras(lista):
             continue
         if 1 <= canal <= CAM_MAX_CANAIS and -100 <= x <= 2000 and -100 <= y <= 2000:
             limpas[canal] = {"canal": canal, "x": round(x), "y": round(y), "ang": int(float(c.get("ang") or 0)) % 360,
-                             "nome": str(c.get("nome") or "").strip()[:40]}
+                             "nome": str(c.get("nome") or "").strip()[:40],
+                             "sala": re.sub(r"[^a-z0-9_]", "", str(c.get("sala") or ""))[:30]}
     return sorted(limpas.values(), key=lambda c: c["canal"])
 
 

@@ -249,7 +249,8 @@ def test_canal_acende_e_apaga_depois_do_stop():
 def test_cameras_da_planta_validadas():
     r = rede.validar_cameras([{"canal": "2", "x": 10.4, "y": 20, "ang": 370, "nome": " Corredor "},
                               {"canal": 99, "x": 0, "y": 0}, {"canal": 2, "x": 30, "y": 40}, {"x": 1}, "lixo"])
-    assert r == [{"canal": 2, "x": 30, "y": 40, "ang": 0, "nome": ""}]
+    assert r == [{"canal": 2, "x": 30, "y": 40, "ang": 0, "nome": "", "sala": ""}]
+    assert rede.validar_cameras([{"canal": 1, "x": 0, "y": 0, "sala": "rh<script>"}])[0]["sala"] == "rhscript"
     assert rede.validar_cameras(None) == []
     assert {s["id"] for s in rede.PLANTA_PADRAO["salas"]} >= {"almox", "rh", "financeiro", "servidor"}
 

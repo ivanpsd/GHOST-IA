@@ -61,6 +61,7 @@ li span:last-child { color: var(--apagado); font-family: var(--f-numero); font-s
 .canais button.na-planta { color: var(--ouro); }
 .canais button[aria-pressed=true] { color: var(--obsidiana); }
 label { display: grid; gap: 3px; font-size: 12.5px; color: var(--apagado); margin-top: 8px; }
+select { background: var(--obsidiana); border: 1px solid var(--fio-forte); color: var(--cinza-quente); border-radius: 6px; padding: 6px 8px; font: 14px var(--f-texto); }
 input[type=text] { background: var(--obsidiana); border: 1px solid var(--fio-forte); color: var(--cinza-quente); border-radius: 6px; padding: 6px 8px; font: 14px var(--f-texto); }
 .linha { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
 .tag-pessoa { color: var(--brasa); } .tag-movimento { color: var(--movimento); }
@@ -149,6 +150,7 @@ function iniciar3D() {
   renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "low-power" });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
   renderer.setClearColor(0x17110c);
+  renderer.localClippingEnabled = true;               // recorta o leque de cada câmera nas paredes da sala dela
   caixa.prepend(renderer.domElement);
   cena = new THREE.Scene();
   cena.fog = new THREE.Fog(0x17110c, 1400, 2600);
@@ -294,6 +296,9 @@ function montarCameras() {
     g.position.set(c.x, 0, c.y);
     const cor = estado === "pessoa" ? COR.brasa : estado === "movimento" ? COR.movimento : COR.ouro;
     const lq = leque(cor, estado ? .28 : .08);
+    const s = salaDaCamera(c);
+    lq.material.clippingPlanes = [new THREE.Plane(new THREE.Vector3(1, 0, 0), -s.x), new THREE.Plane(new THREE.Vector3(-1, 0, 0), s.x + s.w),
+                                  new THREE.Plane(new THREE.Vector3(0, 0, 1), -s.y), new THREE.Plane(new THREE.Vector3(0, 0, -1), s.y + s.h)];
     lq.position.y = 2;
     lq.rotation.z = -c.ang * Math.PI / 180;            // ângulo da planta (0 = para a direita, sentido horário)
     g.add(lq);
@@ -302,7 +307,7 @@ function montarCameras() {
     const corpo = new THREE.Mesh(new THREE.BoxGeometry(18, 12, 12), new THREE.MeshStandardMaterial({ color: sel ? COR.ouro : 0x2b2118, emissive: cor, emissiveIntensity: estado ? .6 : .15 }));
     corpo.position.y = 64; corpo.rotation.y = -c.ang * Math.PI / 180;
     g.add(corpo);
-    const p = placa(`${c.canal} · ${nomeCam(c)}`, sel ? "#ffcf7a" : "#e8b04b");
+    const p = placa(`${c.canal} · ${nomeCam(c)} (${salaDaCamera(c).nome})`, sel ? "#ffcf7a" : "#e8b04b");
     p.position.y = 92; g.add(p);
     g.userData.canal = c.canal;
     g.traverse(o => { o.userData.canal = c.canal; });
@@ -326,13 +331,29 @@ function novoBoneco(tipo) {
   cena.add(g);
   return g;
 }
-function pontoNaArea(c) {                             // ponto aleatório dentro do leque da câmera e dentro do prédio
-  for (let i = 0; i < 20; i++) {
-    const a = (c.ang + (Math.random() - .5) * ABERTURA * .8) * Math.PI / 180, r = 40 + Math.random() * (RAIO_LEQUE - 50);
+const dentro = (s, x, y, m = 0) => x > s.x + m && x < s.x + s.w - m && y > s.y + m && y < s.y + s.h - m;
+function salaDaCamera(c) {
+  // escolhida no "Posicionar" ou automática: a sala menor onde cai um ponto logo à frente da câmera
+  // (câmera fica na parede; o ponto à frente cai do lado que ela vê)
+  const salas = dados.planta.salas;
+  if (c.sala) { const s = salas.find(x => x.id === c.sala); if (s) return s; }
+  const a = c.ang * Math.PI / 180, fx = c.x + 30 * Math.cos(a), fy = c.y + 30 * Math.sin(a);
+  const cand = salas.filter(s => dentro(s, fx, fy)).sort((p, q) => p.w * p.h - q.w * q.h);
+  return cand.find(s => !s.fundo) || cand[0] || salas.find(s => dentro(s, c.x, c.y)) || salas[0];
+}
+function pontoNaArea(c) {                             // ponto dentro da SALA da câmera, de preferência no leque dela
+  const s = salaDaCamera(c), m = 14;
+  const outraSala = (x, y) => !s.fundo ? false : dados.planta.salas.some(o => !o.fundo && o !== s && dentro(o, x, y));
+  for (let i = 0; i < 40; i++) {
+    const a = (c.ang + (Math.random() - .5) * ABERTURA * .8) * Math.PI / 180, r = 30 + Math.random() * (RAIO_LEQUE - 40);
     const x = c.x + r * Math.cos(a), y = c.y + r * Math.sin(a);
-    if (dados.planta.salas.some(s => x > s.x + 8 && x < s.x + s.w - 8 && y > s.y + 8 && y < s.y + s.h - 8)) return { x, y };
+    if (dentro(s, x, y, m) && !outraSala(x, y)) return { x, y };
   }
-  return { x: c.x + 60 * Math.cos(c.ang * Math.PI / 180), y: c.y + 60 * Math.sin(c.ang * Math.PI / 180) };
+  for (let i = 0; i < 40; i++) {                      // leque quase todo fora da sala: qualquer ponto da sala
+    const x = s.x + m + Math.random() * (s.w - 2 * m), y = s.y + m + Math.random() * (s.h - 2 * m);
+    if (!outraSala(x, y)) return { x, y };
+  }
+  return { x: s.x + s.w / 2, y: s.y + s.h / 2 };
 }
 function atualizarBonecos() {
   if (!cena) return;
@@ -446,9 +467,10 @@ function verCamera(canal) {
   if (cena) montarCameras();
 }
 async function puxarFoto() {
-  if (!verCanal || editando || DEMO) return;
+  const canal = editando ? canalSel : verCanal;
+  if (!canal || DEMO) return;
   try {
-    const r = await fetch(q(`/hud/cameras/foto?canal=${verCanal}`), { cache: "no-store" });
+    const r = await fetch(q(`/hud/cameras/foto?canal=${canal}`), { cache: "no-store" });
     const tela = $("tela");
     if (!tela) return;
     if (r.status === 200) {
@@ -476,11 +498,18 @@ function listaCanais() {
     `<button type="button" data-canal="${n}" aria-pressed="${canalSel === n}" class="${rascunho.some(c => c.canal === n) ? "na-planta" : ""}">${dados.titulos[n] || "CAM " + n}</button>`).join("");
   $("lista-canais").querySelectorAll("button").forEach(b => b.onclick = () => escolherCanal(+b.dataset.canal));
   const c = rascunho.find(x => x.canal === canalSel);
-  $("edicao-cam").innerHTML = !canalSel ? "" : !c ? `<div class="sub" style="margin-top:10px">Clique no chão da planta para colocar o canal ${canalSel}.</div>` :
-    `<label>Nome da câmera (só no Ghost)<input type="text" id="cam-nome" maxlength="40" value="${(c.nome || "").replace(/"/g, "&quot;")}" placeholder="${dados.titulos[c.canal] || ""}"></label>
+  const viva = !canalSel ? "" : `<div class="tela" id="tela"><span>${DEMO ? "imagem ao vivo (no Ghost)" : "conectando à câmera…"}</span></div>
+    <div class="sub">Imagem ao vivo do ${dados.titulos[canalSel] || "CAM " + canalSel}: veja o que ela mostra antes de posicionar.</div>`;
+  if (canalSel && $("tela") && $("edicao-cam").dataset.canal == canalSel && !c === !$("cam-nome")) return;   // não pisca a imagem
+  $("edicao-cam").dataset.canal = canalSel || "";
+  const salas = dados.planta.salas.map(s => `<option value="${s.id}" ${c && c.sala === s.id ? "selected" : ""}>${s.nome}</option>`).join("");
+  $("edicao-cam").innerHTML = !canalSel ? "" : viva + (!c ? `<div class="sub" style="margin-top:10px">Clique no chão da planta para colocar o canal ${canalSel}.</div>` :
+    `<label>Sala que esta câmera vê<select id="cam-sala"><option value="">automática (${salaDaCamera({ ...c, sala: "" }).nome})</option>${salas}</select></label>
+     <label>Nome da câmera (só no Ghost)<input type="text" id="cam-nome" maxlength="40" value="${(c.nome || "").replace(/"/g, "&quot;")}" placeholder="${dados.titulos[c.canal] || ""}"></label>
      <div class="linha"><button type="button" id="girar-e">↺ Girar</button><button type="button" id="girar-d">↻ Girar</button><button type="button" id="tirar">Tirar da planta</button></div>
-     <div class="sub" style="margin-top:6px">Para mudar de lugar, clique de novo no chão.</div>`;
+     <div class="sub" style="margin-top:6px">Para mudar de lugar, clique de novo no chão.</div>`);
   if (c) {
+    $("cam-sala").onchange = e => { c.sala = e.target.value; montarCameras(); };
     $("cam-nome").oninput = e => { c.nome = e.target.value; montarCameras(); };
     $("girar-e").onclick = () => { c.ang = (c.ang + 315) % 360; montarCameras(); };
     $("girar-d").onclick = () => { c.ang = (c.ang + 45) % 360; montarCameras(); };
