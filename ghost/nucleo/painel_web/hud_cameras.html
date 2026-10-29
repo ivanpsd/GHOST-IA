@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ghost · Planta das câmeras</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=Spectral:wght@400;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Planta das câmeras: cada câmera do gravador num ponto da planta; a área acende com "movimento" ou "pessoa"
+   (eventos do próprio gravador). Só mostra; posição e nome das câmeras ficam no Ghost, o gravador não muda. */
+:root {
+  --obsidiana: #0d0a08; --tabua: #17110c; --tabua-2: #1f1710;
+  --fio: rgba(232, 176, 75, .16); --fio-forte: rgba(232, 176, 75, .38);
+  --brasa: #ff6a1a; --ouro: #e8b04b; --cinza-quente: #e9dcc6; --apagado: #9a8770;
+  --sangue: #e0503a; --verdete: #8fbf9f; --movimento: #6fb7c9;
+  --f-titulo: "Cinzel", Georgia, serif; --f-texto: "Spectral", Georgia, serif;
+  --f-numero: "JetBrains Mono", Consolas, monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; margin: 0; }
+body { background: var(--obsidiana); color: var(--cinza-quente); font: 15px/1.45 var(--f-texto); }
+header { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 22px; padding: 12px 18px; border-bottom: 1px solid var(--fio); }
+h1 { margin: 0; font: 700 20px/1 var(--f-titulo); letter-spacing: .28em; color: var(--ouro); white-space: nowrap; }
+.contas { display: flex; gap: 16px; font: 13px var(--f-numero); color: var(--apagado); flex-wrap: wrap; }
+.contas b { color: var(--cinza-quente); font-weight: 600; }
+.contas .ruim b { color: var(--sangue); }
+.contas .bom b { color: var(--verdete); }
+.ferramentas { margin-left: auto; display: flex; gap: 8px; }
+button {
+  background: var(--tabua); border: 1px solid var(--fio-forte); color: var(--ouro); border-radius: 6px; padding: 6px 12px;
+  font: 600 11px var(--f-titulo); letter-spacing: .12em; text-transform: uppercase; cursor: pointer;
+}
+button:hover { border-color: var(--ouro); }
+button.forte { background: var(--ouro); color: var(--obsidiana); }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--brasa); outline-offset: 2px; }
+main { display: grid; grid-template-columns: 1fr 340px; gap: 14px; padding: 14px 18px; height: calc(100% - 58px); }
+@media (max-width: 900px) { main { grid-template-columns: 1fr; height: auto; } }
+#mapa { background: var(--tabua); border: 1px solid var(--fio); border-radius: 10px; overflow: hidden; min-height: 320px; }
+#mapa svg { width: 100%; height: 100%; display: block; }
+#mapa.editando svg { cursor: crosshair; }
+.sala rect { fill: var(--tabua-2); stroke: var(--fio-forte); stroke-width: 3; }
+.sala.fundo rect { fill: #140f0a; }
+.sala text { fill: var(--apagado); font: 600 20px var(--f-titulo); letter-spacing: .1em; pointer-events: none; }
+.movel rect { fill: none; stroke: var(--fio-forte); stroke-dasharray: 6 5; }
+.movel text { fill: var(--apagado); font: 16px var(--f-titulo); }
+.portao { stroke: var(--ouro); stroke-width: 5; stroke-dasharray: 4 6; }
+.cam { cursor: pointer; }
+.cam .cone { fill: rgba(232, 176, 75, .06); stroke: rgba(232, 176, 75, .22); }
+.cam.movimento .cone { fill: rgba(111, 183, 201, .22); stroke: var(--movimento); }
+.cam.pessoa .cone { fill: rgba(255, 106, 26, .25); stroke: var(--brasa); }
+.cam .corpo { fill: var(--obsidiana); stroke: var(--ouro); stroke-width: 3; }
+.cam.sel .corpo { fill: var(--ouro); }
+.cam text { fill: var(--ouro); font: 700 14px var(--f-numero); pointer-events: none; }
+.cam.sel text.n { fill: var(--obsidiana); }
+.cam .rotulo { fill: var(--cinza-quente); font: 600 15px var(--f-texto); }
+.boneco { pointer-events: none; }
+.boneco path, .boneco circle { fill: var(--brasa); }
+.boneco.movimento path, .boneco.movimento circle { fill: var(--movimento); }
+.boneco rect { fill: rgba(13, 10, 8, .9); stroke: var(--brasa); }
+.boneco.movimento rect { stroke: var(--movimento); }
+.boneco text { fill: var(--cinza-quente); font: 14px var(--f-texto); }
+aside { display: flex; flex-direction: column; gap: 12px; overflow: auto; }
+.caixa { background: var(--tabua); border: 1px solid var(--fio); border-radius: 10px; padding: 14px 16px; }
+.caixa h2 { margin: 0 0 8px; font: 700 13px var(--f-titulo); letter-spacing: .14em; color: var(--ouro); }
+.sub { color: var(--apagado); font-size: 13px; }
+.aviso { border-color: var(--sangue); color: var(--cinza-quente); }
+.aviso h2 { color: var(--sangue); }
+.tela { aspect-ratio: 352 / 240; background: #000; border: 1px solid var(--fio); border-radius: 6px; display: grid; place-items: center; overflow: hidden; margin: 8px 0; }
+.tela img { width: 100%; height: 100%; object-fit: contain; }
+.tela span { color: var(--apagado); font-size: 13px; }
+ul { list-style: none; margin: 0; padding: 0; }
+li { display: flex; justify-content: space-between; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--fio); font-size: 13.5px; }
+li span:last-child { color: var(--apagado); font-family: var(--f-numero); font-size: 12px; white-space: nowrap; }
+.canais { display: grid; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: 6px; }
+.canais button { padding: 6px 4px; font: 600 12px var(--f-numero); letter-spacing: 0; text-transform: none; color: var(--apagado); }
+.canais button.na-planta { color: var(--ouro); }
+.canais button[aria-pressed=true] { background: var(--ouro); color: var(--obsidiana); }
+label { display: grid; gap: 3px; font-size: 12.5px; color: var(--apagado); margin-top: 8px; }
+input[type=text] { background: var(--obsidiana); border: 1px solid var(--fio-forte); color: var(--cinza-quente); border-radius: 6px; padding: 6px 8px; font: 14px var(--f-texto); }
+.linha { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+.tag-pessoa { color: var(--brasa); } .tag-movimento { color: var(--movimento); }
+</style>
+</head>
+<body>
+<header>
+  <h1>PLANTA DAS CÂMERAS</h1>
+  <div class="contas" id="contas"></div>
+  <div class="ferramentas">
+    <button id="bt-editar" type="button">Posicionar câmeras</button>
+    <button id="bt-salvar" type="button" class="forte" hidden>Salvar</button>
+    <button id="bt-cancelar" type="button" hidden>Cancelar</button>
+  </div>
+</header>
+<main>
+  <div id="mapa"><svg id="svg" aria-label="Planta da empresa com as câmeras"></svg></div>
+  <aside>
+    <div class="caixa aviso" id="aviso" hidden><h2>CÂMERAS</h2><div id="aviso-texto"></div></div>
+    <div class="caixa" id="edicao" hidden>
+      <h2>POSICIONAR</h2>
+      <div class="sub">Escolha o canal e clique na planta onde a câmera fica. Gire para apontar o cone.</div>
+      <div class="canais" id="lista-canais" style="margin-top:10px"></div>
+      <div id="edicao-cam"></div>
+    </div>
+    <div class="caixa" id="ficha"><h2>DETALHE</h2><div class="sub">Clique numa câmera para ver a imagem ao vivo.</div></div>
+    <div class="caixa"><h2>ÚLTIMOS EVENTOS</h2><ul id="ultimos"></ul></div>
+    <div class="caixa sub" id="rodape"></div>
+  </aside>
+</main>
+<script>
+const TOKEN = "__GHOST_TOKEN__";
+const DEMO = TOKEN.startsWith("__");
+const NS = "http://www.w3.org/2000/svg";
+const $ = id => document.getElementById(id);
+const q = s => `${s}${s.includes("?") ? "&" : "?"}t=${encodeURIComponent(TOKEN)}`;
+let dados = null, editando = false, rascunho = [], canalSel = null, verCanal = null, fotoUrl = null;
+
+function el(tag, attrs = {}, pai) {
+  const e = document.createElementNS(NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (pai) pai.appendChild(e);
+  return e;
+}
+const nomeCam = c => c.nome || (dados.titulos[c.canal] || `CAM ${c.canal}`);
+const hora = t => new Date(t * 1000).toLocaleTimeString("pt-BR");
+
+function demo() {
+  const agora = Date.now() / 1000, ativo = Math.floor(agora / 6) % 3;
+  return { gerado: agora, configurado: true, estado: "conectado", erro: null, gravador: "demonstração",
+    titulos: Object.fromEntries(Array.from({ length: 18 }, (_, i) => [i + 1, `CAM ${i + 1}`])),
+    planta: { largura: 960, altura: 1280, salas: [
+      { id: "salao", nome: "Salão", x: 235, y: 260, w: 520, h: 835, fundo: true },
+      { id: "almox", nome: "Almoxarifado", x: 240, y: 85, w: 525, h: 175 },
+      { id: "rh", nome: "RH", x: 525, y: 760, w: 225, h: 220 }],
+      moveis: [{ nome: "ADM", x: 615, y: 485, w: 70, h: 190 }], portoes: [],
+      cameras: [{ canal: 1, x: 250, y: 100, ang: 30, nome: "Almoxarifado" }, { canal: 2, x: 740, y: 1080, ang: 225, nome: "Salão" }] },
+    canais: ativo === 1 ? { 1: "movimento" } : ativo === 2 ? { 2: "pessoa" } : {},
+    ultimos: [{ t: agora - 20, canal: 2, tipo: "pessoa" }, { t: agora - 70, canal: 1, tipo: "movimento" }] };
+}
+
+async function atualizar() {
+  try {
+    dados = DEMO ? demo() : await (await fetch(q("/hud/cameras/dados"), { cache: "no-store" })).json();
+  } catch (e) { $("rodape").textContent = "sem resposta do Ghost: " + e; return; }
+  if (!editando) rascunho = dados.planta.cameras.map(c => ({ ...c }));
+  desenhar(); painel();
+}
+
+function desenhar() {
+  const p = dados.planta, svg = $("svg");
+  svg.setAttribute("viewBox", `40 60 ${p.largura - 80} ${p.altura - 40}`);
+  svg.replaceChildren();
+  for (const s of [...p.salas].sort((a, b) => (b.fundo ? 1 : 0) - (a.fundo ? 1 : 0))) {
+    const g = el("g", { class: "sala" + (s.fundo ? " fundo" : "") }, svg);
+    el("rect", { x: s.x, y: s.y, width: s.w, height: s.h, rx: 4 }, g);
+    const t = el("text", { x: s.x + s.w / 2, y: s.fundo ? s.y + s.h / 2 : s.y + s.h / 2 + 6, "text-anchor": "middle" }, g);
+    t.textContent = s.nome.toUpperCase();
+    if (s.w < 80) { t.setAttribute("transform", `rotate(90 ${s.x + s.w / 2} ${s.y + s.h / 2})`); t.style.fontSize = "13px"; }
+  }
+  for (const m of p.moveis || []) {
+    const g = el("g", { class: "movel" }, svg);
+    el("rect", { x: m.x, y: m.y, width: m.w, height: m.h, rx: 4 }, g);
+    el("text", { x: m.x + m.w / 2, y: m.y + m.h / 2 + 5, "text-anchor": "middle" }, g).textContent = m.nome;
+  }
+  for (const pt of p.portoes || []) el("line", { class: "portao", x1: pt.x1, y1: pt.y1, x2: pt.x2, y2: pt.y2 }, svg);
+  const cams = editando ? rascunho : p.cameras;
+  for (const c of cams) {
+    const estado = editando ? null : dados.canais[c.canal];
+    const g = el("g", { class: "cam" + (estado ? " " + estado : "") + ((editando ? canalSel : verCanal) === c.canal ? " sel" : ""),
+      tabindex: 0, role: "button", "aria-label": `Câmera ${nomeCam(c)}` }, svg);
+    const r = 170, a1 = (c.ang - 35) * Math.PI / 180, a2 = (c.ang + 35) * Math.PI / 180;
+    el("path", { class: "cone", d: `M${c.x},${c.y} L${c.x + r * Math.cos(a1)},${c.y + r * Math.sin(a1)} A${r},${r} 0 0 1 ${c.x + r * Math.cos(a2)},${c.y + r * Math.sin(a2)} Z` }, g);
+    el("circle", { class: "corpo", cx: c.x, cy: c.y, r: 16 }, g);
+    el("text", { class: "n", x: c.x, y: c.y + 5, "text-anchor": "middle" }, g).textContent = c.canal;
+    el("text", { class: "rotulo", x: c.x, y: c.y - 24, "text-anchor": "middle" }, g).textContent = nomeCam(c);
+    const abrir = ev => { ev.stopPropagation(); editando ? escolherCanal(c.canal) : verCamera(c.canal); };
+    g.addEventListener("click", abrir);
+    g.addEventListener("keydown", ev => { if (ev.key === "Enter" || ev.key === " ") abrir(ev); });
+    if (estado) {                                  // boneco no meio do cone: a área tem pessoa/movimento agora
+      const bx = c.x + 95 * Math.cos(c.ang * Math.PI / 180), by = c.y + 95 * Math.sin(c.ang * Math.PI / 180);
+      const b = el("g", { class: "boneco " + estado, transform: `translate(${bx},${by})` }, svg);
+      el("circle", { cx: 0, cy: -16, r: 8 }, b);
+      el("path", { d: "M-11,12 Q-11,-5 0,-5 Q11,-5 11,12 Z" }, b);
+      const txt = estado === "pessoa" ? "Pessoa" : "Movimento";
+      el("rect", { x: -44, y: -52, width: 88, height: 22, rx: 5 }, b);
+      el("text", { x: 0, y: -36, "text-anchor": "middle" }, b).textContent = txt;
+    }
+  }
+}
+
+function painel() {
+  const ativos = Object.values(dados.canais);
+  const ok = dados.estado === "conectado";
+  $("contas").innerHTML = `<span class="${ok ? "bom" : "ruim"}">gravador <b>${dados.gravador || "—"}</b> ${ok ? "conectado" : dados.estado}</span>`
+    + `<span>câmeras na planta <b>${dados.planta.cameras.length}</b>/${Object.keys(dados.titulos).length || "?"}</span>`
+    + `<span>pessoa <b>${ativos.filter(v => v === "pessoa").length}</b></span>`
+    + `<span>movimento <b>${ativos.filter(v => v === "movimento").length}</b></span>`;
+  const aviso = !dados.configurado ? "Faltam CAM_GRAVADOR, CAM_USUARIO e CAM_SENHA no .env." : dados.erro;
+  $("aviso").hidden = !aviso; $("aviso-texto").textContent = aviso || "";
+  $("ultimos").innerHTML = dados.ultimos.length ? dados.ultimos.map(u => {
+    const c = dados.planta.cameras.find(x => x.canal === u.canal);
+    return `<li><span><b class="tag-${u.tipo}">${u.tipo}</b> · ${c ? nomeCam(c) : (dados.titulos[u.canal] || "CAM " + u.canal)}</span><span>${hora(u.t)}</span></li>`;
+  }).join("") : '<li><span class="sub">Nenhum evento ainda.</span><span></span></li>';
+  $("rodape").textContent = "atualizado " + hora(dados.gerado) + (DEMO ? " · demonstração" : "")
+    + " · \"pessoa\" exige o SMD Plus ligado no gravador; sem ele, só \"movimento\".";
+  if (editando) listaCanais();
+}
+
+// ---------------------------------------------------------------- imagem ao vivo
+function verCamera(canal) {
+  verCanal = canal;
+  const c = dados.planta.cameras.find(x => x.canal === canal);
+  $("ficha").innerHTML = `<h2>${(c ? nomeCam(c) : "CAM " + canal).toUpperCase()}</h2>
+    <div class="sub">canal ${canal} · ${dados.canais[canal] ? `<span class="tag-${dados.canais[canal]}">${dados.canais[canal]} agora</span>` : "sem evento agora"}</div>
+    <div class="tela" id="tela"><span>conectando à câmera…</span></div>
+    <div class="sub">Imagem reduzida, só enquanto esta ficha estiver aberta.</div>`;
+  desenhar();
+}
+async function puxarFoto() {
+  if (!verCanal || editando || DEMO) return;
+  try {
+    const r = await fetch(q(`/hud/cameras/foto?canal=${verCanal}`), { cache: "no-store" });
+    const tela = $("tela");
+    if (!tela) return;
+    if (r.status === 200) {
+      const url = URL.createObjectURL(await r.blob());
+      let img = tela.querySelector("img");
+      if (!img) { tela.replaceChildren(); img = document.createElement("img"); img.alt = "Imagem ao vivo"; tela.appendChild(img); }
+      img.src = url; if (fotoUrl) URL.revokeObjectURL(fotoUrl); fotoUrl = url;
+    } else if (r.status !== 202) {
+      tela.innerHTML = `<span>${(await r.json()).erro || "sem imagem"}</span>`;
+    }
+  } catch (e) { /* tenta no próximo ciclo */ }
+}
+
+// ---------------------------------------------------------------- posicionar câmeras (só a planta do Ghost)
+function modoEdicao(ligar) {
+  editando = ligar; canalSel = null; verCanal = null;
+  rascunho = dados.planta.cameras.map(c => ({ ...c }));
+  $("mapa").classList.toggle("editando", ligar);
+  $("edicao").hidden = !ligar; $("bt-salvar").hidden = !ligar; $("bt-cancelar").hidden = !ligar; $("bt-editar").hidden = ligar;
+  $("ficha").innerHTML = '<h2>DETALHE</h2><div class="sub">Clique numa câmera para ver a imagem ao vivo.</div>';
+  desenhar(); if (ligar) listaCanais();
+}
+function listaCanais() {
+  const total = Math.max(Object.keys(dados.titulos).length, 1);
+  $("lista-canais").innerHTML = Array.from({ length: total }, (_, i) => i + 1).map(n =>
+    `<button type="button" data-canal="${n}" aria-pressed="${canalSel === n}" class="${rascunho.some(c => c.canal === n) ? "na-planta" : ""}">${dados.titulos[n] || "CAM " + n}</button>`).join("");
+  $("lista-canais").querySelectorAll("button").forEach(b => b.onclick = () => escolherCanal(+b.dataset.canal));
+  const c = rascunho.find(x => x.canal === canalSel);
+  $("edicao-cam").innerHTML = !canalSel ? "" : !c ? `<div class="sub" style="margin-top:10px">Clique na planta para colocar o canal ${canalSel}.</div>` :
+    `<label>Nome da câmera (só no Ghost)<input type="text" id="cam-nome" maxlength="40" value="${(c.nome || "").replace(/"/g, "&quot;")}" placeholder="${dados.titulos[c.canal] || ""}"></label>
+     <div class="linha"><button type="button" id="girar-e">↺ Girar</button><button type="button" id="girar-d">↻ Girar</button><button type="button" id="tirar">Tirar da planta</button></div>`;
+  if (c) {
+    $("cam-nome").oninput = e => { c.nome = e.target.value; desenhar(); };
+    $("girar-e").onclick = () => { c.ang = (c.ang + 315) % 360; desenhar(); };
+    $("girar-d").onclick = () => { c.ang = (c.ang + 45) % 360; desenhar(); };
+    $("tirar").onclick = () => { rascunho = rascunho.filter(x => x !== c); listaCanais(); desenhar(); };
+  }
+}
+function escolherCanal(n) { canalSel = n; listaCanais(); desenhar(); }
+$("svg").addEventListener("click", ev => {
+  if (!editando || !canalSel) return;
+  const svg = $("svg"), pt = svg.createSVGPoint();
+  pt.x = ev.clientX; pt.y = ev.clientY;
+  const p = pt.matrixTransform(svg.getScreenCTM().inverse());
+  const c = rascunho.find(x => x.canal === canalSel);
+  if (c) { c.x = Math.round(p.x); c.y = Math.round(p.y); }
+  else rascunho.push({ canal: canalSel, x: Math.round(p.x), y: Math.round(p.y), ang: 45, nome: "" });
+  listaCanais(); desenhar();
+});
+$("bt-editar").onclick = () => modoEdicao(true);
+$("bt-cancelar").onclick = () => modoEdicao(false);
+$("bt-salvar").onclick = async () => {
+  if (!DEMO) {
+    const r = await fetch(q("/hud/cameras/editar"), { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cameras: rascunho }) });
+    if (!r.ok) { $("rodape").textContent = "Não consegui salvar: " + ((await r.json()).erro || r.status); return; }
+    dados.planta.cameras = (await r.json()).cameras;
+  } else dados.planta.cameras = rascunho;
+  modoEdicao(false);
+};
+
+atualizar();
+setInterval(atualizar, 1000);
+setInterval(puxarFoto, 600);
+</script>
+</body>
+</html>

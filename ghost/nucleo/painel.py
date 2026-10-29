@@ -477,6 +477,10 @@ class _Rotas(BaseHTTPRequestHandler):
                     if not any(a.get("ip") == ip for a in rede.carregar().values()):
                         return self._responder(404, {"erro": "aparelho não está no inventário"})
                     return self._responder(200, rede.ler_impressora(ip))
+                if nome == "cameras" and len(partes) == 3 and partes[2] == "foto":     # imagem ao vivo, só leitura
+                    from ghost.servicos import rede
+                    jpg = rede.foto_camera((parse_qs(urlparse(self.path).query).get("canal") or ["0"])[0])
+                    return self._responder(200, jpg, "image/jpeg") if jpg else self._responder(202, {"conectando": True})
                 html = self._arquivo(f"hud_{nome}.html").replace(b"__GHOST_TOKEN__", _token.encode())
                 return self._responder(200, html, "text/html; charset=utf-8")
             if rota == "celular/situacao":
@@ -517,6 +521,13 @@ class _Rotas(BaseHTTPRequestHandler):
                     return self._responder(404, {"erro": "aparelho não está no inventário"})
                 evento(f"Rede: {rede.nome_exibicao(a)} atualizado", "acao")
                 return self._responder(200, {"ok": True})
+            if rota == "hud/cameras/editar":          # posição/nome das câmeras NA PLANTA do Ghost (o gravador não muda)
+                from ghost.servicos import rede
+                n = int(self.headers.get("Content-Length") or 0)
+                j = json.loads(self.rfile.read(min(n, 50_000)) or b"{}") if n else {}
+                cams = rede.salvar_cameras(j.get("cameras"))
+                evento(f"Planta das câmeras: {len(cams)} câmera(s) posicionada(s)", "acao")
+                return self._responder(200, {"ok": True, "cameras": cams})
             if rota == "skill/acao":
                 from ghost.automacao import demonstracao as demo
                 n = int(self.headers.get("Content-Length") or 0)
@@ -614,7 +625,12 @@ def _dados_mapa_rede():
 
 
 # Telas de visualização: nome -> (título, função que monta os dados). O desenho fica em painel_web/hud_<nome>.html.
-HUDS = {"rede": ("Link neural da rede", _dados_mapa_rede)}
+def _dados_cameras():
+    from ghost.servicos import rede
+    return rede.dados_cameras()
+
+
+HUDS = {"rede": ("Link neural da rede", _dados_mapa_rede), "cameras": ("Planta das câmeras", _dados_cameras)}
 _huds_abertos = {}
 
 

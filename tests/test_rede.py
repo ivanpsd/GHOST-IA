@@ -225,3 +225,30 @@ def test_agente_casa_pelo_nome_mesmo_com_ip_ipv6():
     assert rede.aparelho_do_agente({"nome": "Ti-Ivan", "ip": "192.168.50.37"}, inv)["mac"] == "bb"
     assert rede.aparelho_do_agente({"nome": "Outro", "ip": "192.168.50.37"}, inv)["mac"] == "bb"   # cai no IP
     assert rede.aparelho_do_agente({"nome": "Outro", "ip": "10.0.0.1"}, inv) is None
+
+
+def test_evento_do_gravador():
+    assert rede.ler_evento_cam("Code=VideoMotion;action=Start;index=12;data={") == ("movimento", "Start", 13)
+    assert rede.ler_evento_cam("Code=SmartMotionHuman;action=Stop;index=0") == ("pessoa", "Stop", 1)
+    assert rede.ler_evento_cam("Heartbeat") is None
+    assert rede.ler_evento_cam("Code=VideoLoss;action=Start;index=0") is None
+
+
+def test_canal_acende_e_apaga_depois_do_stop():
+    canais = {}
+    rede.aplicar_evento_cam(canais, ("movimento", "Start", 3), 100)
+    assert rede.situacao_canal(canais[3], 101) == "movimento"
+    rede.aplicar_evento_cam(canais, ("pessoa", "Start", 3), 102)
+    assert rede.situacao_canal(canais[3], 103) == "pessoa"          # pessoa vence movimento
+    rede.aplicar_evento_cam(canais, ("pessoa", "Stop", 3), 104)
+    rede.aplicar_evento_cam(canais, ("movimento", "Stop", 3), 104)
+    assert rede.situacao_canal(canais[3], 104 + rede.CAM_ACESO_S) == "pessoa"
+    assert rede.situacao_canal(canais[3], 105 + rede.CAM_ACESO_S) is None
+
+
+def test_cameras_da_planta_validadas():
+    r = rede.validar_cameras([{"canal": "2", "x": 10.4, "y": 20, "ang": 370, "nome": " Corredor "},
+                              {"canal": 99, "x": 0, "y": 0}, {"canal": 2, "x": 30, "y": 40}, {"x": 1}, "lixo"])
+    assert r == [{"canal": 2, "x": 30, "y": 40, "ang": 0, "nome": ""}]
+    assert rede.validar_cameras(None) == []
+    assert {s["id"] for s in rede.PLANTA_PADRAO["salas"]} >= {"almox", "rh", "financeiro", "servidor"}

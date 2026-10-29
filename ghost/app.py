@@ -965,7 +965,8 @@ def iniciar_ghost():
     _ligar("lembretes", lembretes.iniciar, avisos.para("alta"))
     _ligar("alertas", alertas.iniciar, avisos.para("normal"), ghost_ocupado)
     _ligar("rede", rede.iniciar, avisos.para("normal"), None)                # inventário da rede (só leitura)
-    _ligar("vigia da rede", rede.iniciar_vigia, avisos.para("critica"))  # críticos + histórico da internet            # disco, bateria, pausa, chuva...
+    _ligar("vigia da rede", rede.iniciar_vigia, avisos.para("critica"))
+    _ligar("câmeras", rede.iniciar_cameras)                                 # eventos do gravador (só leitura)  # críticos + histórico da internet            # disco, bateria, pausa, chuva...
     _ligar("notificações", notificacoes.iniciar, avisos.para("normal"), None)  # "Senhor, WhatsApp: Leonard"
     _ligar("tarefas", tarefas.iniciar, client_groq_fundo, MODELOS_GROQ[0], avisos.para("alta"))
     _ligar("memória longa", memoria_longa.importar_antigos, conversa.recentes())

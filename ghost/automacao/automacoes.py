@@ -833,6 +833,15 @@ def _tratar_hud(n, falar):
         else:
             falar("Senhor, o painel não está ligado; não consegui abrir o mapa da rede.")
         return True
+    if (tem(n, "planta das cameras", "planta de cameras", "mapa das cameras", "mapa de cameras", "tela das cameras",
+            "mostre as cameras", "mostra as cameras", "mostrar as cameras", "abrir as cameras", "abra as cameras")
+            and len(n.split()) <= 9):
+        from ghost.nucleo import painel
+        if painel.abrir_hud("cameras"):
+            falar("Abrindo a planta das câmeras, senhor.")
+        else:
+            falar("Senhor, o painel não está ligado; não consegui abrir a planta das câmeras.")
+        return True
     # "exportar indicadores": Excel com tudo o que a tela de indicadores mostra
     if tem(n, "exportar indicadores", "exporta os indicadores", "exportar os indicadores", "exportar painel",
            "exportar o painel", "exportar relatorio do painel", "exportar relatorio dos indicadores",

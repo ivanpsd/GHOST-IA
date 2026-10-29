@@ -3,6 +3,8 @@ GHOST - Rede da empresa, SOMENTE LEITURA. Um arquivo só para tudo de rede:
   1-4. inventário (varredura ARP/NetBIOS, apelidos, departamentos)   5. vigia (internet + aparelhos críticos)
   6. agentes MeshCentral (quem está logado, antivírus...)            7. dados do mapa "link neural"
   8. exportar para Excel                                               9. varredura automática
+  10. ações manuais pelo painel (WoL, aviso, reiniciar)              11. impressoras (SNMP)
+  12. câmeras do gravador Intelbras (eventos de movimento/pessoa + imagem ao vivo no painel)
 
 O que faz: descobre os aparelhos da rede local (ping + tabela ARP + nome NetBIOS/DNS), guarda um inventário
 (dados/rede.json: MAC, IP, nome na rede, apelido, responsável, departamento, primeira e última vez visto) e
@@ -1171,3 +1173,222 @@ def texto_impressoras():
         linhas.append(f"{nome_exibicao(a)} ({a['ip']}): {r['situacao']}; {sup}"
                       + (f"; ALERTA: {', '.join(r['erros'])}" if r["erros"] else ""))
     return "\n".join(linhas)
+
+
+# =============================================================
+# 12. CÂMERAS (gravador Intelbras na rede local) — SOMENTE LEITURA
+#     .env: CAM_GRAVADOR (IP), CAM_USUARIO, CAM_SENHA (conta só "ao vivo", sem reprodução/controle).
+#     - Eventos: UMA conexão aberta com o gravador (eventManager attach), recebe "movimento" / "pessoa" (SMD Plus).
+#     - Imagem ao vivo: só enquanto o painel pede, um canal por vez, no fluxo reduzido (RTSP subtype=1, ~352x240);
+#       fecha sozinho VISOR_OCIOSO_S depois do último pedido.
+#     - Login recusado (401) PARA tudo até reiniciar o Ghost: insistir bloquearia a conta no gravador.
+# =============================================================
+ARQ_PLANTA = caminhos.dado("cameras.json")
+CAM_EVENTOS = ("VideoMotion", "SmartMotionHuman")
+CAM_ACESO_S = 8                  # depois do "Stop", a área fica acesa mais um pouco (o olho acompanha)
+VISOR_OCIOSO_S = 15
+CAM_MAX_CANAIS = 64
+
+# Planta desenhada a partir do croqui do senhor (coordenadas da folha; o HUD só escala).
+PLANTA_PADRAO = {
+    "largura": 960, "altura": 1280,
+    "salas": [
+        {"id": "salao", "nome": "Salão", "x": 235, "y": 260, "w": 520, "h": 835, "fundo": True},
+        {"id": "almox", "nome": "Almoxarifado", "x": 240, "y": 85, "w": 525, "h": 175},
+        {"id": "deborah", "nome": "Sala Deborah", "x": 235, "y": 260, "w": 165, "h": 150},
+        {"id": "financeiro", "nome": "Financeiro", "x": 535, "y": 270, "w": 220, "h": 160},
+        {"id": "rh", "nome": "RH", "x": 525, "y": 760, "w": 225, "h": 220},
+        {"id": "reuniao", "nome": "Sala reunião", "x": 520, "y": 980, "w": 230, "h": 115},
+        {"id": "servidor", "nome": "Servidor", "x": 520, "y": 1095, "w": 225, "h": 95},
+        {"id": "banh_m", "nome": "Banh. M", "x": 470, "y": 1095, "w": 50, "h": 105},
+        {"id": "banh_f", "nome": "Banh. F", "x": 415, "y": 1095, "w": 55, "h": 110},
+        {"id": "copa", "nome": "Copa", "x": 210, "y": 1095, "w": 205, "h": 110},
+        {"id": "entrada", "nome": "Entrada", "x": 70, "y": 870, "w": 140, "h": 340},
+    ],
+    "moveis": [{"nome": "ADM", "x": 615, "y": 485, "w": 70, "h": 190}],
+    "portoes": [{"x1": 210, "y1": 870, "x2": 210, "y2": 1095}],
+    "cameras": [],               # [{"canal": 3, "x": .., "y": .., "ang": graus, "nome": "Corredor"}] — posicionadas no HUD
+}
+
+_cam_trava = threading.Lock()
+_cam = {"estado": "desligado", "erro": None, "titulos": {}, "login_recusado": False}
+_cam_canais = {}                 # canal -> {"movimento": {"ativo", "t"}, "pessoa": {...}}
+_cam_ultimos = []                # [(t, canal, tipo)] últimos inícios, para o HUD
+_visor = {"canal": None, "jpeg": None, "t_jpeg": 0.0, "pedido": 0.0, "thread": None}
+
+
+def cam_configurado():
+    return all(os.getenv(k) for k in ("CAM_GRAVADOR", "CAM_USUARIO", "CAM_SENHA"))
+
+
+def ler_evento_cam(linha):
+    """'Code=VideoMotion;action=Start;index=0;...' -> ('movimento', 'Start', 1) ou None (função pura)."""
+    m = re.search(r"Code=(\w+);action=(\w+);index=(\d+)", linha or "")
+    if not m or m.group(1) not in CAM_EVENTOS:
+        return None
+    return ("pessoa" if m.group(1) == "SmartMotionHuman" else "movimento", m.group(2), int(m.group(3)) + 1)
+
+
+def aplicar_evento_cam(canais, evento, agora):
+    """Atualiza o estado dos canais com um evento (função pura sobre o dict recebido)."""
+    tipo, acao, canal = evento
+    c = canais.setdefault(canal, {})
+    if acao in ("Start", "Pulse"):
+        c[tipo] = {"ativo": acao == "Start", "t": agora}
+    elif acao == "Stop":
+        c[tipo] = {"ativo": False, "t": agora}
+
+
+def situacao_canal(c, agora):
+    """'pessoa' | 'movimento' | None — pessoa vence movimento (função pura)."""
+    for tipo in ("pessoa", "movimento"):
+        e = (c or {}).get(tipo)
+        if e and (e["ativo"] or agora - e["t"] <= CAM_ACESO_S):
+            return tipo
+    return None
+
+
+def _cam_abridor():
+    import urllib.request
+    ip = os.environ["CAM_GRAVADOR"]
+    senhas = urllib.request.HTTPPasswordMgrWithDefaultRealm()
+    senhas.add_password(None, f"http://{ip}/", os.environ["CAM_USUARIO"], os.environ["CAM_SENHA"])
+    return ip, urllib.request.build_opener(urllib.request.HTTPDigestAuthHandler(senhas))
+
+
+def _cam_situacao(estado, erro=None):
+    with _cam_trava:
+        mudou = (_cam["estado"], _cam["erro"]) != (estado, erro)
+        _cam.update(estado=estado, erro=erro)
+    if mudou:
+        print(f"\n[CÂMERAS]: {estado}" + (f" ({erro})" if erro else "") + ".")
+
+
+def _cam_titulos(ip, abridor):
+    texto = abridor.open(f"http://{ip}/cgi-bin/configManager.cgi?action=getConfig&name=ChannelTitle",
+                         timeout=10).read().decode("utf-8", "replace")
+    return {int(i) + 1: n.strip() for i, n in re.findall(r"ChannelTitle\[(\d+)\]\.Name=(.*)", texto)}
+
+
+def _cam_laco():
+    import urllib.error
+    espera = 30
+    while not _cam["login_recusado"]:
+        try:
+            ip, abridor = _cam_abridor()
+            titulos = _cam_titulos(ip, abridor)
+            with _cam_trava:
+                _cam["titulos"] = titulos
+            codigos = "%5B" + "%2C".join(CAM_EVENTOS) + "%5D"
+            with abridor.open(f"http://{ip}/cgi-bin/eventManager.cgi?action=attach&codes={codigos}&heartbeat=5",
+                              timeout=30) as r:
+                _cam_situacao("conectado")
+                espera = 30
+                for linha in r:                       # heartbeat a cada 5 s; sem nada por 30 s = caiu
+                    ev = ler_evento_cam(linha.decode("utf-8", "replace"))
+                    if ev:
+                        agora = time.time()
+                        with _cam_trava:
+                            aplicar_evento_cam(_cam_canais, ev, agora)
+                            if ev[1] == "Start":
+                                _cam_ultimos.insert(0, (agora, ev[2], ev[0]))
+                                del _cam_ultimos[30:]
+            _cam_situacao("reconectando", "o gravador fechou a conexão")
+        except urllib.error.HTTPError as e:
+            if e.code == 401:
+                _cam["login_recusado"] = True
+                _cam_situacao("parado", "o gravador recusou o login (CAM_USUARIO/CAM_SENHA no .env). "
+                                        "Parei para não bloquear a conta; corrija e reinicie o Ghost")
+                return
+            _cam_situacao("reconectando", f"o gravador respondeu HTTP {e.code}")
+        except Exception as e:
+            _cam_situacao("reconectando", f"sem conexão com o gravador ({e.__class__.__name__})")
+        time.sleep(espera)
+        espera = min(espera * 2, 600)
+
+
+def iniciar_cameras():
+    """Liga a escuta de eventos do gravador (só se o .env tiver CAM_*)."""
+    if not cam_configurado():
+        return
+    threading.Thread(target=_cam_laco, daemon=True, name="cameras").start()
+
+
+# ---------------------------------------------------------------- imagem ao vivo (um canal por vez)
+def _visor_laco(canal):
+    import urllib.parse
+
+    import cv2
+    u, s = (urllib.parse.quote(os.environ[k], safe="") for k in ("CAM_USUARIO", "CAM_SENHA"))
+    cap = cv2.VideoCapture(f"rtsp://{u}:{s}@{os.environ['CAM_GRAVADOR']}:554/cam/realmonitor?channel={canal}&subtype=1",
+                           cv2.CAP_FFMPEG)
+    try:
+        while _visor["canal"] == canal and time.time() - _visor["pedido"] < VISOR_OCIOSO_S:
+            ok, quadro = cap.read()
+            if not ok:
+                break
+            if time.time() - _visor["t_jpeg"] >= 0.5:        # 2 imagens/s bastam para o painel
+                ok, jpg = cv2.imencode(".jpg", quadro, [cv2.IMWRITE_JPEG_QUALITY, 70])
+                if ok:
+                    with _cam_trava:
+                        _visor.update(jpeg=jpg.tobytes(), t_jpeg=time.time())
+    finally:
+        cap.release()
+        with _cam_trava:
+            if _visor["canal"] == canal:
+                _visor.update(canal=None, jpeg=None, thread=None)
+
+
+def foto_camera(canal):
+    """JPEG mais recente do canal (abre o fluxo na 1ª chamada; None enquanto conecta, ~4 s)."""
+    canal = int(canal)
+    if not 1 <= canal <= CAM_MAX_CANAIS:
+        raise ValueError("canal inválido")
+    if not cam_configurado() or _cam["login_recusado"]:
+        raise RuntimeError("câmeras não configuradas no .env (ou login recusado)")
+    with _cam_trava:
+        _visor["pedido"] = time.time()
+        if _visor["canal"] != canal or not (_visor["thread"] and _visor["thread"].is_alive()):
+            _visor.update(canal=canal, jpeg=None, t_jpeg=0.0)
+            _visor["thread"] = threading.Thread(target=_visor_laco, args=(canal,), daemon=True, name="visor")
+            _visor["thread"].start()
+        return _visor["jpeg"]
+
+
+# ---------------------------------------------------------------- planta + dados do HUD
+def carregar_planta():
+    p = arquivo.ler_json(ARQ_PLANTA, None)
+    return p if isinstance(p, dict) and p.get("salas") else json.loads(json.dumps(PLANTA_PADRAO))
+
+
+def validar_cameras(lista):
+    """Câmeras vindas do HUD -> lista limpa (função pura). Canal repetido: vale o último."""
+    limpas = {}
+    for c in lista if isinstance(lista, list) else []:
+        try:
+            canal = int(c["canal"])
+            x, y = float(c["x"]), float(c["y"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if 1 <= canal <= CAM_MAX_CANAIS and -100 <= x <= 2000 and -100 <= y <= 2000:
+            limpas[canal] = {"canal": canal, "x": round(x), "y": round(y), "ang": int(float(c.get("ang") or 0)) % 360,
+                             "nome": str(c.get("nome") or "").strip()[:40]}
+    return sorted(limpas.values(), key=lambda c: c["canal"])
+
+
+def salvar_cameras(lista):
+    p = carregar_planta()
+    p["cameras"] = validar_cameras(lista)
+    arquivo.salvar_json(ARQ_PLANTA, p)
+    return p["cameras"]
+
+
+def dados_cameras():
+    agora = time.time()
+    with _cam_trava:
+        canais = {canal: situacao_canal(c, agora) for canal, c in _cam_canais.items()}
+        ultimos = [{"t": t, "canal": c, "tipo": tipo} for t, c, tipo in _cam_ultimos[:15]]
+        estado, erro, titulos = _cam["estado"], _cam["erro"], dict(_cam["titulos"])
+    return {"gerado": agora, "configurado": cam_configurado(), "estado": estado, "erro": erro,
+            "gravador": os.getenv("CAM_GRAVADOR"), "titulos": titulos, "planta": carregar_planta(),
+            "canais": {str(k): v for k, v in canais.items() if v}, "ultimos": ultimos}
