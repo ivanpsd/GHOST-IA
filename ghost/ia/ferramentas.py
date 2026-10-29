@@ -47,7 +47,9 @@ TOOLS = [
         "description": ("Executa um comando local do Ghost escrito como o usuário falaria. Use para: enviar mensagem "
                         "no WhatsApp ('mande mensagem para X dizendo Y'), volume, mídia, print de tela, painel, celular e "
                         "skills pela tela ('aprenda uma skill pela tela', 'parar de gravar', 'teste a skill', "
-                        "'salve a skill como X', 'mostre a revisão')."),
+                        "'salve a skill como X', 'mostre a revisão') e as TELAS do Ghost: 'abrir planta das câmeras' "
+                        "(câmeras da empresa em 3D, painel/modelo/HUD das câmeras) e 'abrir link neural' (mapa da rede). "
+                        "Telas não são arquivos nem aplicativos: nunca pergunte caminho, use este comando."),
         "parameters": {"type": "object", "properties": {"frase": {"type": "string"}}, "required": ["frase"]}}},
     {"type": "function", "function": {
         "name": "ver_planilha",

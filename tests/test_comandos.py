@@ -94,3 +94,14 @@ def test_comandos_do_painel(auto, monkeypatch, frase, esperado):
 ])
 def test_acoes_sensiveis_do_celular(auto, frase, sensivel):
     assert bool(auto.comando_sensivel(frase)) == sensivel
+
+
+def test_pedidos_da_planta_das_cameras():
+    from ghost.automacao.automacoes import normalizar, pediu_hud_cameras
+    sim = ["Abra o painel das câmeras.", "Abra o painel das câmeras, por gentileza.", "abre as câmeras",
+           "Você consegue abrir o modelo 3D das câmeras?", "Está dentro das suas automações, que é a câmera HUD. Abra.",
+           "abrir planta das câmeras", "mostra as câmeras da empresa", "câmeras de segurança"]
+    nao = ["abra a câmera", "ligar a câmera", "quantas câmeras estão com movimento?", "câmeras apenas",
+           "qual câmera tem alguém agora?"]
+    assert all(pediu_hud_cameras(normalizar(f)) for f in sim), [f for f in sim if not pediu_hud_cameras(normalizar(f))]
+    assert not any(pediu_hud_cameras(normalizar(f)) for f in nao), [f for f in nao if pediu_hud_cameras(normalizar(f))]

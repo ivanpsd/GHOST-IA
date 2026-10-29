@@ -819,6 +819,17 @@ def _tratar_personalidade(n, falar):
         preferencias.definir("personalidade", "jarvis"); falar("Às suas ordens, senhor. De volta ao normal."); return True
     return False
 
+def pediu_hud_cameras(n):
+    """'abra o painel das câmeras', 'modelo 3d das câmeras', 'câmera hud, abra', 'planta das câmeras'...
+    Câmeras da EMPRESA (plural, ou singular junto de painel/planta/mapa/hud...). 'abra a câmera' (singular, sozinha)
+    continua sendo a webcam dos gestos; pergunta ('quantas câmeras têm movimento?') vai para a IA."""
+    if len(n.split()) > 12 or re.search(r"\b(quant\w*|qual|quais|onde|quem|tem alguem|por que|porque)\b", n):
+        return False
+    tela = re.search(r"\b(painel|planta|mapa|modelo|3d|hud|tela|gravador|seguranca|vigilancia)\b", n)
+    abrir = re.search(r"\b(abr\w*|abra|mostr\w*|exib\w*|ver|veja|carreg\w*|inici\w*)\b", n)
+    return bool((tem(n, "cameras") and (tela or abrir)) or (tem(n, "camera") and tela))
+
+
 def _tratar_hud(n, falar):
     # telas de visualização: "mostre o link neural da rede", "abra o mapa da rede"
     # só ABRIR: frase curta com verbo de mostrar. "crie departamentos no link neural" vai para a IA (não reabre a tela)
@@ -833,9 +844,7 @@ def _tratar_hud(n, falar):
         else:
             falar("Senhor, o painel não está ligado; não consegui abrir o mapa da rede.")
         return True
-    if (tem(n, "planta das cameras", "planta de cameras", "mapa das cameras", "mapa de cameras", "tela das cameras",
-            "mostre as cameras", "mostra as cameras", "mostrar as cameras", "abrir as cameras", "abra as cameras")
-            and len(n.split()) <= 9):
+    if pediu_hud_cameras(n):
         from ghost.nucleo import painel
         if painel.abrir_hud("cameras"):
             falar("Abrindo a planta das câmeras, senhor.")
