@@ -69,9 +69,29 @@ def _salvar_fatos(fatos):
     arquivo.salvar_json(ARQUIVO, {"fatos": fatos[-MAX_FATOS:]}, indent=2)
 
 
-def texto_para_prompt():
+FATOS_NO_PROMPT = 14        # antes ia a lista inteira (~1.100 tokens por pergunta); agora só o que importa
+
+
+def escolher_fatos(fatos, pergunta, limite=FATOS_NO_PROMPT):
+    """Os fatos mais ligados à pergunta (busca por palavras) + os mais recentes para completar (função pura)."""
+    if len(fatos) <= limite:
+        return fatos
+    from collections import Counter
+
+    from ghost.ia import memoria_longa
+    notas = memoria_longa.pontuar(pergunta or "", [Counter(memoria_longa.normalizar(f["texto"])) for f in fatos])
+    relevantes = [i for i in sorted(range(len(fatos)), key=lambda i: -notas[i]) if notas[i] > 0][:limite - 4]
+    for i in range(len(fatos) - 1, -1, -1):                  # completa com os mais novos
+        if len(relevantes) >= limite:
+            break
+        if i not in relevantes:
+            relevantes.append(i)
+    return [fatos[i] for i in sorted(relevantes)]
+
+
+def texto_para_prompt(pergunta=""):
     """Bloco anexado à instrução do sistema em cada pergunta."""
-    fatos = carregar_fatos()
+    fatos = escolher_fatos(carregar_fatos(), pergunta)
     if not fatos:
         return ""
     linhas = "\n".join(f"- {f['texto']}" for f in fatos)
@@ -128,8 +148,20 @@ def _aprender(client_groq, pergunta, resposta):
     except Exception as e:
         print(f"\n[MEMÓRIA]: falha ao aprender ({e})")
 
+def vale_aprender(pergunta):
+    """Só gasta uma chamada de IA quando a fala PODE ter um fato sobre o senhor (função pura).
+    'Obrigado', 'abre o Excel', 'que horas são' não têm: antes cada um custava ~1.500 tokens da cota."""
+    n = (pergunta or "").lower()
+    if len(n.split()) < 5:
+        return False
+    return bool(re.search(r"\b(eu|meu|minha|meus|minhas|me chame|me chama|prefiro|gosto|odeio|trabalho|sou|tenho|"
+                          r"moro|nosso|nossa|nossos|nossas|sempre|nunca|lembre|esquec|minha esposa|meu filho)\b", n))
+
+
 def aprender_em_segundo_plano(client_groq, pergunta, resposta):
     """Não atrasa a resposta: roda depois, em outra thread."""
+    if not vale_aprender(pergunta):
+        return
     threading.Thread(target=_aprender, args=(client_groq, pergunta, resposta), daemon=True).start()
 
 def substituir_categoria(prefixo, novos):

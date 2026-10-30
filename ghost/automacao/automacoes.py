@@ -1104,6 +1104,52 @@ def _tratar_pergunta(texto, n):
 
 
 # -------------------------------------------------------------
+# CATÁLOGO: os comandos locais que a IA pode pedir pelo comando_ghost (frase canônica, para que serve, seguro?)
+# "seguro" = só abre/mostra algo do próprio Ghost: não pede "confirma?" nem depois de ler e-mail/planilha.
+# -------------------------------------------------------------
+CATALOGO = [
+    ("abrir planta das cameras", "tela 3D com as câmeras da empresa (painel/modelo/HUD das câmeras)", True),
+    ("mostrar o link neural da rede", "mapa interativo da rede (máquinas, impressoras, agentes)", True),
+    ("abrir painel", "painel/indicadores do Ghost", True),
+    ("exportar indicadores", "Excel com os indicadores do painel", True),
+    ("tirar print", "captura da tela (ou 'tirar print do monitor N')", True),
+    ("quais comandos voce aprendeu", "lista os comandos ensinados pelo senhor", True),
+    ("mostre a revisao", "revisão da skill gravada", True),
+    ("aprenda uma skill pela tela", "começa a gravar o que o senhor faz na tela", False),
+    ("parar de gravar", "termina a gravação da skill", False),
+    ("teste a skill", "executa a skill gravada para testar", False),
+    ("salve a skill como <nome>", "salva a skill gravada", False),
+    ("descarte a skill", "joga fora a skill gravada", False),
+    ("conectar celular", "gera o código para ligar o app do celular", False),
+]
+
+
+def catalogo_texto():
+    return "; ".join(f"'{f}' ({d})" for f, d, _ in CATALOGO)
+
+
+def resolver_catalogo(frase, aproximado=True):
+    """Frase livre da IA/usuário -> (frase canônica, seguro) do catálogo, ou None (função pura).
+    'Painel das Câmeras', 'abrir o modelo 3D das câmeras' -> 'abrir planta das cameras'."""
+    import difflib
+    n = normalizar(frase)
+    if not n:
+        return None
+    if pediu_hud_cameras(n) or (tem(n, "cameras") and len(n.split()) <= 4):   # "Câmera" sozinha = app do Windows
+        return CATALOGO[0][0], True
+    if tem(n, "link neural", "mapa da rede", "mapa de rede"):
+        return CATALOGO[1][0], True
+    if not aproximado:
+        return None
+    melhor, nota = None, 0.0
+    for f, _, seguro in CATALOGO:
+        r = difflib.SequenceMatcher(None, n, f.replace(" <nome>", "")).ratio()
+        if r > nota:
+            melhor, nota = (f, seguro), r
+    return melhor if nota >= 0.72 else None
+
+
+# -------------------------------------------------------------
 # COMANDOS ENSINADOS: "quando eu falar X, faça Y" -> daqui pra frente X vira Y (dados/comandos_ensinados.json)
 # É assim que o Ghost aprende frases novas para comandos que já existem, sem mexer no código.
 # -------------------------------------------------------------

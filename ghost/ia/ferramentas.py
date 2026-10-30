@@ -315,6 +315,18 @@ def descrever(nome, args):
             }.get(nome, nome.replace("_", " "))
 
 
+def precisa_confirmar(nome, args):
+    """Ações no PC depois de ler conteúdo de fora pedem 'confirma?'. Telas do Ghost (catálogo 'seguro') não."""
+    if nome not in ACOES:
+        return False
+    if nome in ("comando_ghost", "abrir_aplicativo"):
+        from ghost.automacao import automacoes
+        achado = automacoes.resolver_catalogo(args.get("frase") or args.get("nome") or "", aproximado=nome == "comando_ghost")
+        if achado and achado[1]:
+            return False
+    return True
+
+
 def executar(nome, args, falar, pedir_confirmacao):
     """Executa uma ferramenta.
     Retorna (resultado_para_ia, precisa_resposta_da_ia).
@@ -323,6 +335,12 @@ def executar(nome, args, falar, pedir_confirmacao):
     """
     try:
         if nome == "abrir_aplicativo":
+            from ghost.automacao import automacoes
+            achado = automacoes.resolver_catalogo(args.get("nome", ""), aproximado=False)
+            if achado and achado[1]:                     # "Painel das Câmeras" não é programa: é tela do Ghost
+                print(f"\n[CATÁLOGO]: abrir_aplicativo '{args.get('nome')}' -> '{achado[0]}'")
+                if automacoes.executar(achado[0], falar):
+                    return f"aberto: {achado[0]}", False
             app, conf = apps.encontrar(args.get("nome", ""))
             if app and conf >= apps.CONFIANCA_MINIMA:
                 apps.abrir(app)
@@ -363,7 +381,13 @@ def executar(nome, args, falar, pedir_confirmacao):
 
         if nome == "comando_ghost":
             from ghost.automacao import automacoes
-            ok = automacoes.executar(args.get("frase", ""), falar)
+            frase = args.get("frase", "")
+            ok = automacoes.executar(frase, falar)
+            if not ok:                                   # a IA escreveu do jeito dela: tenta o catálogo
+                achado = automacoes.resolver_catalogo(frase)
+                if achado and "<" not in achado[0]:
+                    print(f"\n[CATÁLOGO]: '{frase}' -> '{achado[0]}'")
+                    ok = automacoes.executar(achado[0], falar)
             if not ok:
                 falar("Senhor, esse comando não existe nas minhas automações.")
             return "executado" if ok else "comando não reconhecido", False

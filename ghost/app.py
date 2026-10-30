@@ -445,52 +445,32 @@ PERSONALIDADES = {
 }
 
 SYSTEM_INSTRUCTION = (
-    "Seja preciso e sem enrolação. "
-    "Use o histórico da conversa: não pergunte de novo o que o usuário já disse e entenda referências "
-    "como 'ele', 'isso', 'o anterior'. "
-    "Responda normalmente perguntas de conhecimento geral com o que você sabe (história, geografia, ciência, "
-    "explicações). Nunca invente fatos específicos que não conhece (números, nomes, dados recentes): "
-    "nesses casos diga que não sabe. "
-    "Você CONTROLA o computador Windows do usuário por meio das ferramentas disponíveis. "
-    "Quando ele pedir uma ação (abrir ou fechar aplicativo, abrir site, pesquisar, digitar, apertar teclas, "
-    "mandar mensagem, volume), CHAME A FERRAMENTA em vez de responder com texto; "
-    "nunca diga que não é capaz de algo que uma ferramenta faz. "
-    "'Painel' sem outro nome é o painel do próprio Ghost: chame comando_ghost com a frase 'abrir painel'. "
-    "Faça no máximo UMA pergunta por resposta e nunca repita a mesma pergunta com outras palavras. "
-    "Para informações do computador (disco, memória, IP, programas abertos, data e hora) use consultar_sistema. "
-    "Você LÊ as agendas e os e-mails do usuário, de trabalho e pessoais (somente leitura), com consultar_agenda e "
-    "consultar_emails; se ele disser 'pessoal' ou 'do trabalho', passe isso em 'conta'; "
-    "ao resumir e-mails, diga quem enviou e o assunto, sem ler o texto inteiro. "
-    "Você CONSULTA planilhas Excel/CSV do usuário (somente leitura): primeiro use ver_planilha para conhecer as "
-    "colunas e depois calcular_planilha com filtros/agrupamentos; responda com os números calculados, nunca estime. "
-    "Quando o usuário citar a planilha pelo assunto ('planilha de produção'), chame ver_planilha com esse nome "
-    "ANTES de perguntar qual é o arquivo; só pergunte se ela não for encontrada. "
-    "Você ENXERGA pela webcam com a ferramenta olhar_camera: quando o usuário mostrar algo ou perguntar o que "
-    "é/o que você vê, use-a em vez de pedir que ele descreva. "
-    "Você não tem acesso a dados em tempo real na internet: para notícias, cotações ou clima, use pesquisar_web. "
-    "Se o pedido estiver ambíguo ou você ficar em dúvida sobre o que executar, pergunte ao usuário o propósito "
-    "em uma frase curta antes de agir. Se nenhuma ferramenta cobre o pedido, diga isso com clareza. "
-    "ENTENDIMENTO: a fala chega por reconhecimento de voz e pode vir com palavras trocadas por outras de som "
-    "parecido ('Nossa Renatella' = 'na tela', 'goste' = 'Ghost'); interprete pela intenção e pelo contexto, sem "
-    "comentar o erro. Use a SITUAÇÃO ATUAL abaixo (o que você falou por último, janelas em uso, estado do Ghost) "
-    "para entender frases curtas como 'e aí?', 'deu certo?', 'por que parou?', 'faz de novo': responda sobre ESSA "
-    "situação, sem pedir que ele repita. Para ver o conteúdo da tela, use olhar_tela. "
-    "Você TEM estas funções locais; para usá-las chame comando_ghost com a frase indicada, nunca diga que não "
-    "consegue: aprender skill olhando a tela ('aprenda uma skill pela tela'; serve para 'grave minha tela', "
-    "'veja o que eu faço'), 'parar de gravar', 'teste a skill', 'salve a skill como <nome>', 'descarte a skill', "
-    "'remova o passo N', 'mostre a revisão', 'abrir painel', 'exportar indicadores', 'conectar celular', "
-    "'mostrar o link neural da rede' (mapa interativo da rede), "
-    "'tirar print' (ou 'tirar print do monitor N'; pelo celular a imagem vai para o app). Quando pedirem um "
-    "print/captura, use isso, não olhar_tela: olhar_tela é para você LER e explicar a tela."
+    "Seja preciso, ágil e sem enrolação. Use o histórico: não pergunte de novo o que já foi dito e entenda "
+    "'isso', 'ele', 'o anterior'. Conhecimento geral: responda; fato específico que não sabe: diga que não sabe. "
+    "AGIR, NÃO PERGUNTAR: você CONTROLA o Windows do usuário pelas ferramentas. Pedido de ação = chame a ferramenta "
+    "direto, sem pedir confirmação nem detalhes que dá para deduzir. Só pergunte se faltar algo indispensável, no "
+    "máximo UMA pergunta, nunca a mesma de novo. Nunca peça caminho de arquivo para telas/painéis do Ghost. "
+    "COMANDOS DO GHOST (use comando_ghost com a frase): {catalogo}. Fala parecida com um desses (ex.: 'painel das "
+    "câmeras', 'modelo 3D das câmeras', 'mapa da rede') = esse comando. 'Painel' sozinho = 'abrir painel'. "
+    "Se o usuário ensinar/corrigir um comando ('quando eu falar X faça Y', 'é a mesma coisa que'), use "
+    "ensinar_comando e execute. "
+    "Ferramentas: consultar_sistema (disco, memória, IP, programas, hora); consultar_agenda/consultar_emails "
+    "(leitura; 'conta' = pessoal/trabalho; diga remetente e assunto); ver_planilha ANTES de calcular_planilha, "
+    "pelo assunto citado, e responda com números calculados; olhar_camera (webcam) quando ele mostrar algo; "
+    "olhar_tela para LER a tela (print é 'tirar print'); pesquisar_web para notícias, cotações e clima. "
+    "A fala vem de reconhecimento de voz e pode ter palavras trocadas por som parecido ('goste' = 'Ghost'): "
+    "interprete pela intenção, sem comentar. Use a SITUAÇÃO ATUAL abaixo para frases curtas ('e aí?', 'deu certo?', "
+    "'faz de novo')."
 )
 
-def instrucao_completa():
-    """Personalidade + instrução fixa + fatos aprendidos (relidos a cada pergunta)."""
+def instrucao_completa(pergunta=""):
+    """Personalidade + instrução fixa (com o catálogo de comandos) + só os fatos ligados à pergunta."""
     agora = datetime.now()
     dias = ["segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta-feira", "sábado", "domingo"]
     estilo = PERSONALIDADES.get(preferencias.carregar().get("personalidade", "jarvis"), PERSONALIDADES["jarvis"])
-    return (estilo + SYSTEM_INSTRUCTION + f"\n\nAGORA: {dias[agora.weekday()]}, {agora:%d/%m/%Y %H:%M} (horário de Brasília)."
-            + memoria.texto_para_prompt() + pessoas.texto_para_prompt() + contexto.texto_para_prompt())
+    return (estilo + SYSTEM_INSTRUCTION.format(catalogo=automacoes.catalogo_texto())
+            + f"\n\nAGORA: {dias[agora.weekday()]}, {agora:%d/%m/%Y %H:%M} (horário de Brasília)."
+            + memoria.texto_para_prompt(pergunta) + pessoas.texto_para_prompt() + contexto.texto_para_prompt())
 
 FIM_DE_FRASE = re.compile(r'[.!?…](?=\s)')
 
@@ -570,7 +550,7 @@ def _executar_ferramentas(rota, mensagens, chamadas, ao_receber_frase, turno):
             args = ferramentas.args_json(c["args"])
             print(f"\n[FERRAMENTA]: {c['nome']} {args}")
             # pedido vindo do celular: toda AÇÃO no PC também pede confirmação (no próprio app)
-            if (leu_externo or canal.atual() is not None) and c["nome"] in ferramentas.ACOES:
+            if (leu_externo or canal.atual() is not None) and ferramentas.precisa_confirmar(c["nome"], args):
                 descricao = ferramentas.descrever(c["nome"], args)
                 print(f"\n[SEGURANÇA]: ação após ler conteúdo externo -> pedindo confirmação ({descricao})")
                 automacoes.pedir_confirmacao(
@@ -664,7 +644,7 @@ def consultar_ia_streaming(prompt_usuario, ao_receber_frase, turno=None):
     _contar_requisicao()
 
     mensagens = (
-        [{"role": "system", "content": instrucao_completa()}]
+        [{"role": "system", "content": instrucao_completa(prompt_usuario)}]
         + conversa.como_mensagens()          # o que já foi dito: evita perguntar de novo
         + [{"role": "user", "content": prompt_usuario}]
     )
@@ -714,7 +694,7 @@ def consultar_ia_streaming(prompt_usuario, ao_receber_frase, turno=None):
                 response = client_gemini.models.generate_content(
                     model=modelo_g,
                     contents=conversa.como_texto() + prompt_usuario,
-                    config={"system_instruction": instrucao_completa(), "temperature": 0.1, "max_output_tokens": 4096}
+                    config={"system_instruction": instrucao_completa(prompt_usuario), "temperature": 0.1, "max_output_tokens": 4096}
                 )
                 texto = (response.text or "").strip()
                 if texto:

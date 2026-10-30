@@ -120,3 +120,13 @@ def test_ensinar_comando_por_voz():
     assert traduzir_ensinado("abra o painel das cameras por favor", t) == "abrir planta das cameras"
     assert traduzir_ensinado("abre o painel da camera", t) == "abrir planta das cameras"
     assert traduzir_ensinado("abra o painel de energia", t) is None
+
+
+def test_catalogo_entende_jeitos_diferentes():
+    from ghost.automacao.automacoes import resolver_catalogo
+    assert resolver_catalogo("Painel das Câmeras") == ("abrir planta das cameras", True)
+    assert resolver_catalogo("abrir modelo 3D das câmeras") == ("abrir planta das cameras", True)
+    assert resolver_catalogo("Câmera", aproximado=False) is None               # app Câmera do Windows
+    assert resolver_catalogo("mapa da rede")[0] == "mostrar o link neural da rede"
+    assert resolver_catalogo("exportar os indicadores")[0] == "exportar indicadores"
+    assert resolver_catalogo("Excel") is None

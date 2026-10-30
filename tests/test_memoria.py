@@ -12,3 +12,14 @@ def test_memoria_longa_busca_por_palavras(monkeypatch, tmp_path):
     assert "fornecedor de embalagens" in r and "previsão" not in r
     assert "Não encontrei" in ml.buscar("contrato de aluguel")
     assert ml.pontuar("", [{}]) == [0.0]
+
+
+def test_memoria_so_fatos_relevantes_e_aprende_so_quando_vale():
+    from ghost.ia import memoria
+    fatos = [{"texto": f"fato genérico número {i}"} for i in range(40)] + [{"texto": "Usuário cuida do PCP da fábrica"}]
+    escolhidos = memoria.escolher_fatos(fatos, "como está o PCP hoje?")
+    assert len(escolhidos) == memoria.FATOS_NO_PROMPT
+    assert any("PCP" in f["texto"] for f in escolhidos)
+    assert not memoria.vale_aprender("obrigado")
+    assert not memoria.vale_aprender("abra o painel das câmeras")
+    assert memoria.vale_aprender("eu prefiro que você me chame de Ivan sempre")

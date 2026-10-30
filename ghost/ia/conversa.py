@@ -56,12 +56,17 @@ def teve_externo_recente():
     return any(t.get("externo") for t in recentes())
 
 
+TROCAS_ENVIADAS = 6        # para a IA vão só as últimas 6 (as 12 ficam guardadas): menos cota por pergunta
+CORTE_RESPOSTA = 400       # resposta longa antiga entra resumida no começo
+
+
 def como_mensagens():
     """Formato de chat (Groq): pares user/assistant."""
     msgs = []
-    for t in recentes():
-        msgs.append({"role": "user", "content": t["usuario"]})
-        msgs.append({"role": "assistant", "content": t["ghost"]})
+    for t in recentes()[-TROCAS_ENVIADAS:]:
+        msgs.append({"role": "user", "content": t["usuario"][:CORTE_RESPOSTA]})
+        g = t["ghost"]
+        msgs.append({"role": "assistant", "content": g if len(g) <= CORTE_RESPOSTA else g[:CORTE_RESPOSTA] + "…"})
     return msgs
 
 
