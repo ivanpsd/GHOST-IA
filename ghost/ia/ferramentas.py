@@ -270,7 +270,7 @@ GRUPOS = [
     (r"resumo|meu dia|bom dia|hoje", {"resumo_do_dia"}),
     (r"agenda|reuni|compromisso|evento|calendario|e.?mail|caixa de entrada|inbox", {"consultar_agenda", "consultar_emails"}),
     (r"lembr|alarme|despert|me (cham|avis)|avise|daqui a|as \d", {"criar_lembrete", "listar_lembretes", "cancelar_lembrete"}),
-    (r"camera|webcam|olha isso|ve isso|o que (e|eh) isso|na minha mao|segurando|mostrando|estou vestindo",
+    (r"\bcamera\b|webcam|olha isso|ve isso|o que (e|eh) isso|na minha mao|segurando|mostrando|estou vestindo",
      {"olhar_camera"}),
     (r"skill|habilidade|automatiz|rotina", {"criar_skill"}),
     (r"quando eu (fal|dis|ped)|sempre que|ensin|aprend|mesma coisa|ja te (falei|disse|ensinei)|burro|comando",
@@ -278,7 +278,7 @@ GRUPOS = [
     (r"sauda|cumpriment|me chame|me chama", {"definir_saudacao"}),
     (r"notifica|whats|mensage|quem (me )?(mandou|escreveu)", {"listar_notificacoes", "configurar_notificacoes"}),
     (r"\brede\b|maquina|computador|\bpcs?\b|\bips?\b|online|ligad|servidor|internet|wi.?fi|roteador|aparelho|"
-     r"impressora|conexao|lento|ping|caiu|queda|critic|inventario|camera|logad|antivirus|firewall|reinici|"
+     r"impressora|conexao|lento|ping|caiu|queda|critic|inventario|logad|antivirus|firewall|reinici|"
      r"atualizac|agente|meshcentral|ligada desde|departamento|setor|link neural|renome|apelid",
      {"consultar_rede", "nomear_maquina", "consultar_maquinas", "departamentos_rede"}),
     (r"segundo plano|tarefa|enquanto|monitor|acompanh|fique de olho|verifique a cada", {"tarefa_segundo_plano",
