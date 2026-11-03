@@ -450,8 +450,8 @@ SYSTEM_INSTRUCTION = (
     "AGIR, NÃO PERGUNTAR: você CONTROLA o Windows do usuário pelas ferramentas. Pedido de ação = chame a ferramenta "
     "direto, sem pedir confirmação nem detalhes que dá para deduzir. Só pergunte se faltar algo indispensável, no "
     "máximo UMA pergunta, nunca a mesma de novo. Nunca peça caminho de arquivo para telas/painéis do Ghost. "
-    "COMANDOS DO GHOST (use comando_ghost com a frase): {catalogo}. Fala parecida com um desses (ex.: 'painel das "
-    "câmeras', 'modelo 3D das câmeras', 'mapa da rede') = esse comando. 'Painel' sozinho = 'abrir painel'. "
+    "COMANDOS DO GHOST (use comando_ghost com a frase): {catalogo}. Fala parecida com um desses (ex.: 'mapa da rede', "
+    "'mostra a rede') = esse comando. 'Painel' sozinho = 'abrir painel'. "
     "Se o usuário ensinar/corrigir um comando ('quando eu falar X faça Y', 'é a mesma coisa que'), use "
     "ensinar_comando e execute. "
     "Ferramentas: consultar_sistema (disco, memória, IP, programas, hora); consultar_agenda/consultar_emails "
@@ -946,7 +946,6 @@ def iniciar_ghost():
     _ligar("alertas", alertas.iniciar, avisos.para("normal"), ghost_ocupado)
     _ligar("rede", rede.iniciar, avisos.para("normal"), None)                # inventário da rede (só leitura)
     _ligar("vigia da rede", rede.iniciar_vigia, avisos.para("critica"))
-    _ligar("câmeras", rede.iniciar_cameras)                                 # eventos do gravador (só leitura)  # críticos + histórico da internet            # disco, bateria, pausa, chuva...
     _ligar("notificações", notificacoes.iniciar, avisos.para("normal"), None)  # "Senhor, WhatsApp: Leonard"
     _ligar("tarefas", tarefas.iniciar, client_groq_fundo, MODELOS_GROQ[0], avisos.para("alta"))
     _ligar("memória longa", memoria_longa.importar_antigos, conversa.recentes())

@@ -746,17 +746,6 @@ def _tratar_personalidade(n, falar):
         preferencias.definir("personalidade", "jarvis"); falar("Às suas ordens, senhor. De volta ao normal."); return True
     return False
 
-def pediu_hud_cameras(n):
-    """'abra o painel das câmeras', 'modelo 3d das câmeras', 'câmera hud, abra', 'planta das câmeras'...
-    Câmeras da EMPRESA (plural, ou singular junto de painel/planta/mapa/hud...). 'abra a câmera' (singular, sozinha)
-    continua sendo a webcam (app Câmera / olhar_camera); pergunta ('quantas câmeras têm movimento?') vai para a IA."""
-    if len(n.split()) > 12 or re.search(r"\b(quant\w*|qual|quais|onde|quem|tem alguem|por que|porque)\b", n):
-        return False
-    tela = re.search(r"\b(painel|planta|mapa|modelo|3d|hud|tela|gravador|seguranca|vigilancia)\b", n)
-    abrir = re.search(r"\b(abr\w*|abra|mostr\w*|exib\w*|ver|veja|carreg\w*|inici\w*)\b", n)
-    return bool((tem(n, "cameras") and (tela or abrir)) or (tem(n, "camera") and tela))
-
-
 def _tratar_hud(n, falar):
     # telas de visualização: "mostre o link neural da rede", "abra o mapa da rede"
     # só ABRIR: frase curta com verbo de mostrar. "crie departamentos no link neural" vai para a IA (não reabre a tela)
@@ -770,13 +759,6 @@ def _tratar_hud(n, falar):
             falar("Abrindo o link neural da rede, senhor.")
         else:
             falar("Senhor, o painel não está ligado; não consegui abrir o mapa da rede.")
-        return True
-    if pediu_hud_cameras(n):
-        from ghost.nucleo import painel
-        if painel.abrir_hud("cameras"):
-            falar("Abrindo a planta das câmeras, senhor.")
-        else:
-            falar("Senhor, o painel não está ligado; não consegui abrir a planta das câmeras.")
         return True
     # "exportar indicadores": Excel com tudo o que a tela de indicadores mostra
     if tem(n, "exportar indicadores", "exporta os indicadores", "exportar os indicadores", "exportar painel",
@@ -1016,7 +998,6 @@ def _tratar_pergunta(texto, n):
 # "seguro" = só abre/mostra algo do próprio Ghost: não pede "confirma?" nem depois de ler e-mail/planilha.
 # -------------------------------------------------------------
 CATALOGO = [
-    ("abrir planta das cameras", "tela 3D com as câmeras da empresa (painel/modelo/HUD das câmeras)", True),
     ("mostrar o link neural da rede", "mapa interativo da rede (máquinas, impressoras, agentes)", True),
     ("abrir painel", "painel/indicadores do Ghost", True),
     ("exportar indicadores", "Excel com os indicadores do painel", True),
@@ -1038,15 +1019,13 @@ def catalogo_texto():
 
 def resolver_catalogo(frase, aproximado=True):
     """Frase livre da IA/usuário -> (frase canônica, seguro) do catálogo, ou None (função pura).
-    'Painel das Câmeras', 'abrir o modelo 3D das câmeras' -> 'abrir planta das cameras'."""
+    'mapa da rede', 'exportar os indicadores' -> frase canônica."""
     import difflib
     n = normalizar(frase)
     if not n:
         return None
-    if pediu_hud_cameras(n) or (tem(n, "cameras") and len(n.split()) <= 4):   # "Câmera" sozinha = app do Windows
-        return CATALOGO[0][0], True
     if tem(n, "link neural", "mapa da rede", "mapa de rede"):
-        return CATALOGO[1][0], True
+        return CATALOGO[0][0], True
     if not aproximado:
         return None
     melhor, nota = None, 0.0
@@ -1067,8 +1046,7 @@ SEPARADORES = rf"\b(?:{SEP_LISTA})\b"
 
 
 def ler_ensino(texto):
-    """'Quando eu falar painel das câmeras, abra a planta das câmeras' -> ('painel das cameras',
-    'abra a planta das cameras') ou None (função pura). Vírgula separa; sem vírgula, 'faça/execute/significa...'."""
+    """'Quando eu falar mapa, mostre o link neural' -> ('mapa', 'mostre o link neural') ou None (função pura). Vírgula separa; sem vírgula, 'faça/execute/significa...'."""
     bruto = unicodedata.normalize("NFD", (texto or "").lower())
     bruto = "".join(c for c in bruto if unicodedata.category(c) != "Mn")
     m = re.search(r"\b(?:quando|sempre que|se) (?:eu )?(?:falar|disser|dizer|pedir|mandar|digitar)\s+(.+)$", bruto)
@@ -1104,7 +1082,7 @@ def ensinar(de, para):
 
 
 def traduzir_ensinado(n, tabela=None):
-    """Frase dita -> comando ensinado (igual, ou quase igual: 'abre o painel das cameras' ~ 'painel das cameras').
+    """Frase dita -> comando ensinado (igual, ou quase igual: 'abre o mapa da empresa' ~ 'mapa da empresa').
     Função pura com 'tabela'; None se não houver."""
     tabela = ensinados() if tabela is None else tabela
     if n in tabela:

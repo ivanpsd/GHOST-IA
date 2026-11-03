@@ -47,8 +47,7 @@ TOOLS = [
         "description": ("Executa um comando local do Ghost escrito como o usuário falaria. Use para: enviar mensagem "
                         "no WhatsApp ('mande mensagem para X dizendo Y'), volume, mídia, print de tela, painel, celular e "
                         "skills pela tela ('aprenda uma skill pela tela', 'parar de gravar', 'teste a skill', "
-                        "'salve a skill como X', 'mostre a revisão') e as TELAS do Ghost: 'abrir planta das câmeras' "
-                        "(câmeras da empresa em 3D, painel/modelo/HUD das câmeras) e 'abrir link neural' (mapa da rede). "
+                        "'salve a skill como X', 'mostre a revisão') e as TELAS do Ghost: 'abrir link neural' (mapa da rede). "
                         "Telas não são arquivos nem aplicativos: nunca pergunte caminho, use este comando."),
         "parameters": {"type": "object", "properties": {"frase": {"type": "string"}}, "required": ["frase"]}}},
     {"type": "function", "function": {
@@ -173,7 +172,7 @@ TOOLS = [
     {"type": "function", "function": {
         "name": "ensinar_comando",
         "description": ("Grava que uma FRASE do usuário deve fazer o mesmo que um comando que já existe (ex.: frase "
-                        "'painel das câmeras' -> comando 'abrir planta das câmeras'). Use quando ele ensinar ou corrigir "
+                        "'mapa da empresa' -> comando 'mostrar o link neural da rede'). Use quando ele ensinar ou corrigir "
                         "um comando ('quando eu falar X faça Y', 'X é a mesma coisa que Y', 'eu já te ensinei isso'). "
                         "'comando' tem que ser uma frase que o comando_ghost já entende."),
         "parameters": {"type": "object", "properties": {"frase": {"type": "string"}, "comando": {"type": "string"}},
@@ -337,7 +336,7 @@ def executar(nome, args, falar, pedir_confirmacao):
         if nome == "abrir_aplicativo":
             from ghost.automacao import automacoes
             achado = automacoes.resolver_catalogo(args.get("nome", ""), aproximado=False)
-            if achado and achado[1]:                     # "Painel das Câmeras" não é programa: é tela do Ghost
+            if achado and achado[1]:                     # "Mapa da rede" não é programa: é tela do Ghost
                 print(f"\n[CATÁLOGO]: abrir_aplicativo '{args.get('nome')}' -> '{achado[0]}'")
                 if automacoes.executar(achado[0], falar):
                     return f"aberto: {achado[0]}", False

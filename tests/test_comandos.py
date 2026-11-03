@@ -96,36 +96,23 @@ def test_acoes_sensiveis_do_celular(auto, frase, sensivel):
     assert bool(auto.comando_sensivel(frase)) == sensivel
 
 
-def test_pedidos_da_planta_das_cameras():
-    from ghost.automacao.automacoes import normalizar, pediu_hud_cameras
-    sim = ["Abra o painel das câmeras.", "Abra o painel das câmeras, por gentileza.", "abre as câmeras",
-           "Você consegue abrir o modelo 3D das câmeras?", "Está dentro das suas automações, que é a câmera HUD. Abra.",
-           "abrir planta das câmeras", "mostra as câmeras da empresa", "câmeras de segurança"]
-    nao = ["abra a câmera", "ligar a câmera", "quantas câmeras estão com movimento?", "câmeras apenas",
-           "qual câmera tem alguém agora?"]
-    assert all(pediu_hud_cameras(normalizar(f)) for f in sim), [f for f in sim if not pediu_hud_cameras(normalizar(f))]
-    assert not any(pediu_hud_cameras(normalizar(f)) for f in nao), [f for f in nao if pediu_hud_cameras(normalizar(f))]
-
-
 def test_ensinar_comando_por_voz():
     from ghost.automacao.automacoes import ler_ensino, traduzir_ensinado
-    assert ler_ensino("Quando eu falar painel das câmeras, abra a planta das câmeras") == \
-        ("painel das cameras", "abra a planta das cameras")
+    assert ler_ensino("Quando eu falar mapa da empresa, mostre o link neural") == \
+        ("mapa da empresa", "mostre o link neural")
     assert ler_ensino("sempre que eu disser o relatório, faça exportar indicadores") == ("relatorio", "exportar indicadores")
     assert ler_ensino("quando eu falar bom dia execute resumo do dia") == ("bom dia", "resumo do dia")
     assert ler_ensino("quando eu falar com o João") is None
     assert ler_ensino("quando eu falar com o João, me lembre de cobrar") is None
-    t = {"painel das cameras": "abrir planta das cameras"}
-    assert traduzir_ensinado("painel das cameras", t) == "abrir planta das cameras"
-    assert traduzir_ensinado("abra o painel das cameras por favor", t) == "abrir planta das cameras"
-    assert traduzir_ensinado("abre o painel da camera", t) == "abrir planta das cameras"
+    t = {"mapa da empresa": "mostrar o link neural da rede"}
+    assert traduzir_ensinado("mapa da empresa", t) == "mostrar o link neural da rede"
+    assert traduzir_ensinado("abra o mapa da empresa por favor", t) == "mostrar o link neural da rede"
+    assert traduzir_ensinado("abre o mapa das empresa", t) == "mostrar o link neural da rede"
     assert traduzir_ensinado("abra o painel de energia", t) is None
 
 
 def test_catalogo_entende_jeitos_diferentes():
     from ghost.automacao.automacoes import resolver_catalogo
-    assert resolver_catalogo("Painel das Câmeras") == ("abrir planta das cameras", True)
-    assert resolver_catalogo("abrir modelo 3D das câmeras") == ("abrir planta das cameras", True)
     assert resolver_catalogo("Câmera", aproximado=False) is None               # app Câmera do Windows
     assert resolver_catalogo("mapa da rede")[0] == "mostrar o link neural da rede"
     assert resolver_catalogo("exportar os indicadores")[0] == "exportar indicadores"

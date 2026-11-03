@@ -21,5 +21,5 @@ def test_memoria_so_fatos_relevantes_e_aprende_so_quando_vale():
     assert len(escolhidos) == memoria.FATOS_NO_PROMPT
     assert any("PCP" in f["texto"] for f in escolhidos)
     assert not memoria.vale_aprender("obrigado")
-    assert not memoria.vale_aprender("abra o painel das câmeras")
+    assert not memoria.vale_aprender("abra o mapa da rede agora")
     assert memoria.vale_aprender("eu prefiro que você me chame de Ivan sempre")
