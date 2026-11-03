@@ -42,3 +42,11 @@ def test_mesma_chave_substitui():
     avisos.anunciar("internet caiu", "critica", chave="internet")
     avisos.anunciar("internet voltou", "critica", chave="internet")
     assert [a["texto"] for a in avisos._fila] == ["internet voltou"]
+
+
+def test_frase_da_pausa_diz_o_que_mede():
+    from ghost.servicos import alertas
+    assert alertas.texto_pausa(60) == "Senhor, já faz 1 hora usando o computador sem parar. Que tal levantar e tomar uma água?"
+    assert "1 hora e 30 minutos" in alertas.texto_pausa(90)
+    assert "2 horas usando" in alertas.texto_pausa(120)
+    assert alertas.PAUSA_APOS_MIN == 60 and alertas.PARADO_CONTA_COMO_PAUSA_MIN == 3

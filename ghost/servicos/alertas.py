@@ -26,8 +26,9 @@ HORARIO = (8, 20)
 DISCO_MIN_PCT, DISCO_MIN_GB = 10, 15
 MEMORIA_MAX_PCT = 92
 BATERIA_MIN_PCT = 20
-PAUSA_APOS_MIN = 90
-PARADO_CONTA_COMO_PAUSA_MIN = 5
+# Pausa: mede uso CONTÍNUO de teclado/mouse (não usa câmera; não sabe se o senhor levantou).
+PAUSA_APOS_MIN = 60                 # aviso depois de 60 min usando o PC sem parar
+PARADO_CONTA_COMO_PAUSA_MIN = 3     # 3 min sem tocar em teclado/mouse = pausa (zera a contagem)
 HORA_SAIDA = "18:00"            # chuva: avisa ~1h30 antes
 CHUVA_MIN_PCT = 60
 
@@ -63,6 +64,13 @@ def _bateria():
     if s.BatteryFlag == 128 or s.BatteryLifePercent == 255:
         return None, True  # sem bateria
     return s.BatteryLifePercent, s.ACLineStatus == 1
+
+
+def texto_pausa(minutos):
+    """Frase do aviso, dizendo o que ele de fato mede (função pura)."""
+    h, m = divmod(int(minutos), 60)
+    tempo = (f"{h} hora" + ("s" if h > 1 else "") if h else "") + (" e " if h and m else "") + (f"{m} minutos" if m else "")
+    return f"Senhor, já faz {tempo} usando o computador sem parar. Que tal levantar e tomar uma água?"
 
 
 def _segundos_parado():
@@ -138,7 +146,7 @@ def checar():
         _estado["uso_desde"] = time.time()
     elif time.time() - _estado["uso_desde"] > PAUSA_APOS_MIN * 60 and _pode("pausa", PAUSA_APOS_MIN * 60):
         _estado["uso_desde"] = time.time()
-        _avisar("pausa", "Senhor, já faz uma hora e meia sem pausa. Que tal levantar e tomar uma água?")
+        _avisar("pausa", texto_pausa(PAUSA_APOS_MIN))
 
     # chuva na hora da saída (dias úteis, ~1h30 antes)
     h, m = map(int, HORA_SAIDA.split(":"))
