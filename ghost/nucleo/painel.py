@@ -25,7 +25,7 @@ from datetime import date, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
-from ghost.nucleo import arquivo, caminhos, preferencias
+from ghost.nucleo import caminhos, preferencias
 
 PASTA_WEB = os.path.join(os.path.dirname(os.path.abspath(__file__)), "painel_web")
 PASTA_EXPORTAR = os.path.join(os.path.expanduser("~"), "Documents", "Ghost", "Relatorios")
@@ -149,25 +149,6 @@ def _tempos_cpu():
     return v[0], v[1] + v[2]          # (ocioso, total): kernel já inclui o ocioso
 
 
-BACKUP_INTERVALO_S = 20 * 3600
-
-
-def _backup_se_preciso():
-    """1x por dia: zip de dados/ na pasta GHOST_BACKUP do .env (sem a variável, não faz nada). Em outra thread."""
-    destino = os.getenv("GHOST_BACKUP")
-    if not destino or time.time() - preferencias.carregar().get("ultimo_backup", 0) < BACKUP_INTERVALO_S:
-        return
-
-    def _fazer():
-        try:
-            z = arquivo.backup_dados(caminhos.DADOS, destino)
-            preferencias.definir("ultimo_backup", time.time())
-            print(f"\n[BACKUP]: {z}")
-        except Exception as e:
-            print(f"\n[BACKUP]: falhou ({e!r}); tento de novo em 10 min.")
-    threading.Thread(target=_fazer, daemon=True, name="backup").start()
-
-
 def _coletar():
     from ghost.nucleo import sistema
     from ghost.servicos import alertas, rede
@@ -192,7 +173,6 @@ def _coletar():
                 leitura["latencia_ms"], leitura["internet"] = ultima.get("net_ms"), ultima.get("net_ms") is not None
             if time.time() - ult_memoria >= MEMORIA_S:      # memória do próprio Ghost: mostra se há vazamento
                 ult_memoria = time.time()
-                _backup_se_preciso()
                 uso, reservada = sistema.memoria_ghost_mb()
                 leitura["ghost_mb"] = uso
                 if uso is not None:

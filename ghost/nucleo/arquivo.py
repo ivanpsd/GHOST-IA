@@ -99,33 +99,3 @@ def acrescentar_jsonl(caminho, item):
         with open(caminho, "a", encoding="utf-8") as f:
             f.write(json.dumps(item, ensure_ascii=False) + "\n")
 
-
-# ------------------------------------------------------------- backup diário da pasta dados/
-BACKUP_FORA = ("painel_janela", "palavra", "apps_cache.json")   # perfil do navegador, sobras e cache: não precisam
-BACKUP_MANTER = 7
-
-
-def backup_dados(origem, destino, manter=BACKUP_MANTER, agora=None):
-    """Zip de dados/ (memória, inventário, câmeras, skills, comandos ensinados...) em destino/ghost_dados_AAAA-MM-DD.zip.
-    Guarda os 'manter' mais novos. Devolve o caminho do zip."""
-    import zipfile
-    from datetime import datetime
-    os.makedirs(destino, exist_ok=True)
-    nome = os.path.join(destino, f"ghost_dados_{datetime.fromtimestamp(agora or time.time()):%Y-%m-%d}.zip")
-    tmp = nome + ".tmp"
-    with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as z:
-        for raiz, pastas, arquivos in os.walk(origem):
-            pastas[:] = [p for p in pastas if p not in BACKUP_FORA]
-            for a in arquivos:
-                if a in BACKUP_FORA or a.endswith((".tmp", ".corrompido")):
-                    continue
-                caminho = os.path.join(raiz, a)
-                try:
-                    z.write(caminho, os.path.relpath(caminho, origem))
-                except OSError:                      # arquivo em uso/sumiu no meio: segue com o resto
-                    pass
-    os.replace(tmp, nome)
-    antigos = sorted(f for f in os.listdir(destino) if f.startswith("ghost_dados_") and f.endswith(".zip"))
-    for f in antigos[:-manter]:
-        os.remove(os.path.join(destino, f))
-    return nome

@@ -41,19 +41,3 @@ def test_jsonl_pula_linha_quebrada(tmp_path):
     assert arquivo.ler_jsonl(p) == [{"a": 1}, {"a": 2}]
     assert arquivo.ler_jsonl(str(tmp_path / "nao_existe.jsonl")) == []
 
-
-def test_backup_dados_guarda_os_7_mais_novos(tmp_path):
-    import zipfile
-
-    from ghost.nucleo import arquivo
-    origem, destino = tmp_path / "dados", tmp_path / "bkp"
-    (origem / "painel_janela").mkdir(parents=True)
-    (origem / "painel_janela" / "lixo.bin").write_text("x")
-    (origem / "skills").mkdir()
-    (origem / "skills" / "s.json").write_text("{}")
-    (origem / "rede.json").write_text("{}")
-    for dia in range(10):
-        z = arquivo.backup_dados(str(origem), str(destino), agora=1_700_000_000 + dia * 86400)
-    nomes = sorted(p.name for p in destino.iterdir())
-    assert len(nomes) == 7 and nomes[-1] == z.split("/")[-1].split("\\")[-1]
-    assert sorted(zipfile.ZipFile(z).namelist()) == ["rede.json", "skills/s.json"]
