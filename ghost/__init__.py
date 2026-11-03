@@ -4,8 +4,8 @@ Pacotes:
     nucleo     caminhos, gravação segura de arquivos, preferências, Windows, HUD
     voz        microfone, palavra "Ghost", cancelamento de eco
     ia         ferramentas da IA, conversa, memórias, tarefas, skills, pessoas
-    automacao  comandos locais, programas, planilhas (macros: desativadas)
-    visao      câmera, visão por foto, tela (gestos e cadastro: desativados)
+    automacao  comandos locais, programas, planilhas, skills pela tela
+    visao      câmera, visão por foto, tela
     servicos   alertas, lembretes, resumo do dia, rotina, notificações, Google, contas pessoais
 
 Executar:  python -m ghost          (o Ghost)

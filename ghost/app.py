@@ -2,7 +2,7 @@
 GHOST - Assistente pessoal por voz para Windows.
 
 Fluxo: microfone (ativacao) -> fila de comandos -> transcrição (Whisper) -> ações locais
-(automacoes) ou IA (Groq -> Gemini -> Ollama, com ferramentas) -> voz (edge-tts / Piper).
+(automacoes) ou IA (fila de provedores gratuitos -> Gemini, com ferramentas) -> voz (edge-tts / Piper).
 Este módulo junta tudo e roda o laço principal. Ponto de entrada: main().
 """
 import os
@@ -368,7 +368,7 @@ def falar_frase_assincrona(texto):
 
 
 # -------------------------------------------------------------
-# 5. CÉREBRO DIGITAL (GROQ -> GEMINI -> OLLAMA)
+# 5. CÉREBRO DIGITAL (FILA DE PROVEDORES -> GEMINI)
 # -------------------------------------------------------------
 def carregar_env(caminho=None):
     """Lê o arquivo .env (CHAVE=valor) e joga em os.environ.
@@ -637,7 +637,7 @@ def _executar_confirmado(nome, args, descricao):
 
 
 def consultar_ia_streaming(prompt_usuario, ao_receber_frase, turno=None):
-    """Groq em streaming (principal) -> Gemini (reserva) -> Ollama (local).
+    """Fila de provedores em streaming (Groq, OpenRouter...) -> Gemini (reserva).
     Cada frase completa é entregue a ao_receber_frase assim que chega,
     para a voz começar antes de a resposta inteira terminar."""
     turno = turno if turno is not None else {"externo": False}

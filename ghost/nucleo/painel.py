@@ -25,7 +25,7 @@ from datetime import date, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
-from ghost.nucleo import caminhos, preferencias
+from ghost.nucleo import arquivo, caminhos, preferencias
 
 PASTA_WEB = os.path.join(os.path.dirname(os.path.abspath(__file__)), "painel_web")
 PASTA_EXPORTAR = os.path.join(os.path.expanduser("~"), "Documents", "Ghost", "Relatorios")
@@ -149,6 +149,25 @@ def _tempos_cpu():
     return v[0], v[1] + v[2]          # (ocioso, total): kernel já inclui o ocioso
 
 
+BACKUP_INTERVALO_S = 20 * 3600
+
+
+def _backup_se_preciso():
+    """1x por dia: zip de dados/ na pasta GHOST_BACKUP do .env (sem a variável, não faz nada). Em outra thread."""
+    destino = os.getenv("GHOST_BACKUP")
+    if not destino or time.time() - preferencias.carregar().get("ultimo_backup", 0) < BACKUP_INTERVALO_S:
+        return
+
+    def _fazer():
+        try:
+            z = arquivo.backup_dados(caminhos.DADOS, destino)
+            preferencias.definir("ultimo_backup", time.time())
+            print(f"\n[BACKUP]: {z}")
+        except Exception as e:
+            print(f"\n[BACKUP]: falhou ({e!r}); tento de novo em 10 min.")
+    threading.Thread(target=_fazer, daemon=True, name="backup").start()
+
+
 def _coletar():
     from ghost.nucleo import sistema
     from ghost.servicos import alertas, rede
@@ -173,6 +192,7 @@ def _coletar():
                 leitura["latencia_ms"], leitura["internet"] = ultima.get("net_ms"), ultima.get("net_ms") is not None
             if time.time() - ult_memoria >= MEMORIA_S:      # memória do próprio Ghost: mostra se há vazamento
                 ult_memoria = time.time()
+                _backup_se_preciso()
                 uso, reservada = sistema.memoria_ghost_mb()
                 leitura["ghost_mb"] = uso
                 if uso is not None:
@@ -404,6 +424,15 @@ def criar_demonstracao(abrir=True):
 # =============================================================
 # 6. SERVIDOR LOCAL + JANELA
 # =============================================================
+class _Servidor(ThreadingHTTPServer):
+    def handle_error(self, request, client_address):
+        """Tela fechada no meio de uma atualização (conexão cortada pelo navegador) não é erro: não suja o log."""
+        import sys
+        if isinstance(sys.exc_info()[1], (ConnectionAbortedError, ConnectionResetError, BrokenPipeError)):
+            return
+        super().handle_error(request, client_address)
+
+
 class _Rotas(BaseHTTPRequestHandler):
     """Servidor do PC: só 127.0.0.1 e só com a chave desta sessão (o celular usa nucleo/celular.py)."""
 
@@ -670,9 +699,9 @@ def iniciar(abrir=None, falar=None):
     if _servidor:
         return
     try:
-        _servidor = ThreadingHTTPServer(("127.0.0.1", PORTA), _Rotas)
+        _servidor = _Servidor(("127.0.0.1", PORTA), _Rotas)
     except OSError:                               # porta ocupada (outro programa): usa qualquer livre
-        _servidor = ThreadingHTTPServer(("127.0.0.1", 0), _Rotas)
+        _servidor = _Servidor(("127.0.0.1", 0), _Rotas)
     _servidor.daemon_threads = True
     threading.Thread(target=_servidor.serve_forever, daemon=True, name="painel-servidor").start()
     threading.Thread(target=_coletar, daemon=True, name="painel-coleta").start()

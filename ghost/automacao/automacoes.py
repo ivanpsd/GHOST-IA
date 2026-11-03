@@ -9,7 +9,6 @@ a pergunta para a IA.
 import os
 import re
 import subprocess
-import sys
 import threading
 import time
 import unicodedata
@@ -59,12 +58,6 @@ VERBO_ABRIR = r"\b(abr\w*|abra|inici\w*|lig\w*|execut\w*|entr\w*)\b"
 
 def pediu_abrir(n):
     return re.search(VERBO_ABRIR, n) is not None
-
-# Gestos, macros e cadastro de gestos estão DESATIVADOS (o código continua em ghost/visao e
-# ghost/automacao/macros.py). Para religar: True aqui e reinicie o Ghost.
-GESTOS_ATIVOS = False
-AVISO_GESTOS = "Os gestos e as macros estão desativados, senhor."
-
 
 def em_segundo_plano(funcao, *args):
     """Roda em outra thread mantendo o destino da resposta (pedido do celular: a resposta volta para lá)."""
@@ -369,18 +362,6 @@ def obter_localizacao_ip():
 def _tratar_sistema(n, falar):
     curto = len(n.split()) <= 5  # comandos de mídia só valem em frases curtas
 
-    if tem(n, "camera", "gestos") and re.search(r"\b(fech\w*|deslig\w*|desativ\w*|pare|parar|pausa\w*|ativ\w*|abr\w*|abra|lig\w*|inici\w*)\b", n):
-        if not GESTOS_ATIVOS:
-            falar(AVISO_GESTOS)
-            return True
-        from ghost.visao.gestos import alternar_camera
-        if re.search(r"\b(fech\w*|deslig\w*|desativ\w*|pare|parar|pausa\w*)\b", n):   # "par\w*" pegava "para"
-            alternar_camera(False, falar_callback=falar, executar_comando=lambda f: executar(f, falar))
-            return True
-        if re.search(r"\b(ativ\w*|abr\w*|abra|lig\w*|inici\w*)\b", n):
-            alternar_camera(True, falar_callback=falar, executar_comando=lambda f: executar(f, falar))
-            return True
-
     if tem(n, "aumentar volume", "aumenta o volume", "aumentar o volume", "sobe o volume"):
         for _ in range(5):
             pyautogui.press("volumeup")
@@ -429,31 +410,6 @@ def _tratar_sistema(n, falar):
         return True
     return False
 
-# -------------------------------------------------------------
-# GHOST: CADASTRO DE GESTOS E MONITORES (desativados: GESTOS_ATIVOS)
-# -------------------------------------------------------------
-def abrir_cadastro(falar):
-    """Libera a câmera, abre a tela de cadastro e devolve a câmera quando ela fechar."""
-    from ghost.visao import camera
-    pyw = os.path.join(os.path.dirname(sys.executable), "pythonw.exe")
-    if not os.path.exists(pyw):
-        pyw = sys.executable
-    suspensos = camera.suspender_todos()
-    try:
-        proc = subprocess.Popen([pyw, "-m", "ghost.visao.cadastro_gestos"], cwd=caminhos.RAIZ)
-    except Exception:
-        camera.retomar_todos()
-        raise
-    falar("Abrindo o cadastro de gestos, senhor.")
-    def _esperar():
-        try:
-            proc.wait()
-        finally:
-            camera.retomar_todos()
-        if suspensos:
-            print("\n[AUTOMAÇÃO]: cadastro fechado, câmera devolvida ao Ghost.")
-    threading.Thread(target=_esperar, daemon=True, name="cadastro-gestos").start()
-
 def _minutos_falados(n):
     if tem(n, "meia hora"):
         return 30
@@ -468,35 +424,6 @@ def _minutos_falados(n):
 
 VERBO_DESLIGAR = r"\b(desativ\w*|deslig\w*|pare|parar|pausa\w*|encerr\w*)\b"
 VERBO_LIGAR = r"\b(ativ\w*|lig\w*|retom\w*|volt\w*|inici\w*)\b"
-
-def _executar_acao_cadastrada(n, falar):
-    """'executar ação abrir relatório' -> roda a ação de mesmo nome do cadastro (macro, tecla ou comando)."""
-    m = re.search(r"\b(?:execut\w*|rod\w*|fac[ae])\s+(?:a\s+)?(?:acao|macro)\s+(?P<nome>.+)$", n)
-    if not m:
-        return False
-    if not GESTOS_ATIVOS:
-        falar(AVISO_GESTOS)
-        return True
-    from ghost.automacao import macros
-    from ghost.visao import gestos_lib as gl
-    alvo = m.group("nome").strip()
-    acoes = [a for a in gl.carregar_cadastro()["acoes"] if a["tipo"] in ("macro", "tecla", "comando")]
-    achada = next((a for a in acoes if normalizar(a["nome"]) == alvo), None) or \
-             next((a for a in acoes if alvo in normalizar(a["nome"]) or normalizar(a["nome"]) in alvo), None)
-    if not achada:
-        falar(f"Senhor, não encontrei a ação {alvo} no cadastro.")
-        return True
-    falar(f"Executando {achada['nome']}, senhor.")
-    if achada["tipo"] == "macro":
-        def _rodar():
-            time.sleep(1.5)  # tempo da fala e de soltar o F9
-            macros.executar(achada.get("passos", []), achada.get("ritmo", "original"))
-        em_segundo_plano(_rodar)
-    elif achada["tipo"] == "tecla":
-        pyautogui.hotkey(*achada["valor"].split("+"))
-    else:
-        executar(achada["valor"], falar)
-    return True
 
 # -------------------------------------------------------------
 # SKILLS ENSINADAS POR VOZ E OBSERVAÇÃO DA ROTINA
@@ -822,7 +749,7 @@ def _tratar_personalidade(n, falar):
 def pediu_hud_cameras(n):
     """'abra o painel das câmeras', 'modelo 3d das câmeras', 'câmera hud, abra', 'planta das câmeras'...
     Câmeras da EMPRESA (plural, ou singular junto de painel/planta/mapa/hud...). 'abra a câmera' (singular, sozinha)
-    continua sendo a webcam dos gestos; pergunta ('quantas câmeras têm movimento?') vai para a IA."""
+    continua sendo a webcam (app Câmera / olhar_camera); pergunta ('quantas câmeras têm movimento?') vai para a IA."""
     if len(n.split()) > 12 or re.search(r"\b(quant\w*|qual|quais|onde|quem|tem alguem|por que|porque)\b", n):
         return False
     tela = re.search(r"\b(painel|planta|mapa|modelo|3d|hud|tela|gravador|seguranca|vigilancia)\b", n)
@@ -937,26 +864,7 @@ def _tratar_ativacao(n, falar):
     return False
 
 def _tratar_ghost(n, falar):
-    if _tratar_alertas(n, falar) or _tratar_personalidade(n, falar) or _tratar_hud(n, falar) or _tratar_google(n, falar) or _tratar_ativacao(n, falar) or _executar_acao_cadastrada(n, falar):
-        return True
-    if tem(n, "cadastro de gestos", "cadastro dos gestos", "cadastrar gesto", "cadastrar gestos",
-           "cadastrar um gesto", "novo gesto", "outro monitor", "proximo monitor", "trocar de monitor",
-           "trocar monitor", "os dois monitores", "um monitor por vez"):
-        if not GESTOS_ATIVOS:
-            falar(AVISO_GESTOS)
-            return True
-        from ghost.visao import gestos
-        if tem(n, "cadastro de gestos", "cadastro dos gestos", "cadastrar gesto", "cadastrar gestos",
-               "cadastrar um gesto", "novo gesto"):
-            abrir_cadastro(falar)
-        elif tem(n, "os dois monitores"):
-            gestos.MODO_MONITORES = "todos"
-            falar("Gestos cobrindo os dois monitores, senhor.")
-        elif tem(n, "um monitor por vez"):
-            gestos.MODO_MONITORES = "um_por_vez"
-            falar("Gestos em um monitor por vez. Diga outro monitor para trocar, senhor.")
-        else:
-            gestos.trocar_monitor(falar)
+    if _tratar_alertas(n, falar) or _tratar_personalidade(n, falar) or _tratar_hud(n, falar) or _tratar_google(n, falar) or _tratar_ativacao(n, falar):
         return True
     return False
 

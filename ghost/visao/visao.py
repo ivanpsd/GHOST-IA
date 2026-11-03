@@ -8,21 +8,40 @@ Só olha quando você pede (a IA chama a ferramenta olhar_camera):
 Não identifica pessoas.
 """
 import os
+import shutil
 import time
+import urllib.request
 
 import cv2
 import mediapipe as mp
 from mediapipe.tasks import python as mp_python
 from mediapipe.tasks.python import vision
 
+from ghost.nucleo import caminhos
 from ghost.visao import camera
-from ghost.visao import gestos_lib as gl
 
 # tentados em ordem: se um estiver sobrecarregado (503), passa para o próximo
 MODELOS_GEMINI = ["gemini-3.5-flash", "gemini-3.8-flash", "gemini-3.5-flash-lite"]
 URL_DETECTOR = ("https://storage.googleapis.com/mediapipe-models/object_detector/"
                 "efficientdet_lite0/float16/latest/efficientdet_lite0.tflite")
 CONFIANCA_LOCAL = 0.5
+
+
+def garantir_modelo(nome_arquivo, url):
+    """Baixa o modelo do detector local uma única vez (pasta modelos/)."""
+    caminho = os.path.join(caminhos.MODELOS, nome_arquivo)
+    if not os.path.exists(caminho):
+        os.makedirs(caminhos.MODELOS, exist_ok=True)
+        print(f"\n[VISÃO]: Baixando o modelo {nome_arquivo} (uma única vez)...")
+        tmp = caminho + ".tmp"
+        try:
+            with urllib.request.urlopen(url, timeout=30) as r, open(tmp, "wb") as f:
+                shutil.copyfileobj(r, f, 1 << 20)
+            os.replace(tmp, caminho)
+        finally:
+            if os.path.exists(tmp):
+                os.remove(tmp)
+    return caminho
 
 PROMPT = ("Você é a visão de um assistente de voz. O usuário perguntou: \"{pergunta}\". "
           "Olhe a foto da webcam e responda em português do Brasil, em no máximo 2 frases curtas, "
@@ -63,7 +82,7 @@ def _detector_local():
     global _detector
     if _detector is None:
         opcoes = vision.ObjectDetectorOptions(
-            base_options=mp_python.BaseOptions(model_asset_path=gl.garantir_modelo("efficientdet_lite0.tflite", URL_DETECTOR)),
+            base_options=mp_python.BaseOptions(model_asset_path=garantir_modelo("efficientdet_lite0.tflite", URL_DETECTOR)),
             max_results=5, score_threshold=CONFIANCA_LOCAL)
         _detector = vision.ObjectDetector.create_from_options(opcoes)
     return _detector
