@@ -742,6 +742,8 @@ def _tratar_alertas(n, falar):
 def _tratar_personalidade(n, falar):
     if tem(n, "modo serio", "modo objetivo", "seja mais objetivo", "sem gracinha", "sem piadas"):
         preferencias.definir("personalidade", "objetivo"); falar("Entendido, senhor. Modo objetivo."); return True
+    if tem(n, "modo sombrio", "personalidade sombria", "modo frio", "modo vilao", "seja sombrio"):
+        preferencias.definir("personalidade", "sombrio"); falar("Como quiser, senhor. A eficiência agora tem outro tom."); return True
     if tem(n, "modo jarvis", "modo normal", "pode brincar", "volte ao normal", "personalidade normal"):
         preferencias.definir("personalidade", "jarvis"); falar("Às suas ordens, senhor. De volta ao normal."); return True
     return False
