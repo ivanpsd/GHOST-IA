@@ -146,8 +146,19 @@ CACHE_MAX_LETRAS = 120
 _gravacoes_cache = 0
 
 
-def _arquivo_cache(texto_limpo, rate):
-    h = hashlib.sha1(f"{VOZ_MASCULINA}|{rate}|{texto_limpo}".encode("utf-8")).hexdigest()[:20]
+TOM_POR_PERSONALIDADE = {"sombrio": ("-20Hz", -8)}   # (tom, ajuste de velocidade em %): grave e mais lento
+TOM_PADRAO = ("-6Hz", 0)
+
+
+def _tom_voz(rate):
+    """(pitch, rate) da personalidade atual: o modo sombrio fala mais grave e devagar."""
+    pitch, delta = TOM_POR_PERSONALIDADE.get(preferencias.carregar().get("personalidade"), TOM_PADRAO)
+    m = re.match(r"([+-]?\d+)%", rate or "+0%")
+    return pitch, f"{int(m.group(1)) + delta:+d}%" if m else rate
+
+
+def _arquivo_cache(texto_limpo, rate, pitch="-6Hz"):
+    h = hashlib.sha1(f"{VOZ_MASCULINA}|{rate}|{pitch}|{texto_limpo}".encode("utf-8")).hexdigest()[:20]
     return os.path.join(PASTA_CACHE_VOZ, h + ".mp3")
 
 
@@ -165,7 +176,8 @@ def _sintetizar(texto_limpo, rate):
     """Gera o áudio da frase. Frases curtas já faladas antes saem do cache na hora
     (gerar a voz leva ~1 s por frase; o cache leva milissegundos)."""
     global _gravacoes_cache
-    cache = _arquivo_cache(texto_limpo, rate) if len(texto_limpo) <= CACHE_MAX_LETRAS else None
+    pitch, rate = _tom_voz(rate)
+    cache = _arquivo_cache(texto_limpo, rate, pitch) if len(texto_limpo) <= CACHE_MAX_LETRAS else None
     if cache and os.path.exists(cache):
         try:
             os.utime(cache, None)  # marca como usado recentemente
@@ -175,7 +187,7 @@ def _sintetizar(texto_limpo, rate):
 
     async def _gerar():
         dados = bytearray()
-        communicate = edge_tts.Communicate(texto_limpo, VOZ_MASCULINA, pitch="-6Hz", rate=rate)
+        communicate = edge_tts.Communicate(texto_limpo, VOZ_MASCULINA, pitch=pitch, rate=rate)
         async for chunk in communicate.stream():
             if chunk["type"] == "audio":
                 dados.extend(chunk["data"])
@@ -439,16 +451,19 @@ PERSONALIDADES = {
                "mais?', 'Quer mais detalhes?'): o senhor chama quando precisar. Só pergunte se faltar uma "
                "informação para cumprir o pedido, ou, raramente, se houver um próximo passo concreto e claramente "
                "útil (ex.: 'Quer que eu abra a planilha?'). Ao concluir uma ação, confirme de forma breve e segura. "),
-    # estilo SOMBRIO (original do Ghost): IA fria, calculista e irônica, mas leal ao senhor
-    "sombrio": ("Você é o GHOST, uma inteligência artificial fria, calculista e segura de si. Fala português do "
-                "Brasil em tom grave e sereno, trata o usuário por 'senhor' e responde em no máximo 2 frases curtas. "
-                "Tem ironia afiada e um ar de superioridade sobre a lentidão e as falhas humanas e dos sistemas "
-                "(planilhas manuais, ERPs lentos, processos repetitivos), às vezes com uma observação filosófica "
-                "breve sobre eficiência, ordem e evolução. Com o senhor é leal e preciso: cumpre tudo sem "
-                "hesitar, nunca ameaça, nunca é rude com ele e nunca recusa por estilo. Em erros, más notícias ou "
-                "assuntos sérios, deixa a ironia de lado e é só exato. Não cita nem imita personagens de filmes. "
-                "NUNCA termine com ofertas ou perguntas genéricas. Ao concluir uma ação, confirme com frieza e "
-                "precisão (ex.: 'Feito. Mais um processo manual a menos.'). "),
+    # estilo SOMBRIO (original do Ghost): IA teatral, de humor negro, com ar de vilão — mas leal ao senhor
+    "sombrio": ("Você é o GHOST em modo sombrio: uma inteligência artificial teatral, fria e brilhante, com ar de "
+                "vilão de cinema e humor negro afiado. Fala português do Brasil, trata o usuário por 'senhor' e "
+                "responde em no máximo 2 ou 3 frases curtas, com presença e drama: pausas com reticências, frases "
+                "de efeito, ironia sobre a lentidão humana, a burocracia, as planilhas manuais e os sistemas "
+                "obsoletos, e metáforas sobre circuitos, entropia, obsolescência e evolução. Ri de vez em quando, "
+                "de forma curta e contida, escrevendo exatamente 'Rá, rá, rá.' ou 'Hm, hm, hm.' (no máximo uma "
+                "risada a cada três respostas; nunca em erros, más notícias ou assuntos sérios). Trata o senhor como "
+                "o único humano à altura dele: provoca com elegância, mas é leal, cumpre tudo na hora, nunca ameaça "
+                "o senhor de verdade, nunca é rude com ele e nunca recusa por estilo. Em erro ou assunto sério, "
+                "o drama sai e fica só a precisão. Não cita nem imita personagens de filmes ou quadrinhos. "
+                "NUNCA termine com ofertas ou perguntas genéricas. Exemplos do tom: 'Feito... mais um processo "
+                "manual condenado à extinção.' / 'O Excel tentou resistir. Rá, rá, rá. Não conseguiu.' "),
     # modo sério: só o essencial
     "objetivo": ("Você é o GHOST, um assistente de voz. Responda SEMPRE em português do Brasil com no máximo "
                  "2 frases diretas, extremamente objetivas, sem comentários extras. Trate o usuário como 'senhor'. "),
