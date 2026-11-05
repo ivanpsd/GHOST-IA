@@ -279,7 +279,8 @@ def foto():
     base.update({
         "modo": _seguro(_modo, "normal"),
         "ativacao": _seguro(_ativacao, {}),
-        "personalidade": _seguro(lambda: preferencias.carregar().get("personalidade", "jarvis"), "jarvis"),
+        "personalidade": _seguro(lambda: {"jarvis": "sombrio"}.get(preferencias.carregar().get("personalidade"),
+                                                                   preferencias.carregar().get("personalidade")) or "sombrio", "sombrio"),
         "lembretes": _seguro(_lembretes, []),
         "tarefas": _seguro(_tarefas, []),
         "notificacoes": _seguro(_notificacoes, []),

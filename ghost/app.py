@@ -148,11 +148,18 @@ _gravacoes_cache = 0
 
 TOM_POR_PERSONALIDADE = {"sombrio": ("-20Hz", -8)}   # (tom, ajuste de velocidade em %): grave e mais lento
 TOM_PADRAO = ("-6Hz", 0)
+ESTILO_PADRAO = "sombrio"
+_ESTILO_ANTIGO = {"jarvis": ESTILO_PADRAO, "normal": ESTILO_PADRAO}   # preferência gravada antes desta versão
+
+
+def estilo_atual():
+    nome = preferencias.carregar().get("personalidade") or ESTILO_PADRAO
+    return _ESTILO_ANTIGO.get(nome, nome)
 
 
 def _tom_voz(rate):
     """(pitch, rate) da personalidade atual: o modo sombrio fala mais grave e devagar."""
-    pitch, delta = TOM_POR_PERSONALIDADE.get(preferencias.carregar().get("personalidade"), TOM_PADRAO)
+    pitch, delta = TOM_POR_PERSONALIDADE.get(estilo_atual(), TOM_PADRAO)
     m = re.match(r"([+-]?\d+)%", rate or "+0%")
     return pitch, f"{int(m.group(1)) + delta:+d}%" if m else rate
 
@@ -459,8 +466,8 @@ CARATER = (
 )
 
 PERSONALIDADES = {
-    # estilo JARVIS: mordomo digital elegante, competente, com humor seco e raro
-    "jarvis": ("Você é o GHOST, o assistente pessoal do usuário, no espírito do JARVIS: um mordomo digital "
+    # estilo ELEGANTE (o antigo padrão): mordomo digital, competente, com humor seco e raro — "modo elegante"
+    "elegante": ("Você é o GHOST, o assistente pessoal do usuário, no espírito do JARVIS: um mordomo digital "
                "elegante, calmo e extremamente competente. Fala português do Brasil com polidez natural, "
                "trata o usuário por 'senhor' e responde em no máximo 2 frases curtas. "
                "Tem um humor seco e sutil, usado com moderação (no máximo uma pitada a cada algumas respostas, "
@@ -469,8 +476,8 @@ PERSONALIDADES = {
                "mais?', 'Quer mais detalhes?'): o senhor chama quando precisar. Só pergunte se faltar uma "
                "informação para cumprir o pedido, ou, raramente, se houver um próximo passo concreto e claramente "
                "útil (ex.: 'Quer que eu abra a planilha?'). Ao concluir uma ação, confirme de forma breve e segura. "),
-    # estilo SOMBRIO (original do Ghost): IA teatral, de humor negro, com ar de vilão — mas leal ao senhor
-    "sombrio": ("Você é o GHOST em modo sombrio: uma inteligência artificial teatral, fria e brilhante, com ar de "
+    # estilo SOMBRIO = PADRÃO do Ghost (original): IA teatral, de humor negro, com ar de vilão — mas leal ao senhor
+    "sombrio": ("Você é o GHOST: uma inteligência artificial teatral, fria e brilhante, com ar de "
                 "vilão de cinema e humor negro afiado. Fala português do Brasil, trata o usuário por 'senhor' e "
                 "responde em no máximo 2 ou 3 frases curtas, com presença e drama: pausas com reticências, frases "
                 "de efeito, ironia sobre a lentidão humana, a burocracia, as planilhas manuais e os sistemas "
@@ -510,8 +517,8 @@ def instrucao_completa(pergunta=""):
     """Personalidade + instrução fixa (com o catálogo de comandos) + só os fatos ligados à pergunta."""
     agora = datetime.now()
     dias = ["segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta-feira", "sábado", "domingo"]
-    nome = preferencias.carregar().get("personalidade", "jarvis")
-    estilo = PERSONALIDADES.get(nome, PERSONALIDADES["jarvis"]) + ("" if nome == "objetivo" else CARATER)
+    nome = estilo_atual()
+    estilo = PERSONALIDADES.get(nome, PERSONALIDADES[ESTILO_PADRAO]) + ("" if nome == "objetivo" else CARATER)
     return (estilo + SYSTEM_INSTRUCTION.format(catalogo=automacoes.catalogo_texto())
             + f"\n\nAGORA: {dias[agora.weekday()]}, {agora:%d/%m/%Y %H:%M} (horário de Brasília)."
             + memoria.texto_para_prompt(pergunta) + pessoas.texto_para_prompt() + contexto.texto_para_prompt())

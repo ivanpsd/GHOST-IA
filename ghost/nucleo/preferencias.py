@@ -12,7 +12,7 @@ import threading
 from ghost.nucleo import arquivo, caminhos
 
 ARQUIVO = caminhos.dado("preferencias.json")
-PADRAO = {"saudacao": "Olá, Ivan.", "cidade": "Santana de Parnaíba", "personalidade": "jarvis"}
+PADRAO = {"saudacao": "Olá, Ivan.", "cidade": "Santana de Parnaíba", "personalidade": "sombrio"}
 
 _trava = threading.RLock()
 _cache = None
