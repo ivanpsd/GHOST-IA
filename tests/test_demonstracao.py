@@ -217,3 +217,14 @@ def test_data_escolhida_no_calendario_vira_digitacao():
     assert not any("_palavras" in p for p in passos)
     v = demo.valores_das_variaveis(passos, "do mês passado", perguntar=lambda q: None, hoje=date(2026, 10, 27))
     assert v == {1: "01/09/2026", 3: "30/09/2026"}
+
+
+def test_teclado_numerico_vira_digitacao():
+    from ghost.automacao import demonstracao as d
+    passos = [{"acao": "clicar", "texto": "Cliente"}] + [{"acao": "tecla", "combo": str(v)} for v in (96, 96, 96, 99, 98, 101)] \
+        + [{"acao": "tecla", "combo": "enter"}, {"acao": "tecla", "combo": "97"}, {"acao": "tecla", "combo": "103"},
+           {"acao": "tecla", "combo": "ctrl+c"}]
+    r = d.corrigir_numerico(passos)
+    assert [p.get("texto") or p.get("combo") for p in r] == ["Cliente", "000325", "enter", "17", "ctrl+c"]
+    assert r[1]["acao"] == "digitar" and "_numerico" not in r[1]
+    assert d.NUMERICO[96] == "0" and d.NUMERICO[105] == "9" and d.NUMERICO[110] == ","

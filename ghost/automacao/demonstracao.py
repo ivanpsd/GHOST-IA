@@ -37,6 +37,9 @@ PALAVRAS_SENHA = ("senha", "password", "pin", "token", "codigo de acesso")
 IGNORAR_JANELAS = ("painel do ghost",)          # cliques na tela do próprio Ghost não entram na skill
 TECLAS_FALAR = ("f9",)                           # F9 é o "falar" do Ghost: não vira passo
 
+# Teclado numérico: no Windows chega só o código da tecla (96 = 0 ... 105 = 9), sem o caractere.
+NUMERICO = {**{96 + i: str(i) for i in range(10)}, 106: "*", 107: "+", 109: "-", 110: ",", 111: "/"}
+
 _trava = threading.Lock()
 _gravacao = None                 # Gravacao em andamento
 _rascunho = None                 # {"passos": [...], "nome", "gatilho"} esperando revisão
@@ -111,7 +114,7 @@ class Gravacao:
                     "cmd", "cmd_l", "cmd_r"):
             self._mods.add(nome.split("_")[0])
             return
-        char = getattr(k, "char", None)
+        char = getattr(k, "char", None) or NUMERICO.get(getattr(k, "vk", None))
         if char and char.isprintable() and not ({"ctrl", "alt", "cmd"} & self._mods):
             self._texto.append(char)
             return
@@ -328,6 +331,24 @@ def _papeis_das_datas(passos):
         datas[0]["papel"], datas[1]["papel"] = "inicio", "fim"
 
 
+def corrigir_numerico(passos):
+    """Passos 'tecla 96', 'tecla 97'... (teclado numérico gravado antes da correção) -> 'digitar 01'.
+    Junta números seguidos num passo só. Função pura: devolve lista nova."""
+    saida = []
+    for p in passos:
+        combo = p.get("combo", "") if p.get("acao") == "tecla" else ""
+        c = NUMERICO.get(int(combo)) if combo.isdigit() else None
+        if c is None:
+            saida.append(p)
+        elif saida and saida[-1].get("acao") == "digitar" and saida[-1].get("_numerico"):
+            saida[-1]["texto"] += c
+        else:
+            saida.append({"acao": "digitar", "texto": c, "segredo": False, "variavel": None, "_numerico": True})
+    for p in saida:
+        p.pop("_numerico", None)
+    return saida
+
+
 def avisos(passos):
     """Coisas que não vão repetir bem (mostradas na revisão)."""
     saida = []
@@ -409,6 +430,9 @@ def parar_gravacao():
 
 
 def rascunho():
+    if _rascunho and any(p.get("acao") == "tecla" and p.get("combo", "").isdigit() for p in _rascunho["passos"]):
+        with _trava:
+            _rascunho["passos"] = corrigir_numerico(_rascunho["passos"])
     return _rascunho
 
 
@@ -632,7 +656,7 @@ def executar(skill, falar, perguntar, teste=False, frase=""):
     ouvinte = kb.Listener(on_press=lambda k: _abortar.set() if getattr(k, "name", "") == "f10" else None)
     ouvinte.start()
     pasta = os.path.join(PASTA, skill.get("pasta", "")) if skill.get("pasta") else PASTA_RASCUNHO
-    passos = skill["passos"]
+    passos = corrigir_numerico(skill["passos"])          # skills gravadas antes da correção do teclado numérico
     try:
         # as respostas variáveis são resolvidas ANTES de começar (para não parar no meio da tela)
         valores = valores_das_variaveis(passos, frase, perguntar)
